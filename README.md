@@ -72,10 +72,6 @@ MinUI is in early development. While it's already usable for basic terminal game
 
 Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation, please feel free to submit a PR.
 
-## License
-
-MIT License
-
 ## Games Built with MinUI
 
 - *Coming Soon: Terminal Tetris*
