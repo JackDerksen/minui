@@ -60,7 +60,7 @@ MinUI is designed to make terminal game development straightforward. Here's what
 
 ## Project Status
 
-MinUI is in early development. While it's already usable for basic terminal games, I'm actively working on adding more features:
+MinUI is in early development, and I'm actively working on adding more features:
 
 - [x] Color support
 - [ ] Simple widget system
