@@ -27,8 +27,8 @@ impl Color {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ColorPair {
-    pub foreground: Color,
-    pub background: Color,
+    pub fg: Color,
+    pub bg: Color,
     pub(crate) pair_number: i16,
 }
 
@@ -36,8 +36,8 @@ impl ColorPair {
     pub fn new(foreground: Color, background: Color) -> Self {
         // This will be implemented in window initialization
         Self {
-            foreground,
-            background,
+            fg: foreground,
+            bg: background,
             pair_number: 0, // Placeholder
         }
     }

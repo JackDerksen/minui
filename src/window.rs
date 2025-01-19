@@ -71,7 +71,7 @@ impl Window {
         }
 
         // Get or create color pair
-        let pair_number = self.get_or_create_color_pair(color_pair.foreground, color_pair.background)?;
+        let pair_number = self.get_or_create_color_pair(color_pair.fg, color_pair.bg)?;
 
         let attr = pancurses::COLOR_PAIR(pair_number as chtype);
         self.inner.attron(attr);
@@ -82,15 +82,15 @@ impl Window {
         Ok(())
     }
 
-    fn get_or_create_color_pair(&mut self, foreground: Color, background: Color) -> Result<i16> {
-        if let Some(&pair_number) = self.color_pairs.get(&(foreground, background)) {
+    fn get_or_create_color_pair(&mut self, fg: Color, bg: Color) -> Result<i16> {
+        if let Some(&pair_number) = self.color_pairs.get(&(fg, bg)) {
             return Ok(pair_number);
         }
 
         let pair_number = self.next_pair_number;
-        pancurses::init_pair(pair_number, foreground.to_pancurses(), background.to_pancurses());
+        pancurses::init_pair(pair_number, fg.to_pancurses(), bg.to_pancurses());
 
-        self.color_pairs.insert((foreground, background), pair_number);
+        self.color_pairs.insert((fg, bg), pair_number);
         self.next_pair_number += 1;
 
         Ok(pair_number)

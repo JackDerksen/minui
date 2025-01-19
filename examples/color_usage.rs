@@ -47,6 +47,12 @@ fn main() -> Result<()> {
         ColorPair::new(Color::Yellow, Color::Black)
     )?;
 
+    window.write_str_colored(
+        7, 0,
+        "URGENT: System failure! jk :)",
+        ColorPair::new(Color::Black, Color::Red)
+    )?;
+
     // Wait for 'q' to quit
     loop {
         match window.get_input()? {
