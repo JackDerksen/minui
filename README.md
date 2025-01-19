@@ -68,10 +68,6 @@ MinUI is in early development, and I'm actively working on adding more features:
 - [ ] Built-in game loop utilities
 - [ ] Sprite/character animation support
 
-## Contributing
-
-Contributions are welcome! Whether you're fixing bugs, adding features, or improving documentation, please feel free to submit a PR.
-
 ## Games Built with MinUI
 
 - *Coming Soon: Terminal Tetris*
@@ -79,5 +75,5 @@ Contributions are welcome! Whether you're fixing bugs, adding features, or impro
 ## Acknowledgments
 
 Built using:
-- [pancurses](https://github.com/ihalila/pancurses) - Rust ncurses wrapper
+- [crossterm](https://github.com/crossterm-rs/crossterm) - Cross-platform terminal manipulation library
 - [thiserror](https://github.com/dtolnay/thiserror) - Error handling
