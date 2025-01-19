@@ -12,6 +12,9 @@ pub enum Error {
 
     #[error("Invalid Input: {0}")]
     InputError(String),
+
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

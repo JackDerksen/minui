@@ -1,130 +1,120 @@
-use pancurses::{self, Window as CursesWindow, Input, chtype};
-use crate::{Error, Result, Event, Color, ColorPair};
-use std::collections::HashMap;
+use std::io::{Write, stdout};
+use crossterm::{
+    terminal::{self, enable_raw_mode, disable_raw_mode},
+    cursor,
+    event::{self, Event as CrosstermEvent, KeyCode},
+    style::{self, SetForegroundColor, SetBackgroundColor, Print},
+    execute,
+};
+use crate::{Error, Result, Event, ColorPair};
 
-// My main abstraction over pancurses. Wrapped the raw window and track its dimensions.
 pub struct Window {
-    inner: CursesWindow,
-    width: i32,
-    height: i32,
-    color_pairs: HashMap<(Color, Color), i16>,
-    next_pair_number: i16,
+    width: u16,
+    height: u16,
 }
 
-// Implementation:
-//  - new(): Initializes the terminal in raw mode (noecho, cbreak) so we can handle input directly
-//  - get_size(): Returns window dimensions
-//  - clear(): Clears the screen
-//  - write_str(): Writes text at specific coords with bounds checking
-//  - get_or_create_color_pair():
-//  - Drop implementation ensures the terminal state is properly cleaned up
 impl Window {
     pub fn new() -> Result<Self> {
-        let window = pancurses::initscr();
-        let (height, width) = window.get_max_yx();
+        enable_raw_mode()?;
 
-        // Set up basic curses settings
-        pancurses::noecho(); // Don't echo key presses
-        pancurses::cbreak(); // Disable line buffering
-        window.keypad(true); // Enable keypad for arrow keys, etc.
+        let (cols, rows) = terminal::size()?;
 
-        // Initialize color support
-        if !pancurses::has_colors() {
-            return Err(Error::InitializationError("Terminal does not support colors.".into()));
-        }
-
-        pancurses::start_color();
+        execute!(
+            stdout(),
+            terminal::EnterAlternateScreen,  // Use separate screen buffer
+            terminal::Clear(terminal::ClearType::All),
+            cursor::Hide,
+            cursor::MoveTo(0, 0)
+        )?;
 
         Ok(Self {
-            inner: window,
-            width,
-            height,
-            color_pairs: HashMap::new(),
-            next_pair_number: 1, // 0 reserved for defaults
+            width: cols,
+            height: rows,
         })
     }
 
-    pub fn get_size(&self) -> (i32, i32) {
-        (self.height, self.width)
+    pub fn get_size(&self) -> (u16, u16) {
+        (self.width, self.height)
     }
 
     pub fn clear(&self) -> Result<()> {
-        self.inner.clear();
-        self.inner.refresh();
+        execute!(
+            stdout(),
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0)
+        )?;
         Ok(())
     }
 
-    pub fn write_str(&mut self, y: i32, x: i32, s: &str) -> Result<()> {
+    pub fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         if y >= self.height || x >= self.width {
             return Err(Error::WindowError("Position out of bounds".into()));
         }
 
-        self.inner.mvaddstr(y, x, s);
-        self.inner.refresh();
+        execute!(
+            stdout(),
+            cursor::MoveTo(x, y),
+            Print(s)
+        )?;
 
+        stdout().flush()?;
         Ok(())
     }
 
-    pub fn write_str_colored(&mut self, y: i32, x: i32, s: &str, color_pair: ColorPair) -> Result<()> {
+    pub fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
         if y >= self.height || x >= self.width {
             return Err(Error::WindowError("Position out of bounds".into()));
         }
 
-        // Get or create color pair
-        let pair_number = self.get_or_create_color_pair(color_pair.fg, color_pair.bg)?;
+        execute!(
+            stdout(),
+            cursor::MoveTo(x, y),
+            SetForegroundColor(colors.fg.to_crossterm()),
+            SetBackgroundColor(colors.bg.to_crossterm()),
+            Print(s),
+            style::ResetColor
+        )?;
 
-        let attr = pancurses::COLOR_PAIR(pair_number as chtype);
-        self.inner.attron(attr);
-        self.inner.mvaddstr(y, x, s);
-        self.inner.attroff(attr);
-        self.inner.refresh();
-
+        stdout().flush()?;
         Ok(())
-    }
-
-    fn get_or_create_color_pair(&mut self, fg: Color, bg: Color) -> Result<i16> {
-        if let Some(&pair_number) = self.color_pairs.get(&(fg, bg)) {
-            return Ok(pair_number);
-        }
-
-        let pair_number = self.next_pair_number;
-        pancurses::init_pair(pair_number, fg.to_pancurses(), bg.to_pancurses());
-
-        self.color_pairs.insert((fg, bg), pair_number);
-        self.next_pair_number += 1;
-
-        Ok(pair_number)
     }
 
     pub fn get_input(&self) -> Result<Event> {
-        match self.inner.getch() {
-            Some(Input::Character(c)) => Ok(Event::Character(c)),
-            Some(Input::KeyUp) => Ok(Event::KeyUp),
-            Some(Input::KeyDown) => Ok(Event::KeyDown),
-            Some(Input::KeyLeft) => Ok(Event::KeyLeft),
-            Some(Input::KeyRight) => Ok(Event::KeyRight),
-            Some(Input::KeyDC) => Ok(Event::Delete),
-            Some(Input::KeyBackspace) => Ok(Event::Backspace),
-            Some(Input::KeyEnter) => Ok(Event::Enter),
-            Some(Input::KeyF1) => Ok(Event::FunctionKey(1)),
-            Some(Input::KeyF2) => Ok(Event::FunctionKey(2)),
-            Some(Input::KeyF3) => Ok(Event::FunctionKey(3)),
-            Some(Input::KeyF4) => Ok(Event::FunctionKey(4)),
-            Some(Input::KeyF5) => Ok(Event::FunctionKey(5)),
-            Some(Input::KeyF6) => Ok(Event::FunctionKey(6)),
-            Some(Input::KeyF7) => Ok(Event::FunctionKey(7)),
-            Some(Input::KeyF8) => Ok(Event::FunctionKey(8)),
-            Some(Input::KeyF9) => Ok(Event::FunctionKey(9)),
-            Some(Input::KeyF10) => Ok(Event::FunctionKey(10)),
-            Some(Input::KeyF11) => Ok(Event::FunctionKey(11)),
-            Some(Input::KeyF12) => Ok(Event::FunctionKey(12)),
-            _ => Ok(Event::Unknown),
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let CrosstermEvent::Key(key) = event::read()? {
+                return Ok(match key.code {
+                    KeyCode::Char(c) => Event::Character(c),
+                    KeyCode::Up => Event::KeyUp,
+                    KeyCode::Down => Event::KeyDown,
+                    KeyCode::Left => Event::KeyLeft,
+                    KeyCode::Right => Event::KeyRight,
+                    KeyCode::Delete => Event::Delete,
+                    KeyCode::Backspace => Event::Backspace,
+                    KeyCode::Enter => Event::Enter,
+                    KeyCode::F(n) => Event::FunctionKey(n),
+                    _ => Event::Unknown,
+                });
+            }
         }
+        Ok(Event::Unknown)
     }
 }
 
 impl Drop for Window {
     fn drop(&mut self) {
-        pancurses::endwin();
+        let _ = disable_raw_mode();
+
+        // Clean up the terminal state
+        let _ = execute!(
+            stdout(),
+            style::ResetColor,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0),
+            cursor::Show,
+            terminal::LeaveAlternateScreen
+        );
+
+        // Ensure changes are flushed
+        let _ = stdout().flush();
     }
 }
