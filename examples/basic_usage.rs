@@ -8,7 +8,7 @@ use minui::{Window, Event};
 //  - Clean up automatically when done
 
 fn main() -> minui::Result<()> {
-    let window = Window::new()?;
+    let mut window = Window::new()?;
     window.clear()?;
 
     window.write_str(0, 0, "Press 'q' to quit")?;

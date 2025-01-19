@@ -1,11 +1,14 @@
-use pancurses::{self, Window as CursesWindow, Input};
-use crate::{Error, Result, Event};
+use pancurses::{self, Window as CursesWindow, Input, chtype};
+use crate::{Error, Result, Event, Color, ColorPair};
+use std::collections::HashMap;
 
 // My main abstraction over pancurses. Wrapped the raw window and track its dimensions.
 pub struct Window {
     inner: CursesWindow,
     width: i32,
     height: i32,
+    color_pairs: HashMap<(Color, Color), i16>,
+    next_pair_number: i16,
 }
 
 // Implementation:
@@ -13,6 +16,7 @@ pub struct Window {
 //  - get_size(): Returns window dimensions
 //  - clear(): Clears the screen
 //  - write_str(): Writes text at specific coords with bounds checking
+//  - get_or_create_color_pair():
 //  - Drop implementation ensures the terminal state is properly cleaned up
 impl Window {
     pub fn new() -> Result<Self> {
@@ -24,10 +28,19 @@ impl Window {
         pancurses::cbreak(); // Disable line buffering
         window.keypad(true); // Enable keypad for arrow keys, etc.
 
+        // Initialize color support
+        if !pancurses::has_colors() {
+            return Err(Error::InitializationError("Terminal does not support colors.".into()));
+        }
+
+        pancurses::start_color();
+
         Ok(Self {
             inner: window,
             width,
             height,
+            color_pairs: HashMap::new(),
+            next_pair_number: 1, // 0 reserved for defaults
         })
     }
 
@@ -41,14 +54,46 @@ impl Window {
         Ok(())
     }
 
-    pub fn write_str(&self, y: i32, x: i32, s: &str) -> Result<()> {
+    pub fn write_str(&mut self, y: i32, x: i32, s: &str) -> Result<()> {
         if y >= self.height || x >= self.width {
             return Err(Error::WindowError("Position out of bounds".into()));
         }
 
         self.inner.mvaddstr(y, x, s);
         self.inner.refresh();
+
         Ok(())
+    }
+
+    pub fn write_str_colored(&mut self, y: i32, x: i32, s: &str, color_pair: ColorPair) -> Result<()> {
+        if y >= self.height || x >= self.width {
+            return Err(Error::WindowError("Position out of bounds".into()));
+        }
+
+        // Get or create color pair
+        let pair_number = self.get_or_create_color_pair(color_pair.foreground, color_pair.background)?;
+
+        let attr = pancurses::COLOR_PAIR(pair_number as chtype);
+        self.inner.attron(attr);
+        self.inner.mvaddstr(y, x, s);
+        self.inner.attroff(attr);
+        self.inner.refresh();
+
+        Ok(())
+    }
+
+    fn get_or_create_color_pair(&mut self, foreground: Color, background: Color) -> Result<i16> {
+        if let Some(&pair_number) = self.color_pairs.get(&(foreground, background)) {
+            return Ok(pair_number);
+        }
+
+        let pair_number = self.next_pair_number;
+        pancurses::init_pair(pair_number, foreground.to_pancurses(), background.to_pancurses());
+
+        self.color_pairs.insert((foreground, background), pair_number);
+        self.next_pair_number += 1;
+
+        Ok(pair_number)
     }
 
     pub fn get_input(&self) -> Result<Event> {
