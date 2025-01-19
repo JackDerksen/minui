@@ -62,9 +62,9 @@ MinUI is designed to make terminal game development straightforward. Here's what
 
 MinUI is in early development. While it's already usable for basic terminal games, I'm actively working on adding more features:
 
-- [ ] Color support
-- [ ] Buffered drawing for efficient updates
+- [x] Color support
 - [ ] Simple widget system
+- [ ] Buffered drawing for efficient updates
 - [ ] Built-in game loop utilities
 - [ ] Sprite/character animation support
 
