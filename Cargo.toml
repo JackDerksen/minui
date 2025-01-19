@@ -2,11 +2,13 @@
 name = "minui"
 version = "0.1.0"
 edition = "2021"
+description = "A minimalist terminal library for TUIs and terminal games."
+authors = ["Jack Derksen <jmderksen9@gmail.com>"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-pancurses = "0.17"
+crossterm = "0.28.1"
 thiserror = "2.0.11"
 
 [lib]

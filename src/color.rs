@@ -1,3 +1,5 @@
+use crossterm::style::{Color as CrosstermColor};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     Black,
@@ -11,16 +13,16 @@ pub enum Color {
 }
 
 impl Color {
-    pub(crate) fn to_pancurses(self) -> i16 {
+    pub fn to_crossterm(self) -> CrosstermColor {
         match self {
-            Color::Black => pancurses::COLOR_BLACK,
-            Color::Red => pancurses::COLOR_RED,
-            Color::Green => pancurses::COLOR_GREEN,
-            Color::Yellow => pancurses::COLOR_YELLOW,
-            Color::Blue => pancurses::COLOR_BLUE,
-            Color::Magenta => pancurses::COLOR_MAGENTA,
-            Color::Cyan => pancurses::COLOR_CYAN,
-            Color::White => pancurses::COLOR_WHITE,
+            Color::Black => CrosstermColor::Black,
+            Color::Red => CrosstermColor::Red,
+            Color::Green => CrosstermColor::Green,
+            Color::Yellow => CrosstermColor::Yellow,
+            Color::Blue => CrosstermColor::Blue,
+            Color::Magenta => CrosstermColor::Magenta,
+            Color::Cyan => CrosstermColor::Cyan,
+            Color::White => CrosstermColor::White,
         }
     }
 }
@@ -29,16 +31,10 @@ impl Color {
 pub struct ColorPair {
     pub fg: Color,
     pub bg: Color,
-    pub(crate) pair_number: i16,
 }
 
 impl ColorPair {
-    pub fn new(foreground: Color, background: Color) -> Self {
-        // This will be implemented in window initialization
-        Self {
-            fg: foreground,
-            bg: background,
-            pair_number: 0, // Placeholder
-        }
+    pub fn new(fg: Color, bg: Color) -> Self {
+        Self { fg, bg }
     }
 }

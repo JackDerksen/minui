@@ -22,7 +22,7 @@ fn main() -> Result<()> {
         let color_pair = ColorPair::new(color, Color::Black);
         window.write_str_colored(
             2,
-            i as i32 * 10,
+            (i as u16) * 10,
             &format!("{:?}", color),
             color_pair
         )?;
