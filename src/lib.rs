@@ -3,6 +3,7 @@ pub mod error;
 pub mod event;
 pub mod widgets;
 pub mod window;
+pub mod macros;
 
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};

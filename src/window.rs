@@ -8,12 +8,14 @@ use crossterm::{
 };
 use crate::{Error, Result, Event, ColorPair};
 
+/// Manages the terminal window and provides methods for drawing and input handling
 pub struct Window {
     width: u16,
     height: u16,
 }
 
 impl Window {
+    /// Creates a new terminal window and configures it for raw mode
     pub fn new() -> Result<Self> {
         enable_raw_mode()?;
 
@@ -33,10 +35,12 @@ impl Window {
         })
     }
 
+    /// Returns the current terminal window dimensions
     pub fn get_size(&self) -> (u16, u16) {
         (self.width, self.height)
     }
 
+    /// Clears the entire terminal screen
     pub fn clear(&self) -> Result<()> {
         execute!(
             stdout(),
@@ -46,6 +50,7 @@ impl Window {
         Ok(())
     }
 
+    /// Writes a string at the specified position
     pub fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         if y >= self.height || x >= self.width {
             return Err(Error::WindowError("Position out of bounds".into()));
@@ -61,6 +66,7 @@ impl Window {
         Ok(())
     }
 
+    /// Same as write_str, but colored using a specified color pair
     pub fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
         if y >= self.height || x >= self.width {
             return Err(Error::WindowError("Position out of bounds".into()));
@@ -79,6 +85,7 @@ impl Window {
         Ok(())
     }
 
+    /// Polls for and returns the next keyboard input
     pub fn get_input(&self) -> Result<Event> {
         if event::poll(std::time::Duration::from_millis(100))? {
             if let CrosstermEvent::Key(key) = event::read()? {
@@ -101,10 +108,10 @@ impl Window {
 }
 
 impl Drop for Window {
+    /// Cleans the terminal state
     fn drop(&mut self) {
         let _ = disable_raw_mode();
 
-        // Clean up the terminal state
         let _ = execute!(
             stdout(),
             style::ResetColor,
@@ -114,7 +121,6 @@ impl Drop for Window {
             terminal::LeaveAlternateScreen
         );
 
-        // Ensure changes are flushed
         let _ = stdout().flush();
     }
 }

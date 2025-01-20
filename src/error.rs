@@ -1,7 +1,6 @@
 use thiserror::Error;
 
-// We use thiserror to create a proper error type with different variants for different failure
-// modes. This makes error handling more specific than just using String errors.
+/// Custom error types for the terminal application
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Failed to initialize terminal: {0}")]
@@ -17,4 +16,5 @@ pub enum Error {
     IOError(#[from] std::io::Error),
 }
 
+/// Result type alias using custom Error type
 pub type Result<T> = std::result::Result<T, Error>;

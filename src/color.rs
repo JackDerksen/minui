@@ -1,5 +1,6 @@
 use crossterm::style::{Color as CrosstermColor};
 
+/// Represents the basic terminal colors available for text foreground and background
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     Black,
@@ -13,6 +14,7 @@ pub enum Color {
 }
 
 impl Color {
+    /// Converts the Color enum to crossterm's Color types for terminal output
     pub fn to_crossterm(self) -> CrosstermColor {
         match self {
             Color::Black => CrosstermColor::Black,
@@ -27,6 +29,7 @@ impl Color {
     }
 }
 
+/// Represents a foreground and background color pair for terminal styling
 #[derive(Debug, Clone, Copy)]
 pub struct ColorPair {
     pub fg: Color,
@@ -34,6 +37,7 @@ pub struct ColorPair {
 }
 
 impl ColorPair {
+    /// Creates a new specified ColorPair as described above
     pub const fn new(fg: Color, bg: Color) -> Self {
         Self { fg, bg }
     }
