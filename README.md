@@ -1,6 +1,6 @@
 # MinUI 🌒
 
-A minimalist Rust-based terminal game and UI engine. This project is a work in progress, currently in its very early stages!
+A minimalist terminal-based game and UI engine written in Rust. This project is a work in progress, currently in its very early stages!
 
 ## Motivation
 
