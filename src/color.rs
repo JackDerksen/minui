@@ -34,7 +34,7 @@ pub struct ColorPair {
 }
 
 impl ColorPair {
-    pub fn new(fg: Color, bg: Color) -> Self {
+    pub const fn new(fg: Color, bg: Color) -> Self {
         Self { fg, bg }
     }
 }
