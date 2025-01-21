@@ -1,18 +1,16 @@
-mod border;
+mod common;
+mod container;
 mod input;
 mod layout;
 mod panel;
 mod table;
-mod text;
-mod common;
 
 pub use common::BorderChars;
-pub use border::{Border};
+pub use container::{Container};
 // pub use input::InputField;
 // pub use layout::{Layout, Direction};
 // pub use panel::Panel;
 // pub use table::Table;
-// pub use text::Text;
 
 use crate::{Window, Result};
 
