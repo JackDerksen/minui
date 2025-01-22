@@ -9,7 +9,7 @@ MinUI was born from a desire to create terminal-based games in Rust, specificall
 ## Planned Features
 
 - 🚀 **Fast**: Built for performance with gaming in mind
-- 🎮 **Game-focused**: API designed around common game development needs
+- 🎮 **Game-focused, TUI-ready**: API designed around common game development needs
 - 🎯 **Minimalist**: Clean, intuitive API with zero unnecessary complexity
 - ⌨️ **Input Handling**: Robust keyboard event system
 - 🧰 **Safe**: Proper error handling and automatic resource cleanup
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
 
 MinUI is designed to make terminal game development straightforward. Here's what makes it great for games:
 
-- **Minimal Dependencies**: Built on pancurses with minimal additional dependencies
+- **Minimal Dependencies**: Built on crossterm with minimal additional dependencies
 - **Game First**: Designed specifically for terminal-based games
 - **Easy to Learn**: Clean, intuitive API that gets out of your way
 - **Performance Focused**: Built with game performance requirements in mind
