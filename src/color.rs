@@ -11,6 +11,7 @@ pub enum Color {
     Magenta,
     Cyan,
     White,
+    Transparent
 }
 
 impl Color {
@@ -25,6 +26,7 @@ impl Color {
             Color::Magenta => CrosstermColor::Magenta,
             Color::Cyan => CrosstermColor::Cyan,
             Color::White => CrosstermColor::White,
+            Color::Transparent => CrosstermColor::Reset,
         }
     }
 }

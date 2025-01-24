@@ -8,4 +8,4 @@ pub mod macros;
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
 pub use event::Event;
-pub use window::Window;
+pub use window::{Window, TerminalWindow};

@@ -1,16 +1,57 @@
-// Basic four-sided rectangular frame widgets
-
-use crate::{Window, Result};
+use crate::{Window, Result, ColorPair};
 use super::{BorderChars, Widget};
 
+/// Helper struct for drawing within container bounds
+struct WindowView<'a> {
+    window: &'a mut dyn Window,
+    x_offset: u16,
+    y_offset: u16,
+    width: u16,
+    height: u16,
+}
+
+// Implement Window trait for WindowView
+impl<'a> Window for WindowView<'a> {
+    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
+        if y < self.height && x < self.width {
+            self.window.write_str(
+                y + self.y_offset,
+                x + self.x_offset,
+                s
+            )
+        } else {
+            Ok(()) // Silently skip out-of-bounds writes
+        }
+    }
+
+    fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
+        if y < self.height && x < self.width {
+            self.window.write_str_colored(
+                y + self.y_offset,
+                x + self.x_offset,
+                s,
+                colors
+            )
+        } else {
+            Ok(()) // Silently skip out-of-bounds writes
+        }
+    }
+
+    fn get_size(&self) -> (u16, u16) {
+        (self.width, self.height)
+    }
+}
+
+/// Basic four-sided rectangular frame widget. Can contain other widgets.
 pub struct Container {
     x: u16,
     y: u16,
     width: u16,
     height: u16,
     style: BorderChars,
-    content: Option<Box<dyn Widget>>,  // Can hold any widget
-    padding: u16,  // Space between border and content
+    content: Option<Box<dyn Widget>>,
+    padding: u16,
+    auto_size: bool,
 }
 
 impl Container {
@@ -20,13 +61,13 @@ impl Container {
             y,
             width,
             height,
-            style: BorderChars::single_line(), // default style
+            style: BorderChars::single_line(),
             content: None,
             padding: 1,
+            auto_size: true, // Auto sizes the container by default
         }
     }
 
-    // Builder pattern for optional modifications
     pub fn with_style(mut self, style: BorderChars) -> Self {
         self.style = style;
         self
@@ -34,6 +75,9 @@ impl Container {
 
     pub fn with_content(mut self, widget: impl Widget + 'static) -> Self {
         self.content = Some(Box::new(widget));
+        if self.auto_size {
+            self.adjust_size_to_content();
+        }
         self
     }
 
@@ -41,12 +85,34 @@ impl Container {
         self.padding = padding;
         self
     }
+
+    pub fn with_auto_size(mut self, auto_size: bool) -> Self {
+        self.auto_size = auto_size;
+        self
+    }
+
+    fn adjust_size_to_content(&mut self) {
+        if let Some(widget) = &self.content {
+            let (content_width, content_height) = widget.get_size();
+            self.width = content_width + (self.padding * 2) + 2;
+            self.height = content_height + (self.padding * 2) + 2;
+        }
+    }
+
+    fn get_inner_dimensions(&self) -> (u16, u16) {
+        let inner_width = self.width.saturating_sub(2);
+        let inner_height = self.height.saturating_sub(2);
+        (inner_width, inner_height)
+    }
+
+    fn get_inner_position(&self) -> (u16, u16) {
+        (self.x + 1, self.y + 1)
+    }
 }
 
-// Implement the Widget trait for Border
-impl super::Widget for Container {
-    fn draw(&self, window: &mut Window) -> Result<()> {
-        // Draw corners
+impl Widget for Container {
+    fn draw(&self, window: &mut dyn Window) -> Result<()> {
+        // Draw borders...
         window.write_str(self.y, self.x, &self.style.top_left.to_string())?;
         window.write_str(self.y, self.x + self.width - 1, &self.style.top_right.to_string())?;
         window.write_str(self.y + self.height - 1, self.x, &self.style.bottom_left.to_string())?;
@@ -56,7 +122,7 @@ impl super::Widget for Container {
             &self.style.bottom_right.to_string(),
         )?;
 
-        // Draw top and bottom edges
+        // Draw edges...
         for i in 1..self.width - 1 {
             window.write_str(self.y, self.x + i, &self.style.horizontal.to_string())?;
             window.write_str(
@@ -66,7 +132,6 @@ impl super::Widget for Container {
             )?;
         }
 
-        // Draw vertical edges
         for i in 1..self.height - 1 {
             window.write_str(self.y + i, self.x, &self.style.vertical.to_string())?;
             window.write_str(
@@ -76,23 +141,20 @@ impl super::Widget for Container {
             )?;
         }
 
-        // If there's content, draw it inside here
+        // Draw content
         if let Some(widget) = &self.content {
-            // TODO: Once other widget types are implemented, finish the logic for these inner dimensions
-            // Adjust widget position to be inside the border with padding
-            // let inner_x = self.x + self.padding;
-            // let inner_y = self.y + self.padding;
-            // let inner_width = self.width - (self.padding * 2);
-            // let inner_height = self.height - (self.padding * 2);
+            let (inner_x, inner_y) = self.get_inner_position();
+            let (inner_width, inner_height) = self.get_inner_dimensions();
 
-            let _ = self.x + self.padding;
-            let _ = self.y + self.padding;
-            let _ = self.width - (self.padding * 2);
-            let _ = self.height - (self.padding * 2);
+            let mut view = WindowView {
+                window,
+                x_offset: inner_x,
+                y_offset: inner_y,
+                width: inner_width,
+                height: inner_height,
+            };
 
-            // Might add size checking here to ensure the widget fits
-
-            widget.draw(window)?;
+            widget.draw(&mut view)?;
         }
 
         Ok(())

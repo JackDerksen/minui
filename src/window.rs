@@ -8,13 +8,20 @@ use crossterm::{
 };
 use crate::{Error, Result, Event, ColorPair};
 
+/// Trait defining the interface for window-like objects
+pub trait Window {
+    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()>;
+    fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()>;
+    fn get_size(&self) -> (u16, u16);
+}
+
 /// Manages the terminal window and provides methods for drawing and input handling
-pub struct Window {
+pub struct TerminalWindow {
     width: u16,
     height: u16,
 }
 
-impl Window {
+impl TerminalWindow {
     /// Creates a new terminal window and configures it for raw mode
     pub fn new() -> Result<Self> {
         enable_raw_mode()?;
@@ -35,11 +42,6 @@ impl Window {
         })
     }
 
-    /// Returns the current terminal window dimensions
-    pub fn get_size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-
     /// Clears the entire terminal screen
     pub fn clear(&self) -> Result<()> {
         execute!(
@@ -47,41 +49,6 @@ impl Window {
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0)
         )?;
-        Ok(())
-    }
-
-    /// Writes a string at the specified position
-    pub fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
-        if y >= self.height || x >= self.width {
-            return Err(Error::WindowError("Position out of bounds".into()));
-        }
-
-        execute!(
-            stdout(),
-            cursor::MoveTo(x, y),
-            Print(s)
-        )?;
-
-        stdout().flush()?;
-        Ok(())
-    }
-
-    /// Same as write_str, but colored using a specified color pair
-    pub fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
-        if y >= self.height || x >= self.width {
-            return Err(Error::WindowError("Position out of bounds".into()));
-        }
-
-        execute!(
-            stdout(),
-            cursor::MoveTo(x, y),
-            SetForegroundColor(colors.fg.to_crossterm()),
-            SetBackgroundColor(colors.bg.to_crossterm()),
-            Print(s),
-            style::ResetColor
-        )?;
-
-        stdout().flush()?;
         Ok(())
     }
 
@@ -107,7 +74,46 @@ impl Window {
     }
 }
 
-impl Drop for Window {
+impl Window for TerminalWindow {
+    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
+        if y >= self.height || x >= self.width {
+            return Err(Error::WindowError("Position out of bounds".into()));
+        }
+
+        execute!(
+            stdout(),
+            cursor::MoveTo(x, y),
+            Print(s)
+        )?;
+
+        stdout().flush()?;
+        Ok(())
+    }
+
+    fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
+        if y >= self.height || x >= self.width {
+            return Err(Error::WindowError("Position out of bounds".into()));
+        }
+
+        execute!(
+            stdout(),
+            cursor::MoveTo(x, y),
+            SetForegroundColor(colors.fg.to_crossterm()),
+            SetBackgroundColor(colors.bg.to_crossterm()),
+            Print(s),
+            style::ResetColor
+        )?;
+
+        stdout().flush()?;
+        Ok(())
+    }
+
+    fn get_size(&self) -> (u16, u16) {
+        (self.width, self.height)
+    }
+}
+
+impl Drop for TerminalWindow {
     /// Cleans the terminal state
     fn drop(&mut self) {
         let _ = disable_raw_mode();

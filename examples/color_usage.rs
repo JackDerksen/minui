@@ -1,7 +1,7 @@
-use minui::{Window, Event, Result, Color, ColorPair};
+use minui::{Window, Event, Result, Color, ColorPair, TerminalWindow};
 
 fn main() -> Result<()> {
-    let mut window = Window::new()?;
+    let mut window = TerminalWindow::new()?;
     window.clear()?;
 
     // Write regular text
