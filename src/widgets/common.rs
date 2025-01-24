@@ -8,6 +8,10 @@ pub struct BorderChars {
     pub horizontal: char,
     pub vertical: char,
     pub intersect: char,
+    pub intersect_left: char,
+    pub intersect_right: char,
+    pub intersect_top: char,
+    pub intersect_bottom: char,
 }
 
 impl BorderChars {
@@ -20,6 +24,10 @@ impl BorderChars {
             horizontal: '─',
             vertical: '│',
             intersect: '┼',
+            intersect_left: '├',
+            intersect_right: '┤',
+            intersect_top: '┬',
+            intersect_bottom: '┴',
         }
     }
 
@@ -32,6 +40,10 @@ impl BorderChars {
             horizontal: '═',
             vertical: '║',
             intersect: '╬',
+            intersect_left: '╠',
+            intersect_right: '╣',
+            intersect_top: '╦',
+            intersect_bottom: '╩',
         }
     }
 
@@ -44,6 +56,10 @@ impl BorderChars {
             horizontal: '-',
             vertical: '|',
             intersect: '+',
+            intersect_left: '+',
+            intersect_right: '+',
+            intersect_top: '+',
+            intersect_bottom: '+',
         }
     }
 }

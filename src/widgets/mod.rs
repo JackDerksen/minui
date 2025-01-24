@@ -10,10 +10,10 @@ mod text_block;
 pub use common::BorderChars;
 pub use container::{Container};
 pub use label::{Label, Alignment};
-pub use text_block::{TextBlock, TextWrapMode, VerticalAlignment};
+pub use panel::Panel;
+pub use text_block::{TextBlock, TextWrapMode, VerticalAlignment}; // Horizontal alignment from label
 // pub use input::InputField;
 // pub use layout::{Layout, Direction};
-// pub use panel::Panel;
 // pub use table::Table;
 
 use crate::{Window, Result};
