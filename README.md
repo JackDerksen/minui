@@ -72,6 +72,8 @@ fn main() -> minui::Result<()> {
 }
 ```
 
+Run the program with the command: `cargo run example --basic_usage`
+
 ## Building Terminal Games with MinUI
 
 MinUI is designed to make terminal game development straightforward. Here's what makes it great for games:
