@@ -77,7 +77,7 @@ impl TerminalWindow {
 impl Window for TerminalWindow {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         if y >= self.height || x >= self.width {
-            return Err(Error::WindowError("Position out of bounds".into()));
+            return Err(Error::WindowError("Position out of bounds. Consider resizing your window".into()));
         }
 
         execute!(
