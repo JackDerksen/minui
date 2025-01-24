@@ -32,15 +32,20 @@ fn main() -> Result<()> {
         .with_style(BorderChars::double_line())
         .with_content(info_label);
 
-    let text_block = TextBlock::new(0, 13, 40, 5, "This is supposed to be a really long block of text, maybe the description of an item in a game, or some lore paragraph. I don't know, do whatever you want :)")
+    let text_block = TextBlock::new(0, 0, 40, 5, "This is supposed to be a really long block of text, maybe the description of an item in a game, or some lore paragraph. I don't know, do whatever you want :)")
         .with_colors(ColorPair::new(Color::White, Color::Blue))
         .with_wrap_mode(TextWrapMode::WrapWords)
-        .with_alignment(Alignment::Left, VerticalAlignment::Middle);
+        .with_alignment(Alignment::Center, VerticalAlignment::Middle);
+
+    let paragraph_container = Container::new(0, 13, 0, 0)
+        .with_auto_size(true)
+        .with_style(BorderChars::ascii())
+        .with_content(text_block);
 
     quit_container.draw(&mut window)?;
     info_container.draw(&mut window)?;
     floating_label.draw(&mut window)?;
-    text_block.draw(&mut window)?;
+    paragraph_container.draw(&mut window)?;
 
     // Wait for a keypress before closing
     loop {
