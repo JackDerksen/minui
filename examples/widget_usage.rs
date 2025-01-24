@@ -23,6 +23,12 @@ fn main() -> Result<()> {
     // Not used inside a container, so the position is absolute
     let floating_label = Label::new(8, 11, "Floating label, spooky!");
 
+    let text_block = TextBlock::new(0, 0, 40, 5, "This is supposed to be a really long block of text, maybe the description of an item in a game, or some lore paragraph. I don't know, do whatever you want :)")
+        .with_colors(ColorPair::new(Color::White, Color::Blue))
+        .with_wrap_mode(TextWrapMode::WrapWords)
+        .with_alignment(Alignment::Center, VerticalAlignment::Middle);
+
+
     let quit_container = Container::new(0, 0, 50, 3)  // Height of 3 is minimum
         .with_auto_size(false)
         .with_style(BorderChars::single_line())
@@ -31,11 +37,6 @@ fn main() -> Result<()> {
     let info_container = Container::new(0, 5, 0, 5)
         .with_style(BorderChars::double_line())
         .with_content(info_label);
-
-    let text_block = TextBlock::new(0, 0, 40, 5, "This is supposed to be a really long block of text, maybe the description of an item in a game, or some lore paragraph. I don't know, do whatever you want :)")
-        .with_colors(ColorPair::new(Color::White, Color::Blue))
-        .with_wrap_mode(TextWrapMode::WrapWords)
-        .with_alignment(Alignment::Center, VerticalAlignment::Middle);
 
     let paragraph_container = Container::new(0, 13, 0, 0)
         .with_auto_size(true)
