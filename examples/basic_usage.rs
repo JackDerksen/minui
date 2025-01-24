@@ -1,4 +1,4 @@
-use minui::{Window, Event};
+use minui::{Window, Event, TerminalWindow};
 
 // This example shows the minimal workflow:
 //  - Create a window
@@ -8,7 +8,7 @@ use minui::{Window, Event};
 //  - Clean up automatically when done
 
 fn main() -> minui::Result<()> {
-    let mut window = Window::new()?;
+    let mut window = TerminalWindow::new()?;
     window.clear()?;
 
     window.write_str(0, 0, "Press 'q' to quit")?;

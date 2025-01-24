@@ -1,4 +1,4 @@
-use minui::{Window, Event, Result, Color, ColorPair, define_colors};
+use minui::{Window, Event, Result, Color, ColorPair, define_colors, TerminalWindow};
 
 // Users can easily define their color schemes
 define_colors! {
@@ -10,7 +10,7 @@ define_colors! {
 }
 
 fn main() -> Result<()> {
-    let mut window = Window::new()?;
+    let mut window = TerminalWindow::new()?;
     window.clear()?;
 
     window.write_str(0, 0, "Custom color demo (press 'q' to quit)")?;

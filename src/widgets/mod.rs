@@ -1,12 +1,14 @@
 mod common;
 mod container;
 mod input;
+mod label;
 mod layout;
 mod panel;
 mod table;
 
 pub use common::BorderChars;
 pub use container::{Container};
+pub use label::{Label, Alignment};
 // pub use input::InputField;
 // pub use layout::{Layout, Direction};
 // pub use panel::Panel;
@@ -17,7 +19,7 @@ use crate::{Window, Result};
 /// Common behavior for all widgets
 pub trait Widget {
     /// Draw the widget to the window
-    fn draw(&self, window: &mut Window) -> Result<()>;
+    fn draw(&self, window: &mut dyn Window) -> Result<()>;
 
     /// Get the widget's size (width, height)
     fn get_size(&self) -> (u16, u16);
