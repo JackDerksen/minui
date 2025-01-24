@@ -49,7 +49,7 @@ use minui::{Window, Event, TerminalWindow};
 //  - Write some text
 //  - Enter an input loop
 //  - Handle different types of input events
-//  - Clean up automatically when done
+//  - Clean up automatically when done
 
 fn main() -> minui::Result<()> {
     let mut window = TerminalWindow::new()?;
