@@ -5,10 +5,12 @@ mod label;
 mod layout;
 mod panel;
 mod table;
+mod text_block;
 
 pub use common::BorderChars;
 pub use container::{Container};
 pub use label::{Label, Alignment};
+pub use text_block::{TextBlock, TextWrapMode, VerticalAlignment};
 // pub use input::InputField;
 // pub use layout::{Layout, Direction};
 // pub use panel::Panel;

@@ -20,15 +20,16 @@ MinUI is in early development, and I'm actively working on adding more features:
 
 - [x] Color support
 - [ ] Simple widget system
-    - [x] Container widgets
-    - [x] Label/text widgets
-    - [ ] Panel widgets
-    - [ ] Table widgets
-    - [ ] Input widgets
+    - [x] Container widget
+    - [x] Label widget
+    - [x] Text block widget
+    - [ ] Panel widget
+    - [ ] Table widget
+    - [ ] Input widget
     - [ ] Predefined widget layouts
 - [ ] Buffered drawing for efficient updates
 - [ ] Built-in game loop utilities
-- [ ] Sprite/character animation support
+- [ ] Easy sprite/character movement support
 
 ## Getting Started
 
