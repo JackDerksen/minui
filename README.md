@@ -23,7 +23,7 @@ MinUI is in early development, and I'm actively working on adding more features:
     - [x] Container widget
     - [x] Label widget
     - [x] Text block widget
-    - [ ] Panel widget
+    - [x] Panel widget
     - [ ] Table widget
     - [ ] Input widget
     - [ ] Predefined widget layouts
