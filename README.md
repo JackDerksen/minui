@@ -28,7 +28,7 @@ MinUI is in early development, and I'm actively working on adding more features:
     - [ ] Predefined widget layouts
 - [ ] Buffered drawing for efficient updates
 - [ ] Built-in game loop utilities
-- [ ] Sprite/character animation support
+- [ ] Easy sprite/character movement support
 
 ## Getting Started
 
