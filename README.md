@@ -14,6 +14,22 @@ MinUI was born from a desire to create terminal-based games in Rust, specificall
 - ⌨️ **Input Handling**: Robust keyboard event system
 - 🧰 **Safe**: Proper error handling and automatic resource cleanup
 
+## Project Status
+
+MinUI is in early development, and I'm actively working on adding more features:
+
+- [x] Color support
+- [ ] Simple widget system
+    - [x] Container widgets
+    - [x] Label/text widgets
+    - [ ] Panel widgets
+    - [ ] Table widgets
+    - [ ] Input widgets
+    - [ ] Predefined widget layouts
+- [ ] Buffered drawing for efficient updates
+- [ ] Built-in game loop utilities
+- [ ] Sprite/character animation support
+
 ## Getting Started
 
 Add MinUI to your Cargo.toml:
@@ -25,14 +41,21 @@ minui = "0.1.0"
 ### Basic Example
 
 ```rust
-use minui::{Window, Event, Result};
+use minui::{Window, Event, TerminalWindow};
 
-fn main() -> Result<()> {
-    let window = Window::new()?;
+// This example shows the minimal workflow, how to:
+//  - Create a window
+//  - Write some text
+//  - Enter an input loop
+//  - Handle different types of input events
+//  - Clean up automatically when done
+
+fn main() -> minui::Result<()> {
+    let mut window = TerminalWindow::new()?;
     window.clear()?;
-    
+
     window.write_str(0, 0, "Press 'q' to quit")?;
-    
+
     loop {
         match window.get_input()? {
             Event::Character('q') => break,
@@ -44,7 +67,7 @@ fn main() -> Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 ```
@@ -54,19 +77,17 @@ fn main() -> Result<()> {
 MinUI is designed to make terminal game development straightforward. Here's what makes it great for games:
 
 - **Minimal Dependencies**: Built on crossterm with minimal additional dependencies
-- **Game First**: Designed specifically for terminal-based games
+- **Game First**: Designed primarily for terminal-based game development, with great UI capabilities as well
 - **Easy to Learn**: Clean, intuitive API that gets out of your way
 - **Performance Focused**: Built with game performance requirements in mind
 
-## Project Status
+## Building TUI Apps with MinUI
 
-MinUI is in early development, and I'm actively working on adding more features:
+MinUI also has a focus on simplifying the task of building TUI applications. Here's some of what it has to offer:
 
-- [x] Color support
-- [ ] Simple widget system
-- [ ] Buffered drawing for efficient updates
-- [ ] Built-in game loop utilities
-- [ ] Sprite/character animation support
+- **Simple Widget System**: Easy-to-use widgets with all the features you need and nothing you don't
+- **Example Programs**: Several examples to help you get started with the widgets
+- **Customizable**: I'm trying to make every widget I add as configurable as possible, while not overwhelming you with options
 
 ## Games Built with MinUI
 
