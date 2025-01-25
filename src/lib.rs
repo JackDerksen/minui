@@ -4,9 +4,9 @@ pub mod event;
 pub mod widgets;
 pub mod window;
 pub mod macros;
-mod game;
-mod input;
-mod render;
+pub mod game;
+pub mod input;
+pub mod render;
 
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
