@@ -19,7 +19,7 @@ MinUI was born from a desire to create terminal-based games in Rust, specificall
 MinUI is in early development, and I'm actively working on adding more features:
 
 - [x] Color support
-- [ ] Simple widget system
+- [x] Simple widget system
     - [x] Container widget
     - [x] Label widget
     - [x] Text block widget

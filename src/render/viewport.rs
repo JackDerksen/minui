@@ -1,0 +1,1 @@
+// Visible screen area management
