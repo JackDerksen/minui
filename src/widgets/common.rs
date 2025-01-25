@@ -1,3 +1,5 @@
+use crate::{ColorPair, Result, Window};
+
 /// Characters used for drawing widget borders
 #[derive(Debug, Clone, Copy)]
 pub struct BorderChars {
@@ -61,5 +63,45 @@ impl BorderChars {
             intersect_top: '+',
             intersect_bottom: '+',
         }
+    }
+}
+
+/// Helper struct for drawing within widget bounds
+pub struct WindowView<'a> {
+    pub window: &'a mut dyn Window,
+    pub x_offset: u16,
+    pub y_offset: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl<'a> Window for WindowView<'a> {
+    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
+        if y < self.height && x < self.width {
+            self.window.write_str(
+                y + self.y_offset,
+                x + self.x_offset,
+                s
+            )
+        } else {
+            Ok(()) // Silently skip out-of-bounds writes
+        }
+    }
+
+    fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
+        if y < self.height && x < self.width {
+            self.window.write_str_colored(
+                y + self.y_offset,
+                x + self.x_offset,
+                s,
+                colors
+            )
+        } else {
+            Ok(()) // Silently skip out-of-bounds writes
+        }
+    }
+
+    fn get_size(&self) -> (u16, u16) {
+        (self.width, self.height)
     }
 }

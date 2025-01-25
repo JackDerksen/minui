@@ -7,7 +7,7 @@ mod panel;
 mod table;
 mod text_block;
 
-pub use common::BorderChars;
+pub use common::{BorderChars, WindowView};
 pub use container::{Container};
 pub use label::{Label, Alignment};
 pub use panel::Panel;

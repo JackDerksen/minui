@@ -1,5 +1,5 @@
-use crate::{ColorPair, Window};
-use super::{Alignment, BorderChars, Widget};
+use crate::{Color, ColorPair, Window};
+use super::{Alignment, BorderChars, TextBlock, Widget, WindowView};
 
 pub struct Panel {
     x: u16,
@@ -7,14 +7,21 @@ pub struct Panel {
     width: u16,
     height: u16,
     header_text: String,
-    body_text: String,
+    body_content: PanelContent,
     header_style: BorderChars,
     body_style: BorderChars,
     header_color: Option<ColorPair>,
     body_color: Option<ColorPair>,
+    header_border_color: Option<ColorPair>,
+    body_border_color: Option<ColorPair>,
     padding: u16,
     alignment: Alignment,  // For the body only; header will always be centered
     auto_size: bool,
+}
+
+pub enum PanelContent {
+    Text(String),
+    Block(Box<TextBlock>),
 }
 
 impl Panel {
@@ -25,11 +32,13 @@ impl Panel {
            width,
            height,
            header_text: "".to_string(),
-           body_text: "".to_string(),
+           body_content: PanelContent::Text(String::new()),
            header_style: BorderChars::single_line(),
            body_style: BorderChars::single_line(),
            header_color: None,
            body_color: None,
+           header_border_color: None,
+           body_border_color: None,
            padding: 1,
            alignment: Alignment::Left,
            auto_size: true, // Auto sizes the panel by default
@@ -45,7 +54,15 @@ impl Panel {
     }
 
     pub fn with_body(mut self, text: impl Into<String>) -> Self {
-        self.body_text = text.into();
+        self.body_content = PanelContent::Text(text.into());
+        if self.auto_size {
+            self.adjust_size();
+        }
+        self
+    }
+
+    pub fn with_body_block(mut self, text_block: TextBlock) -> Self {
+        self.body_content = PanelContent::Block(Box::new(text_block));
         if self.auto_size {
             self.adjust_size();
         }
@@ -72,6 +89,16 @@ impl Panel {
         self
     }
 
+    pub fn with_header_border_color(mut self, color: Color) -> Self {
+        self.header_border_color = Some(ColorPair::new(color, Color::Transparent));
+        self
+    }
+
+    pub fn with_body_border_color(mut self, color: Color) -> Self {
+        self.body_border_color = Some(ColorPair::new(color, Color::Transparent));
+        self
+    }
+
     pub fn with_padding(mut self, padding: u16) -> Self {
         self.padding = padding;
         self
@@ -87,7 +114,7 @@ impl Panel {
     }
 
     pub fn set_body(&mut self, text: impl Into<String>) {
-        self.body_text = text.into();
+        self.body_content = PanelContent::Text(text.into());
     }
 
     pub fn with_auto_size(mut self, auto_size: bool) -> Self {
@@ -97,19 +124,31 @@ impl Panel {
 
     fn adjust_size(&mut self) {
         // Calculate required width
-        let header_width = self.header_text.len() as u16 + 4; // Add padding for borders
-        let body_lines: Vec<&str> = self.body_text.lines().collect();
-        let max_body_width = body_lines
-            .iter()
-            .map(|line| line.len() as u16)
-            .max()
-            .unwrap_or(0) + (self.padding * 2) + 2; // Add padding and borders
+        let header_width = self.header_text.len() as u16 + 4;
 
+        let body_width = match &self.body_content {
+            PanelContent::Text(text) => {
+                let body_lines: Vec<&str> = text.lines().collect();
+                body_lines.iter()
+                    .map(|line| line.len() as u16)
+                    .max()
+                    .unwrap_or(0)
+            }
+            PanelContent::Block(block) => {
+                block.get_size().0
+            }
+        };
+
+        let max_body_width = body_width + (self.padding * 2) + 2;
         self.width = header_width.max(max_body_width);
 
         // Calculate required height
-        let body_height = body_lines.len() as u16;
-        self.height = body_height + 5; // Header (3) + body content + bottom border
+        let body_height = match &self.body_content {
+            PanelContent::Text(text) => text.lines().count() as u16,
+            PanelContent::Block(block) => block.get_size().1,
+        };
+
+        self.height = body_height + 5; // 3 lines for the header + body content + bottom border
     }
 
     fn get_inner_dimensions(&self) -> (u16, u16) {
@@ -119,21 +158,34 @@ impl Panel {
     }
 }
 
-
 impl Widget for Panel {
     fn draw(&self, window: &mut dyn Window) -> crate::Result<()> {
         // Draw header section
-        window.write_str(self.y, self.x, &self.header_style.top_left.to_string())?;
-        window.write_str(self.y, self.x + self.width - 1, &self.header_style.top_right.to_string())?;
+        if let Some(color) = self.header_border_color {
+            window.write_str_colored(self.y, self.x, &self.header_style.top_left.to_string(), color)?;
+            window.write_str_colored(self.y, self.x + self.width - 1, &self.header_style.top_right.to_string(), color)?;
 
-        // Top border
-        for i in 1..self.width - 1 {
-            window.write_str(self.y, self.x + i, &self.header_style.horizontal.to_string())?;
+            // Top border
+            for i in 1..self.width - 1 {
+                window.write_str_colored(self.y, self.x + i, &self.header_style.horizontal.to_string(), color)?;
+            }
+
+            // Header vertical borders
+            window.write_str_colored(self.y + 1, self.x, &self.header_style.vertical.to_string(), color)?;
+            window.write_str_colored(self.y + 1, self.x + self.width - 1, &self.header_style.vertical.to_string(), color)?;
+        } else {
+            window.write_str(self.y, self.x, &self.header_style.top_left.to_string())?;
+            window.write_str(self.y, self.x + self.width - 1, &self.header_style.top_right.to_string())?;
+
+            // Top border
+            for i in 1..self.width - 1 {
+                window.write_str(self.y, self.x + i, &self.header_style.horizontal.to_string())?;
+            }
+
+            // Header vertical borders
+            window.write_str(self.y + 1, self.x, &self.header_style.vertical.to_string())?;
+            window.write_str(self.y + 1, self.x + self.width - 1, &self.header_style.vertical.to_string())?;
         }
-
-        // Header content line with title
-        window.write_str(self.y + 1, self.x, &self.header_style.vertical.to_string())?;
-        window.write_str(self.y + 1, self.x + self.width - 1, &self.header_style.vertical.to_string())?;
 
         // Draw centered header text
         if !self.header_text.is_empty() {
@@ -146,59 +198,104 @@ impl Widget for Panel {
         }
 
         // Header bottom border (with side edge intersections)
-        window.write_str(self.y + 2, self.x, &self.header_style.intersect_left.to_string())?;
-        window.write_str(self.y + 2, self.x + self.width - 1, &self.header_style.intersect_right.to_string())?;
-        for i in 1..self.width - 1 {
-            window.write_str(self.y + 2, self.x + i, &self.header_style.horizontal.to_string())?;
+        if let Some(color) = self.header_border_color {
+            window.write_str_colored(self.y + 2, self.x, &self.header_style.intersect_left.to_string(), color)?;
+            window.write_str_colored(self.y + 2, self.x + self.width - 1, &self.header_style.intersect_right.to_string(), color)?;
+            for i in 1..self.width - 1 {
+                window.write_str_colored(self.y + 2, self.x + i, &self.header_style.horizontal.to_string(), color)?;
+            }
+        } else {
+            window.write_str(self.y + 2, self.x, &self.header_style.intersect_left.to_string())?;
+            window.write_str(self.y + 2, self.x + self.width - 1, &self.header_style.intersect_right.to_string())?;
+            for i in 1..self.width - 1 {
+                window.write_str(self.y + 2, self.x + i, &self.header_style.horizontal.to_string())?;
+            }
         }
 
-        // Body section
+        // Draw body content
         let (inner_width, inner_height) = self.get_inner_dimensions();
         let body_start_y = self.y + 3;
 
         // Body vertical borders
-        for i in 0..inner_height {
-            window.write_str(body_start_y + i, self.x, &self.body_style.vertical.to_string())?;
-            window.write_str(body_start_y + i, self.x + self.width - 1, &self.body_style.vertical.to_string())?;
+        if let Some(color) = self.body_border_color {
+            for i in 0..inner_height {
+                window.write_str_colored(body_start_y + i, self.x, &self.body_style.vertical.to_string(), color)?;
+                window.write_str_colored(body_start_y + i, self.x + self.width - 1, &self.body_style.vertical.to_string(), color)?;
+            }
+        } else {
+            for i in 0..inner_height {
+                window.write_str(body_start_y + i, self.x, &self.body_style.vertical.to_string())?;
+                window.write_str(body_start_y + i, self.x + self.width - 1, &self.body_style.vertical.to_string())?;
+            }
         }
 
-        // Draw body text
-        if !self.body_text.is_empty() {
-            let content_x = self.x + 1 + self.padding;
-            let content_width = inner_width - (self.padding * 2);
+        // Draw body content based on type
+        match &self.body_content {
+            PanelContent::Text(text) => {
+                let content_x = self.x + 1 + self.padding;
+                let content_width = inner_width - (self.padding * 2);
 
-            for (i, line) in self.body_text.lines().enumerate() {
-                if (i as u16) >= inner_height {
-                    break;
+                for (i, line) in text.lines().enumerate() {
+                    if (i as u16) >= inner_height {
+                        break;
+                    }
+
+                    let line_x = match self.alignment {
+                        Alignment::Left => content_x,
+                        Alignment::Center => content_x + (content_width - line.len() as u16) / 2,
+                        Alignment::Right => content_x + content_width - line.len() as u16,
+                    };
+
+                    if let Some(colors) = self.body_color {
+                        window.write_str_colored(body_start_y + i as u16, line_x, line, colors)?;
+                    } else {
+                        window.write_str(body_start_y + i as u16, line_x, line)?;
+                    }
                 }
-
-                let line_x = match self.alignment {
-                    Alignment::Left => content_x,
-                    Alignment::Center => content_x + (content_width - line.len() as u16) / 2,
-                    Alignment::Right => content_x + content_width - line.len() as u16,
+            }
+            PanelContent::Block(block) => {
+                let mut view = WindowView {
+                    window,
+                    x_offset: self.x + 1 + self.padding,
+                    y_offset: body_start_y,
+                    width: inner_width - (self.padding * 2),
+                    height: inner_height,
                 };
-
-                if let Some(colors) = self.body_color {
-                    window.write_str_colored(body_start_y + i as u16, line_x, line, colors)?;
-                } else {
-                    window.write_str(body_start_y + i as u16, line_x, line)?;
-                }
+                block.draw(&mut view)?;
             }
         }
 
         // Bottom border
-        window.write_str(self.y + self.height - 1, self.x, &self.body_style.bottom_left.to_string())?;
-        window.write_str(
-            self.y + self.height - 1,
-            self.x + self.width - 1,
-            &self.body_style.bottom_right.to_string()
-        )?;
-        for i in 1..self.width - 1 {
+        if let Some(color) = self.body_border_color {
+            window.write_str_colored(self.y + self.height - 1, self.x, &self.body_style.bottom_left.to_string(), color)?;
+            window.write_str_colored(
+                self.y + self.height - 1,
+                self.x + self.width - 1,
+                &self.body_style.bottom_right.to_string(),
+                color
+            )?;
+            for i in 1..self.width - 1 {
+                window.write_str_colored(
+                    self.y + self.height - 1,
+                    self.x + i,
+                    &self.body_style.horizontal.to_string(),
+                    color
+                )?;
+            }
+        } else {
+            window.write_str(self.y + self.height - 1, self.x, &self.body_style.bottom_left.to_string())?;
             window.write_str(
                 self.y + self.height - 1,
-                self.x + i,
-                &self.body_style.horizontal.to_string()
+                self.x + self.width - 1,
+                &self.body_style.bottom_right.to_string()
             )?;
+            for i in 1..self.width - 1 {
+                window.write_str(
+                    self.y + self.height - 1,
+                    self.x + i,
+                    &self.body_style.horizontal.to_string()
+                )?;
+            }
         }
 
         Ok(())
