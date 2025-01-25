@@ -1,46 +1,5 @@
-use crate::{Window, Result, ColorPair};
-use super::{BorderChars, Widget};
-
-/// Helper struct for drawing within container bounds
-struct WindowView<'a> {
-    window: &'a mut dyn Window,
-    x_offset: u16,
-    y_offset: u16,
-    width: u16,
-    height: u16,
-}
-
-// Implement Window trait for WindowView
-impl<'a> Window for WindowView<'a> {
-    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
-        if y < self.height && x < self.width {
-            self.window.write_str(
-                y + self.y_offset,
-                x + self.x_offset,
-                s
-            )
-        } else {
-            Ok(()) // Silently skip out-of-bounds writes
-        }
-    }
-
-    fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
-        if y < self.height && x < self.width {
-            self.window.write_str_colored(
-                y + self.y_offset,
-                x + self.x_offset,
-                s,
-                colors
-            )
-        } else {
-            Ok(()) // Silently skip out-of-bounds writes
-        }
-    }
-
-    fn get_size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-}
+use crate::{Window, Result, ColorPair, Color};
+use super::{BorderChars, Widget, WindowView};
 
 /// Basic four-sided rectangular frame widget. Can contain other widgets.
 pub struct Container {
@@ -49,6 +8,7 @@ pub struct Container {
     width: u16,
     height: u16,
     style: BorderChars,
+    border_color: Option<ColorPair>,
     content: Option<Box<dyn Widget>>,
     padding: u16,
     auto_size: bool,
@@ -62,6 +22,7 @@ impl Container {
             width,
             height,
             style: BorderChars::single_line(),
+            border_color: None,
             content: None,
             padding: 1,
             auto_size: true, // Auto sizes the container by default
@@ -70,6 +31,11 @@ impl Container {
 
     pub fn with_style(mut self, style: BorderChars) -> Self {
         self.style = style;
+        self
+    }
+
+    pub fn with_border_color(mut self, color: Color) -> Self {
+        self.border_color = Some(ColorPair::new(color, Color::Transparent));
         self
     }
 
@@ -113,32 +79,65 @@ impl Container {
 impl Widget for Container {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
         // Draw borders...
-        window.write_str(self.y, self.x, &self.style.top_left.to_string())?;
-        window.write_str(self.y, self.x + self.width - 1, &self.style.top_right.to_string())?;
-        window.write_str(self.y + self.height - 1, self.x, &self.style.bottom_left.to_string())?;
-        window.write_str(
-            self.y + self.height - 1,
-            self.x + self.width - 1,
-            &self.style.bottom_right.to_string(),
-        )?;
+        if let Some(color) = self.border_color {
+            window.write_str_colored(self.y, self.x, &self.style.top_left.to_string(), color)?;
+            window.write_str_colored(self.y, self.x + self.width - 1, &self.style.top_right.to_string(), color)?;
+            window.write_str_colored(self.y + self.height - 1, self.x, &self.style.bottom_left.to_string(), color)?;
+            window.write_str_colored(
+                self.y + self.height - 1,
+                self.x + self.width - 1,
+                &self.style.bottom_right.to_string(),
+                color
+            )?;
 
-        // Draw edges...
-        for i in 1..self.width - 1 {
-            window.write_str(self.y, self.x + i, &self.style.horizontal.to_string())?;
+            // Draw edges...
+            for i in 1..self.width - 1 {
+                window.write_str_colored(self.y, self.x + i, &self.style.horizontal.to_string(), color)?;
+                window.write_str_colored(
+                    self.y + self.height - 1,
+                    self.x + i,
+                    &self.style.horizontal.to_string(),
+                    color
+                )?;
+            }
+
+            for i in 1..self.height - 1 {
+                window.write_str_colored(self.y + i, self.x, &self.style.vertical.to_string(), color)?;
+                window.write_str_colored(
+                    self.y + i,
+                    self.x + self.width - 1,
+                    &self.style.vertical.to_string(),
+                    color
+                )?;
+            }
+        } else {
+            window.write_str(self.y, self.x, &self.style.top_left.to_string())?;
+            window.write_str(self.y, self.x + self.width - 1, &self.style.top_right.to_string())?;
+            window.write_str(self.y + self.height - 1, self.x, &self.style.bottom_left.to_string())?;
             window.write_str(
                 self.y + self.height - 1,
-                self.x + i,
-                &self.style.horizontal.to_string(),
-            )?;
-        }
-
-        for i in 1..self.height - 1 {
-            window.write_str(self.y + i, self.x, &self.style.vertical.to_string())?;
-            window.write_str(
-                self.y + i,
                 self.x + self.width - 1,
-                &self.style.vertical.to_string(),
+                &self.style.bottom_right.to_string(),
             )?;
+
+            // Draw edges...
+            for i in 1..self.width - 1 {
+                window.write_str(self.y, self.x + i, &self.style.horizontal.to_string())?;
+                window.write_str(
+                    self.y + self.height - 1,
+                    self.x + i,
+                    &self.style.horizontal.to_string(),
+                )?;
+            }
+
+            for i in 1..self.height - 1 {
+                window.write_str(self.y + i, self.x, &self.style.vertical.to_string())?;
+                window.write_str(
+                    self.y + i,
+                    self.x + self.width - 1,
+                    &self.style.vertical.to_string(),
+                )?;
+            }
         }
 
         // Draw content

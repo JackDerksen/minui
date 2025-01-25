@@ -4,46 +4,59 @@ use minui::{
     Result,
     Color,
     ColorPair,
-    widgets::{Container, BorderChars, Widget, Label, Alignment, TextBlock, TextWrapMode, VerticalAlignment}
+    widgets::{Container, BorderChars, Widget, Label, Alignment, Panel, TextBlock, TextWrapMode, VerticalAlignment}
 };
 
 fn main() -> Result<()> {
     // Initialize the window
     let mut window = TerminalWindow::new()?;
 
-    // Create labels with relative positioning (starting at 0,0 within their containers)
-    let quit_label = Label::new(0, 0, "Press 'q' to quit")
-        .with_alignment(Alignment::Right)
-        .with_text_color(Color::Red);
+    // Info panel with different border styles and colors
+    let info_panel = Panel::new(0, 0, 40, 10)
+        .with_header("Welcome to MinUI")
+        .with_body("This demo shows different panel styles & features.\n\nPress 'q' to quit.")
+        .with_header_style(BorderChars::double_line())
+        .with_header_color(Some(ColorPair::new(Color::Blue, Color::Transparent)))
+        .with_header_border_color(Color::Blue)
+        .with_body_style(BorderChars::single_line())
+        .with_alignment(Alignment::Center)
+        .with_padding(1);
 
-    // If used inside a container, the label y coord is an offset from the top of the container
+
+    // Define the label to be used in a container here...
     let info_label = Label::new(0, 1, "This is a double-line container")
         .with_alignment(Alignment::Center);
 
-    // Not used inside a container, so the position is absolute
-    let floating_label = Label::new(8, 11, "Floating label, spooky!");
+    // ...and then make the container with that label inside it!
+    let info_container = Container::new(0, 11, 0, 5)
+        .with_style(BorderChars::double_line())
+        .with_content(info_label);
 
-    let text_block = TextBlock::new(0, 0, 40, 5, "This is supposed to be a really long block of text, maybe the description of an item in a game, or some lore paragraph. I don't know, do whatever you want :)")
+
+    // If a label is not used in a container, its defined position is absolute and not relative to
+    // the container position
+    let floating_label = Label::new(5, 9, "Floating label, spooky!")
+        .with_text_color(Color::Red);
+
+
+    // You can also put extra-long text boxes inside a container, with specified behaviors
+    let text_block = TextBlock::new(0, 0, 40, 5,
+                                    "This is supposed to be a really long block of text, \
+                                    maybe the description of an item in a game, or some lore \
+                                    paragraph. I don't know, do whatever you want :)"
+    )
         .with_colors(ColorPair::new(Color::White, Color::Blue))
         .with_wrap_mode(TextWrapMode::WrapWords)
         .with_alignment(Alignment::Center, VerticalAlignment::Middle);
 
-
-    let quit_container = Container::new(0, 0, 50, 3)  // Height of 3 is minimum
-        .with_auto_size(false)
-        .with_style(BorderChars::single_line())
-        .with_content(quit_label);
-
-    let info_container = Container::new(0, 5, 0, 5)
-        .with_style(BorderChars::double_line())
-        .with_content(info_label);
-
-    let paragraph_container = Container::new(0, 13, 0, 0)
+    let paragraph_container = Container::new(42, 9, 0, 0)
         .with_auto_size(true)
         .with_style(BorderChars::ascii())
         .with_content(text_block);
 
-    quit_container.draw(&mut window)?;
+
+    // Draw all the widgets
+    info_panel.draw(&mut window)?;
     info_container.draw(&mut window)?;
     floating_label.draw(&mut window)?;
     paragraph_container.draw(&mut window)?;
