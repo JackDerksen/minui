@@ -1,10 +1,10 @@
 # MinUI 🌒
 
-A minimalist terminal-based game and UI engine written in Rust. This project is a work in progress, currently in its very early stages!
+MinUI is a minimal terminal-based game and UI engine written in Rust. This project is a work in progress, currently in its very early stages!
 
 ## Motivation
 
-MinUI was born from a desire to create terminal-based games in Rust, specifically terminal Tetris clone. While several terminal UI libraries exist for Rust, none quite offered the perfect balance of simplicity, performance, and game-focused features that I was looking for. MinUI aims to fill this gap by providing a fast, easy-to-use library that makes terminal game and UI development a joy.
+MinUI was born from a desire to create terminal-based games in Rust, specifically a terminal Tetris clone in my case. While several terminal UI libraries exist for Rust, none quite offered the perfect balance of simplicity, performance, and game-focused features that I was looking for. MinUI aims to fill this gap by providing a fast, easy-to-use library that makes terminal game and UI development a joy.
 
 ## Planned Features
 
@@ -19,7 +19,7 @@ MinUI was born from a desire to create terminal-based games in Rust, specificall
 MinUI is in early development, and I'm actively working on adding more features:
 
 - [x] Color support
-- [x] Simple widget system
+- [x] Simple and customizable widget system
     - [x] Container widget
     - [x] Label widget
     - [x] Text block widget
@@ -27,13 +27,17 @@ MinUI is in early development, and I'm actively working on adding more features:
     - [ ] Table widget
     - [ ] Input widget
     - [ ] Predefined widget layouts
-- [ ] Buffered drawing for efficient updates
+- [ ] Buffered drawing for smooth and efficient updates
 - [ ] Built-in game loop utilities
-- [ ] Easy sprite/character movement support
+- [ ] Simple sprite and map management utilities
+- [ ] Easy character movement support with collision detection options
+- [ ] Support for multiple input methods (custom key binds, mouse support, etc.)
 
 ## Getting Started
 
-Add MinUI to your Cargo.toml:
+**For now, you'll have to clone this repository and build your games/applications locally.**
+
+Once MinUI is formally released as a crate, you could add it to your Cargo.toml like so:
 ```toml
 [dependencies]
 minui = "0.1.0"
@@ -94,7 +98,7 @@ MinUI also has a focus on simplifying the task of building TUI applications. Her
 
 ## Games Built with MinUI
 
-- *Coming Soon: Terminal Tetris*
+- *Coming Soon: [Tet.rs](https://github.com/JackDerksen/tet.rs)*
 
 ## Acknowledgments
 
