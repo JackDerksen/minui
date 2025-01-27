@@ -7,12 +7,10 @@ use super::{Alignment, Widget};
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{TextBlock, TextWrapMode};
 ///
 /// let block = TextBlock::new(0, 0, 40, 10, "Long text content...")
 ///     .with_wrap_mode(TextWrapMode::WrapWords);
-/// ```
 #[derive(Debug, Clone, Copy)]
 pub enum TextWrapMode {
     None,           // No wrapping, clip text
@@ -26,12 +24,10 @@ pub enum TextWrapMode {
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{TextBlock, TextWrapMode};
 ///
 /// let block = TextBlock::new(0, 0, 40, 10, "Long text content...")
 ///     .with_wrap_mode(TextWrapMode::WrapWords);
-/// ```
 #[derive(Debug, Clone, Copy)]
 pub enum VerticalAlignment {
     Top,
@@ -52,14 +48,12 @@ pub enum VerticalAlignment {
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{TextBlock, TextWrapMode, Alignment, VerticalAlignment, Color, ColorPair};
 ///
 /// let block = TextBlock::new(0, 0, 40, 10, "Multi-line\ntext content")
 ///     .with_wrap_mode(TextWrapMode::WrapWords)
 ///     .with_alignment(Alignment::Left, VerticalAlignment::Top)
 ///     .with_colors(ColorPair::new(Color::White, Color::Blue));
-/// ```
 pub struct TextBlock {
     x: u16,
     y: u16,
@@ -85,9 +79,7 @@ impl TextBlock {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let block = TextBlock::new(0, 0, 40, 10, "Hello\nWorld");
-    /// ```
     pub fn new(x: u16, y: u16, width: u16, height: u16, text: impl Into<String>) -> Self {
         Self {
             x,
@@ -109,10 +101,8 @@ impl TextBlock {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let block = TextBlock::new(0, 0, 40, 10, "Styled text")
     ///     .with_colors(ColorPair::new(Color::White, Color::Blue));
-    /// ```
     pub fn with_colors(mut self, colors: ColorPair) -> Self {
         self.colors = Some(colors);
         self
@@ -127,10 +117,8 @@ impl TextBlock {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let block = TextBlock::new(0, 0, 40, 10, "Long text...")
     ///     .with_wrap_mode(TextWrapMode::WrapWords);
-    /// ```
     pub fn with_wrap_mode(mut self, mode: TextWrapMode) -> Self {
         self.wrap_mode = mode;
         self
@@ -144,10 +132,8 @@ impl TextBlock {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let block = TextBlock::new(0, 0, 40, 10, "Centered text")
     ///     .with_alignment(Alignment::Center, VerticalAlignment::Middle);
-    /// ```
     pub fn with_alignment(mut self, h_align: Alignment, v_align: VerticalAlignment) -> Self {
         self.h_align = h_align;
         self.v_align = v_align;
@@ -205,10 +191,8 @@ impl TextBlock {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let mut block = TextBlock::new(0, 0, 40, 10, "Line 1\nLine 2\nLine 3");
     /// block.scroll_to(1);  // Scroll to show Line 2 at the top
-    /// ```
     pub fn scroll_to(&mut self, line: u16) {
         self.scroll_offset = line;
     }
@@ -221,11 +205,9 @@ impl TextBlock {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let mut block = TextBlock::new(0, 0, 40, 10, "Multi-line content");
     /// block.scroll_by(2);   // Scroll down 2 lines
     /// block.scroll_by(-1);  // Scroll up 1 line
-    /// ```
     pub fn scroll_by(&mut self, delta: i16) {
         self.scroll_offset = if delta.is_negative() {
             self.scroll_offset.saturating_sub(delta.abs() as u16)

@@ -50,9 +50,7 @@ pub trait Window {
     ///
     /// # Example
     ///
-    /// ```rust
     /// window.write_str(0, 0, "Hello, world!")?;
-    /// ```
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()>;
 
     /// Writes a colored string at the specified position (y, x).
@@ -73,10 +71,8 @@ pub trait Window {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let colors = ColorPair::new(Color::Green, Color::Black);
     /// window.write_str_colored(1, 0, "Success!", colors)?;
-    /// ```
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()>;
 
     /// Returns the current size of the window as (width, height) in characters.
@@ -86,10 +82,8 @@ pub trait Window {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let (width, height) = window.get_size();
     /// println!("Window is {} columns by {} rows", width, height);
-    /// ```
     fn get_size(&self) -> (u16, u16);
 }
 
@@ -115,7 +109,6 @@ pub trait Window {
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::TerminalWindow;
 ///
 /// fn main() -> Result<()> {
@@ -129,7 +122,6 @@ pub trait Window {
 ///     }
 ///     Ok(())
 /// }
-/// ```
 pub struct TerminalWindow {
     width: u16,
     height: u16,
@@ -151,9 +143,7 @@ impl TerminalWindow {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let mut window = TerminalWindow::new()?;
-    /// ```
     pub fn new() -> Result<Self> {
         enable_raw_mode()?;
 
@@ -181,10 +171,8 @@ impl TerminalWindow {
     ///
     /// # Example
     ///
-    /// ```rust
     /// window.clear()?;
     /// window.write_str(0, 0, "Fresh start")?;
-    /// ```
     pub fn clear(&self) -> Result<()> {
         execute!(
             stdout(),
@@ -213,13 +201,11 @@ impl TerminalWindow {
     ///
     /// # Example
     ///
-    /// ```rust
     /// match window.get_input()? {
     ///     Event::Character('q') => break,
     ///     Event::KeyUp => move_cursor_up(),
     ///     _ => (),
     /// }
-    /// ```
     pub fn get_input(&self) -> Result<Event> {
         if event::poll(std::time::Duration::from_millis(100))? {
             if let CrosstermEvent::Key(key) = event::read()? {

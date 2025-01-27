@@ -15,7 +15,6 @@ use super::{Alignment, BorderChars, TextBlock, Widget, WindowView};
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Panel, Color, BorderChars};
 ///
 /// let panel = Panel::new(0, 0, 40, 10)
@@ -24,7 +23,6 @@ use super::{Alignment, BorderChars, TextBlock, Widget, WindowView};
 ///     .with_body("All systems operational")
 ///     .with_body_color(Some(ColorPair::new(Color::Green, Color::Black)))
 ///     .with_padding(1);
-/// ```
 pub struct Panel {
     x: u16,
     y: u16,
@@ -50,7 +48,6 @@ pub struct Panel {
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Panel, TextBlock, TextWrapMode};
 ///
 /// // Simple text content
@@ -62,7 +59,6 @@ pub struct Panel {
 ///     .with_wrap_mode(TextWrapMode::WrapWords);
 /// let block_panel = Panel::new(0, 0, 40, 10)
 ///     .with_body_block(block);
-/// ```
 pub enum PanelContent {
     Text(String),
     Block(Box<TextBlock>),
@@ -80,9 +76,7 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10);
-    /// ```
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
        Self {
            x,
@@ -110,10 +104,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_header("Configuration");
-    /// ```
     pub fn with_header(mut self, text: impl Into<String>) -> Self {
         self.header_text = text.into();
         if self.auto_size {
@@ -129,10 +121,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_body("Status: Online\nAll systems normal");
-    /// ```
     pub fn with_body(mut self, text: impl Into<String>) -> Self {
         self.body_content = PanelContent::Text(text.into());
         if self.auto_size {
@@ -150,14 +140,12 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// use minui::{TextBlock, TextWrapMode};
     ///
     /// let text_block = TextBlock::new(0, 0, 38, 8, "Long content...")
     ///     .with_wrap_mode(TextWrapMode::WrapWords);
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_body_block(text_block);
-    /// ```
     pub fn with_body_block(mut self, text_block: TextBlock) -> Self {
         self.body_content = PanelContent::Block(Box::new(text_block));
         if self.auto_size {
@@ -170,10 +158,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_header_style(BorderChars::double_line());
-    /// ```
     pub fn with_header_style(mut self, style: BorderChars) -> Self {
         self.header_style = style;
         self
@@ -183,10 +169,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_body_style(BorderChars::single_line());
-    /// ```
     pub fn with_body_style(mut self, style: BorderChars) -> Self {
         self.body_style = style;
         self
@@ -197,10 +181,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_header_color(Some(ColorPair::new(Color::Yellow, Color::Black)));
-    /// ```
     pub fn with_header_color(mut self, color: Option<ColorPair>) -> Self {
         self.header_color = color;
         self
@@ -211,10 +193,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_body_color(Some(ColorPair::new(Color::White, Color::Blue)));
-    /// ```
     pub fn with_body_color(mut self, color: Option<ColorPair>) -> Self {
         self.body_color = color;
         self
@@ -224,10 +204,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_header_border_color(Color::Blue);
-    /// ```
     pub fn with_header_border_color(mut self, color: Color) -> Self {
         self.header_border_color = Some(ColorPair::new(color, Color::Transparent));
         self
@@ -238,10 +216,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_body_border_color(Color::Blue);
-    /// ```
     pub fn with_body_border_color(mut self, color: Color) -> Self {
         self.body_border_color = Some(ColorPair::new(color, Color::Transparent));
         self
@@ -254,10 +230,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_padding(2);  // 2 units of padding on each side
-    /// ```
     pub fn with_padding(mut self, padding: u16) -> Self {
         self.padding = padding;
         self
@@ -269,10 +243,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let panel = Panel::new(0, 0, 40, 10)
     ///     .with_alignment(Alignment::Center);  // Center body content
-    /// ```
     pub fn with_alignment(mut self, alignment: Alignment) -> Self {
         self.alignment = alignment;
         self
@@ -284,10 +256,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let mut panel = Panel::new(0, 0, 40, 10);
     /// panel.set_header("New Header");
-    /// ```
     pub fn set_header(&mut self, text: impl Into<String>) {
         self.header_text = text.into();
     }
@@ -298,10 +268,8 @@ impl Panel {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let mut panel = Panel::new(0, 0, 40, 10);
     /// panel.set_body("New content");
-    /// ```
     pub fn set_body(&mut self, text: impl Into<String>) {
         self.body_content = PanelContent::Text(text.into());
     }

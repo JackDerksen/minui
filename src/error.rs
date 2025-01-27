@@ -13,7 +13,6 @@ use thiserror::Error;
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Result, Error};
 ///
 /// fn initialize_component() -> Result<()> {
@@ -22,7 +21,6 @@ use thiserror::Error;
 ///     }
 ///     Ok(())
 /// }
-/// ```
 #[derive(Error, Debug)]
 pub enum Error {
     /// Errors that occur during terminal initialization
