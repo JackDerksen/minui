@@ -15,7 +15,6 @@ use crate::{ColorPair, Result, Window};
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::BorderChars;
 ///
 /// // Use single-line border style
@@ -23,7 +22,6 @@ use crate::{ColorPair, Result, Window};
 /// println!("{0}{1}{2}", border.top_left, border.horizontal, border.top_right);
 /// println!("{0} {0}", border.vertical);
 /// println!("{0}{1}{2}", border.bottom_left, border.horizontal, border.bottom_right);
-/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct BorderChars {
     pub top_left: char,
@@ -115,7 +113,6 @@ impl BorderChars {
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Window, WindowView};
 ///
 /// fn draw_in_bounds(view: &mut WindowView) -> Result<()> {
@@ -126,7 +123,6 @@ impl BorderChars {
 ///     // and respects boundary constraints
 ///     Ok(())
 /// }
-/// ```
 pub struct WindowView<'a> {
     pub window: &'a mut dyn Window,
     pub x_offset: u16,

@@ -15,7 +15,6 @@ use super::{BorderChars, Widget, WindowView};
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Container, Label, Color, BorderChars};
 ///
 /// // Create a blue container with a label
@@ -24,7 +23,6 @@ use super::{BorderChars, Widget, WindowView};
 ///     .with_style(BorderChars::double_line())
 ///     .with_padding(1)
 ///     .with_content(Label::new(0, 0, "Hello, World!"));
-/// ```
 pub struct Container {
     x: u16,
     y: u16,
@@ -48,9 +46,7 @@ impl Container {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let container = Container::new(0, 0, 40, 3);
-    /// ```
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
         Self {
             x,
@@ -69,10 +65,8 @@ impl Container {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let container = Container::new(0, 0, 40, 3)
     ///     .with_style(BorderChars::double_line());
-    /// ```
     pub fn with_style(mut self, style: BorderChars) -> Self {
         self.style = style;
         self
@@ -84,10 +78,8 @@ impl Container {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let container = Container::new(0, 0, 40, 3)
     ///     .with_border_color(Color::Blue);
-    /// ```
     pub fn with_border_color(mut self, color: Color) -> Self {
         self.border_color = Some(ColorPair::new(color, Color::Transparent));
         self
@@ -100,10 +92,8 @@ impl Container {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let container = Container::new(0, 0, 40, 3)
     ///     .with_content(Label::new(0, 0, "Content"));
-    /// ```
     pub fn with_content(mut self, widget: impl Widget + 'static) -> Self {
         self.content = Some(Box::new(widget));
         if self.auto_size {
@@ -118,10 +108,8 @@ impl Container {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let container = Container::new(0, 0, 40, 3)
     ///     .with_padding(2);  // 2 units of padding on all sides
-    /// ```
     pub fn with_padding(mut self, padding: u16) -> Self {
         self.padding = padding;
         self
@@ -135,10 +123,8 @@ impl Container {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let container = Container::new(0, 0, 40, 3)
     ///     .with_auto_size(false);  // Keep fixed size
-    /// ```
     pub fn with_auto_size(mut self, auto_size: bool) -> Self {
         self.auto_size = auto_size;
         self

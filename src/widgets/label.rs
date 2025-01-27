@@ -15,14 +15,12 @@ use super::Widget;
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Label, Color, Alignment};
 ///
 /// // Create a centered, blue label
 /// let label = Label::new(0, 0, "Status: Ready")
 ///     .with_text_color(Color::Blue)
 ///     .with_alignment(Alignment::Center);
-/// ```
 pub struct Label {
     x: u16,
     y: u16,
@@ -37,12 +35,10 @@ pub struct Label {
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{Label, Alignment};
 ///
 /// let centered_label = Label::new(0, 0, "Title")
 ///     .with_alignment(Alignment::Center);
-/// ```
 #[derive(Debug, Clone, Copy)]
 pub enum Alignment {
     Left,
@@ -60,9 +56,7 @@ impl Label {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let label = Label::new(0, 0, "Hello, World!");
-    /// ```
     pub fn new(x: u16, y: u16, text: impl Into<String>) -> Self {
         Self {
             x,
@@ -77,12 +71,10 @@ impl Label {
     ///
     /// # Example
     ///
-    /// ```rust
     /// use minui::{Color, ColorPair};
     ///
     /// let label = Label::new(0, 0, "Warning")
     ///     .with_color(ColorPair::new(Color::Yellow, Color::Black));
-    /// ```
     pub fn with_color(mut self, colors: ColorPair) -> Self {
         self.colors = Some(colors);
         self
@@ -92,10 +84,8 @@ impl Label {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let label = Label::new(0, 0, "Error")
     ///     .with_text_color(Color::Red);
-    /// ```
     pub fn with_text_color(mut self, color: Color) -> Self {
         self.colors = Some(ColorPair::new(color, Color::Transparent));
         self
@@ -108,10 +98,8 @@ impl Label {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let label = Label::new(0, 0, "Title")
     ///     .with_alignment(Alignment::Center);
-    /// ```
     pub fn with_alignment(mut self, alignment: Alignment) -> Self {
         self.alignment = alignment;
         self
@@ -124,11 +112,9 @@ impl Label {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let mut label = Label::new(0, 0, "Loading...");
     /// // Later:
     /// label.set_text("Complete!");
-    /// ```
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
     }
@@ -137,10 +123,8 @@ impl Label {
     ///
     /// # Example
     ///
-    /// ```rust
     /// let label = Label::new(0, 0, "Status");
     /// assert_eq!(label.text(), "Status");
-    /// ```
     pub fn text(&self) -> &str {
         &self.text
     }

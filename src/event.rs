@@ -5,7 +5,6 @@
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::Event;
 ///
 /// fn handle_input(event: Event) {
@@ -16,7 +15,6 @@
 ///         _ => println!("Other key pressed"),
 ///     }
 /// }
-/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Character(char),

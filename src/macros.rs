@@ -6,7 +6,6 @@
 ///
 /// # Example
 ///
-/// ```rust
 /// use minui::{define_colors, Color};
 ///
 /// define_colors! {
@@ -18,7 +17,6 @@
 /// // Use the defined colors
 /// let error_box = Container::new(0, 0, 40, 3)
 ///     .with_border_color(ERROR.fg);
-/// ```
 #[macro_export]
 macro_rules! define_colors {
     ($(pub const $name:ident = ($fg:expr, $bg:expr);)*) => {

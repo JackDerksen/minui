@@ -31,12 +31,10 @@ impl Color {
     ///
     /// # Example
     ///
-    /// ```rust
     /// use minui::Color;
     ///
     /// let color = Color::Blue;
     /// let crossterm_color = color.to_crossterm();
-    /// ```
     pub fn to_crossterm(self) -> CrosstermColor {
         match self {
             Color::Black => CrosstermColor::Black,
@@ -67,12 +65,10 @@ impl ColorPair {
     ///
     /// # Example
     ///
-    /// ```rust
     /// use minui::{Color, ColorPair};
     ///
     /// // Create yellow text on black background
     /// let warning_style = ColorPair::new(Color::Yellow, Color::Black);
-    /// ```
     pub const fn new(fg: Color, bg: Color) -> Self {
         Self { fg, bg }
     }
