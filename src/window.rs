@@ -18,6 +18,7 @@ use crossterm::{
     event::{self, Event as CrosstermEvent, KeyCode},
     style::{self, SetForegroundColor, SetBackgroundColor, Print},
     execute,
+    queue,
 };
 use crate::{Error, Result, Event, ColorPair};
 
@@ -85,6 +86,57 @@ pub trait Window {
     /// let (width, height) = window.get_size();
     /// println!("Window is {} columns by {} rows", width, height);
     fn get_size(&self) -> (u16, u16);
+
+    /// Clears the entire screen and resets cursor to (0, 0).
+    ///
+    /// # Returns
+    /// * `Ok(())` if the clear operation was successful
+    /// * `Err(Error::IoError)` if there was an error writing to the terminal
+    ///
+    /// # Example
+    ///
+    /// window.clear_screen()?;
+    /// window.write_str(0, 0, "Fresh start")?;
+    fn clear_screen(&mut self) -> Result<()>;
+
+    /// Clears a specific line (row) in the window.
+    ///
+    /// # Arguments
+    /// * `y` - The row number to clear, starting from 0
+    ///
+    /// # Returns
+    /// * `Ok(())` if the clear operation was successful
+    /// * `Err(Error::WindowError)` if the row is out of bounds
+    /// * `Err(Error::IoError)` if there was an error writing to the terminal
+    ///
+    /// # Example
+    ///
+    /// // Clear the third row (y = 2)
+    /// window.clear_line(2)?;
+    fn clear_line(&mut self, y: u16) -> Result<()>;
+
+    /// Clears a rectangular area within the window.
+    ///
+    /// Clears all characters in the rectangle defined by the points (x1, y1) and (x2, y2),
+    /// inclusive of both corners. The points can be specified in any order; the method
+    /// will determine the correct boundaries.
+    ///
+    /// # Arguments
+    /// * `y1` - Row coordinate of first corner
+    /// * `x1` - Column coordinate of first corner
+    /// * `y2` - Row coordinate of second corner
+    /// * `x2` - Column coordinate of second corner
+    ///
+    /// # Returns
+    /// * `Ok(())` if the clear operation was successful
+    /// * `Err(Error::WindowError)` if any coordinates are out of bounds
+    /// * `Err(Error::IoError)` if there was an error writing to the terminal
+    ///
+    /// # Example
+    ///
+    /// // Clear a 10x5 rectangle starting at (2, 3)
+    /// window.clear_area(3, 2, 7, 11)?;
+    fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()>;
 }
 
 /// Manages the terminal window and provides methods for drawing and handling input.
@@ -263,6 +315,59 @@ impl Window for TerminalWindow {
 
     fn get_size(&self) -> (u16, u16) {
         (self.width, self.height)
+    }
+
+    fn clear_screen(&mut self) -> Result<()> {
+        execute!(
+            stdout(),
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0)
+        )?;
+        stdout().flush()?;
+        Ok(())
+    }
+
+    fn clear_line(&mut self, y: u16) -> Result<()> {
+        if y >= self.height {
+            return Err(Error::WindowError("Line number out of bounds".into()));
+        }
+
+        execute!(
+            stdout(),
+            cursor::MoveTo(0, y),
+            terminal::Clear(terminal::ClearType::CurrentLine)
+        )?;
+        stdout().flush()?;
+        Ok(())
+    }
+
+    fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()> {
+        // Validate all coordinates are within bounds
+        if x1 >= self.width || x2 >= self.width || y1 >= self.height || y2 >= self.height {
+            return Err(Error::WindowError("Area coordinates out of bounds".into()));
+        }
+
+        // Determine actual corners (normalize coordinates)
+        let (start_y, end_y) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
+        let (start_x, end_x) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
+        let width = end_x - start_x + 1;
+
+        // Create a string of spaces for clearing
+        let spaces = " ".repeat(width as usize);
+
+        // Queue all clear operations
+        let mut stdout = stdout();
+        for y in start_y..=end_y {
+            queue!(
+                stdout,
+                cursor::MoveTo(start_x, y),
+                Print(&spaces)
+            )?;
+        }
+
+        // Execute all queued operations at once
+        stdout.flush()?;
+        Ok(())
     }
 }
 
