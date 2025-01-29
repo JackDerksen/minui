@@ -1,28 +1,6 @@
 use crate::{Color, ColorPair, Window};
 use super::{Alignment, BorderChars, TextBlock, Widget, WindowView};
 
-/// A sectioned panel widget with a header and body area.
-///
-/// Panel provides a more structured container than a basic Container,
-/// with distinct header and body sections that can be styled independently.
-/// Features include:
-/// - Optional header with centered text
-/// - Separate border styles for header and body
-/// - Independent colors for borders and content
-/// - Support for both simple text and TextBlock content
-/// - Automatic sizing based on content
-/// - Content padding and alignment
-///
-/// # Example
-///
-/// use minui::{Panel, Color, BorderChars};
-///
-/// let panel = Panel::new(0, 0, 40, 10)
-///     .with_header("System Status")
-///     .with_header_border_color(Color::Blue)
-///     .with_body("All systems operational")
-///     .with_body_color(Some(ColorPair::new(Color::Green, Color::Black)))
-///     .with_padding(1);
 pub struct Panel {
     x: u16,
     y: u16,
@@ -41,42 +19,12 @@ pub struct Panel {
     auto_size: bool,
 }
 
-/// Content types that can be displayed in a panel's body section.
-///
-/// Supports both simple text strings and more complex TextBlock widgets
-/// that provide additional formatting capabilities.
-///
-/// # Example
-///
-/// use minui::{Panel, TextBlock, TextWrapMode};
-///
-/// // Simple text content
-/// let text_panel = Panel::new(0, 0, 40, 10)
-///     .with_body("Simple text content");
-///
-/// // TextBlock content with word wrapping
-/// let block = TextBlock::new(0, 0, 38, 8, "Long text content...")
-///     .with_wrap_mode(TextWrapMode::WrapWords);
-/// let block_panel = Panel::new(0, 0, 40, 10)
-///     .with_body_block(block);
 pub enum PanelContent {
     Text(String),
     Block(Box<TextBlock>),
 }
 
 impl Panel {
-    /// Creates a new panel with the specified position and size.
-    ///
-    /// By default, the panel:
-    /// - Has no header text
-    /// - Has empty body content
-    /// - Uses single-line borders for both sections
-    /// - Has 1 unit of padding
-    /// - Auto-sizes based on content
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10);
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
        Self {
            x,
@@ -97,15 +45,6 @@ impl Panel {
        }
     }
 
-    /// Sets the panel's header text.
-    ///
-    /// The header text is automatically centered in the header section.
-    /// If auto-sizing is enabled, the panel width may adjust to fit the text.
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_header("Configuration");
     pub fn with_header(mut self, text: impl Into<String>) -> Self {
         self.header_text = text.into();
         if self.auto_size {
@@ -114,15 +53,6 @@ impl Panel {
         self
     }
 
-    /// Sets the panel's body content as simple text.
-    ///
-    /// The text will be aligned according to the panel's alignment setting
-    /// and will wrap at line breaks.
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_body("Status: Online\nAll systems normal");
     pub fn with_body(mut self, text: impl Into<String>) -> Self {
         self.body_content = PanelContent::Text(text.into());
         if self.auto_size {
@@ -131,21 +61,6 @@ impl Panel {
         self
     }
 
-    /// Sets the panel's body content using a TextBlock.
-    ///
-    /// TextBlocks provide additional formatting capabilities like:
-    /// - Word wrapping
-    /// - Vertical alignment
-    /// - Scrolling
-    ///
-    /// # Example
-    ///
-    /// use minui::{TextBlock, TextWrapMode};
-    ///
-    /// let text_block = TextBlock::new(0, 0, 38, 8, "Long content...")
-    ///     .with_wrap_mode(TextWrapMode::WrapWords);
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_body_block(text_block);
     pub fn with_body_block(mut self, text_block: TextBlock) -> Self {
         self.body_content = PanelContent::Block(Box::new(text_block));
         if self.auto_size {
@@ -154,138 +69,60 @@ impl Panel {
         self
     }
 
-    /// Sets the panel's header border style (single-line, double-line, ascii)
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_header_style(BorderChars::double_line());
     pub fn with_header_style(mut self, style: BorderChars) -> Self {
         self.header_style = style;
         self
     }
 
-    /// Sets the panel's body border style (single-line, double-line, ascii)
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_body_style(BorderChars::single_line());
     pub fn with_body_style(mut self, style: BorderChars) -> Self {
         self.body_style = style;
         self
     }
 
-    /// Sets the panel's header text color
-    /// Sets the text color for the panel's header.
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_header_color(Some(ColorPair::new(Color::Yellow, Color::Black)));
     pub fn with_header_color(mut self, color: Option<ColorPair>) -> Self {
         self.header_color = color;
         self
     }
 
-    /// Sets the panel's body text color
-    /// Sets the text color for the panel's body content.
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_body_color(Some(ColorPair::new(Color::White, Color::Blue)));
     pub fn with_body_color(mut self, color: Option<ColorPair>) -> Self {
         self.body_color = color;
         self
     }
 
-    /// Sets the panel's header border color
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_header_border_color(Color::Blue);
     pub fn with_header_border_color(mut self, color: Color) -> Self {
         self.header_border_color = Some(ColorPair::new(color, Color::Transparent));
         self
     }
 
 
-    /// Sets the panel's body border color
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_body_border_color(Color::Blue);
     pub fn with_body_border_color(mut self, color: Color) -> Self {
         self.body_border_color = Some(ColorPair::new(color, Color::Transparent));
         self
     }
 
-    /// Sets the padding between the panel's borders and its body content.
-    ///
-    /// The padding is applied equally to both sides of the body content.
-    /// Header text is not affected by padding.
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_padding(2);  // 2 units of padding on each side
     pub fn with_padding(mut self, padding: u16) -> Self {
         self.padding = padding;
         self
     }
 
-    /// Sets the horizontal alignment of the panel's body content.
-    ///
-    /// Note: Header text is always centered regardless of this setting.
-    ///
-    /// # Example
-    ///
-    /// let panel = Panel::new(0, 0, 40, 10)
-    ///     .with_alignment(Alignment::Center);  // Center body content
     pub fn with_alignment(mut self, alignment: Alignment) -> Self {
         self.alignment = alignment;
         self
     }
 
-    /// Updates the panel's header text.
-    ///
-    /// If auto-sizing is enabled, the panel may resize to fit the new text.
-    ///
-    /// # Example
-    ///
-    /// let mut panel = Panel::new(0, 0, 40, 10);
-    /// panel.set_header("New Header");
     pub fn set_header(&mut self, text: impl Into<String>) {
         self.header_text = text.into();
     }
 
-    /// Updates the panel's body text content.
-    ///
-    /// If auto-sizing is enabled, the panel may resize to fit the new text.
-    ///
-    /// # Example
-    ///
-    /// let mut panel = Panel::new(0, 0, 40, 10);
-    /// panel.set_body("New content");
     pub fn set_body(&mut self, text: impl Into<String>) {
         self.body_content = PanelContent::Text(text.into());
     }
 
-    /// Sets whether the panel should auto-size around the contents
     pub fn with_auto_size(mut self, auto_size: bool) -> Self {
         self.auto_size = auto_size;
         self
     }
 
-    /// Dynamically updates the panel's size based on its content.
-    ///
-    /// Calculates the required dimensions to fit:
-    /// - Header text plus padding
-    /// - Body content plus padding
-    /// - Border characters
     fn adjust_size(&mut self) {
         // Calculate required width
         let header_width = self.header_text.len() as u16 + 4;
@@ -315,12 +152,6 @@ impl Panel {
         self.height = body_height + 5; // 3 lines for the header + body content + bottom border
     }
 
-    /// Returns the available space for content within the panel's borders.
-    ///
-    /// The inner dimensions account for:
-    /// - Border width (2 characters)
-    /// - Header height (3 characters)
-    /// - Bottom border (1 character)
     fn get_inner_dimensions(&self) -> (u16, u16) {
         let inner_width = self.width.saturating_sub(2);
         let inner_height = self.height.saturating_sub(4);
@@ -329,14 +160,14 @@ impl Panel {
 }
 
 impl Widget for Panel {
-    /// Draws the complete panel including header, borders, and content.
-    ///
-    /// The drawing process:
-    /// 1. Draws the header section with its borders
-    /// 2. Draws the centered header text
-    /// 3. Draws the separator between header and body
-    /// 4. Draws the body borders
-    /// 5. Draws the body content with proper alignment
+    // Draws the complete panel including header, borders, and content.
+    //
+    // The drawing process:
+    // 1. Draws the header section with its borders
+    // 2. Draws the centered header text
+    // 3. Draws the separator between header and body
+    // 4. Draws the body borders
+    // 5. Draws the body content with proper alignment
     fn draw(&self, window: &mut dyn Window) -> crate::Result<()> {
         // Draw header section
         if let Some(color) = self.header_border_color {
@@ -479,12 +310,10 @@ impl Widget for Panel {
         Ok(())
     }
 
-    /// Returns the panel's total size including borders.
     fn get_size(&self) -> (u16, u16) {
         (self.width, self.height)
     }
 
-    /// Returns the panel's (top-left corner) position.
     fn get_position(&self) -> (u16, u16) {
         (self.x, self.y)
     }

@@ -1,14 +1,5 @@
-//! Terminal color definitions and styling utilities.
-//!
-//! Provides type-safe color handling and conversion for terminal output,
-//! supporting both foreground and background colors.
-
 use crossterm::style::{Color as CrosstermColor};
 
-/// Available colors for terminal text and backgrounds.
-///
-/// Provides a simplified set of the most common terminal colors, plus
-/// a Transparent option for removing color styling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     Black,
@@ -23,18 +14,6 @@ pub enum Color {
 }
 
 impl Color {
-    /// Converts to the crossterm library's color type for terminal output.
-    ///
-    /// This method is primarily used internally by the library to convert
-    /// the color enum to crossterm's representation when writing to the terminal.
-    /// I suppose it could be used as described below.
-    ///
-    /// # Example
-    ///
-    /// use minui::Color;
-    ///
-    /// let color = Color::Blue;
-    /// let crossterm_color = color.to_crossterm();
     pub fn to_crossterm(self) -> CrosstermColor {
         match self {
             Color::Black => CrosstermColor::Black,
@@ -50,25 +29,13 @@ impl Color {
     }
 }
 
-/// A pair of foreground and background colors for terminal styling.
-///
-/// Combines two colors to define the complete styling for a piece of text,
-/// where `fg` is the text color and `bg` is the background color.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ColorPair {
     pub fg: Color,
     pub bg: Color,
 }
 
 impl ColorPair {
-    /// Creates a new color pair with specified foreground and background colors.
-    ///
-    /// # Example
-    ///
-    /// use minui::{Color, ColorPair};
-    ///
-    /// // Create yellow text on black background
-    /// let warning_style = ColorPair::new(Color::Yellow, Color::Black);
     pub const fn new(fg: Color, bg: Color) -> Self {
         Self { fg, bg }
     }
