@@ -1,2 +1,2 @@
-mod buffer;
+pub(crate) mod buffer;
 mod viewport;

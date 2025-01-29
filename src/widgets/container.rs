@@ -1,28 +1,6 @@
 use crate::{Window, Result, ColorPair, Color};
 use super::{BorderChars, Widget, WindowView};
 
-/// A rectangular frame widget that can contain other widgets.
-///
-/// Container is a fundamental layout widget that draws a bordered box and can
-/// hold another widget as its content. It supports:
-/// - Customizable border styles (single-line, double-line, ASCII)
-/// - Optional border colors
-/// - Content padding
-/// - Automatic sizing based on content
-///
-/// The container automatically manages its content's positioning and clipping
-/// within its bounds.
-///
-/// # Example
-///
-/// use minui::{Container, Label, Color, BorderChars};
-///
-/// // Create a blue container with a label
-/// let container = Container::new(0, 0, 40, 3)
-///     .with_border_color(Color::Blue)
-///     .with_style(BorderChars::double_line())
-///     .with_padding(1)
-///     .with_content(Label::new(0, 0, "Hello, World!"));
 pub struct Container {
     x: u16,
     y: u16,
@@ -36,17 +14,6 @@ pub struct Container {
 }
 
 impl Container {
-    /// Creates a new container with the specified position and size.
-    ///
-    /// By default, the container:
-    /// - Uses single-line borders
-    /// - Has no border color
-    /// - Has 1 unit of padding
-    /// - Automatically sizes to its content
-    ///
-    /// # Example
-    ///
-    /// let container = Container::new(0, 0, 40, 3);
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
         Self {
             x,
@@ -61,39 +28,16 @@ impl Container {
         }
     }
 
-    /// Sets the border style using a BorderChars configuration.
-    ///
-    /// # Example
-    ///
-    /// let container = Container::new(0, 0, 40, 3)
-    ///     .with_style(BorderChars::double_line());
     pub fn with_style(mut self, style: BorderChars) -> Self {
         self.style = style;
         self
     }
 
-    /// Sets the border color using a single Color.
-    ///
-    /// The background color is automatically set to Transparent.
-    ///
-    /// # Example
-    ///
-    /// let container = Container::new(0, 0, 40, 3)
-    ///     .with_border_color(Color::Blue);
     pub fn with_border_color(mut self, color: Color) -> Self {
         self.border_color = Some(ColorPair::new(color, Color::Transparent));
         self
     }
 
-    /// Sets the container's content to the specified widget.
-    ///
-    /// If auto_size is enabled (default), the container will
-    /// adjust its size to fit the content plus padding and borders.
-    ///
-    /// # Example
-    ///
-    /// let container = Container::new(0, 0, 40, 3)
-    ///     .with_content(Label::new(0, 0, "Content"));
     pub fn with_content(mut self, widget: impl Widget + 'static) -> Self {
         self.content = Some(Box::new(widget));
         if self.auto_size {
@@ -102,35 +46,16 @@ impl Container {
         self
     }
 
-    /// Sets the padding between the container's borders and its content.
-    ///
-    /// Padding is applied equally to all sides.
-    ///
-    /// # Example
-    ///
-    /// let container = Container::new(0, 0, 40, 3)
-    ///     .with_padding(2);  // 2 units of padding on all sides
     pub fn with_padding(mut self, padding: u16) -> Self {
         self.padding = padding;
         self
     }
 
-    /// Enables or disables automatic sizing based on content.
-    ///
-    /// When enabled, the container will adjust its size to fit its
-    /// content plus padding and borders. When disabled, it will
-    /// maintain its original size.
-    ///
-    /// # Example
-    ///
-    /// let container = Container::new(0, 0, 40, 3)
-    ///     .with_auto_size(false);  // Keep fixed size
     pub fn with_auto_size(mut self, auto_size: bool) -> Self {
         self.auto_size = auto_size;
         self
     }
 
-    /// Calculates the size needed to fit the content plus padding and borders.
     fn adjust_size_to_content(&mut self) {
         if let Some(widget) = &self.content {
             let (content_width, content_height) = widget.get_size();
@@ -139,14 +64,12 @@ impl Container {
         }
     }
 
-    /// Returns the internal dimensions available for content.
     fn get_inner_dimensions(&self) -> (u16, u16) {
         let inner_width = self.width.saturating_sub(2);
         let inner_height = self.height.saturating_sub(2);
         (inner_width, inner_height)
     }
 
-    /// Returns the position where content should be drawn.
     fn get_inner_position(&self) -> (u16, u16) {
         (self.x + 1, self.y + 1)
     }
@@ -241,12 +164,10 @@ impl Widget for Container {
         Ok(())
     }
 
-    /// Returns the container's total size including borders.
     fn get_size(&self) -> (u16, u16) {
         (self.width, self.height)
     }
 
-    /// Returns the container's position.
     fn get_position(&self) -> (u16, u16) {
         (self.x, self.y)
     }
