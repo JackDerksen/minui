@@ -150,36 +150,6 @@ impl Buffer {
         Ok(())
     }
 
-    fn find_cell_run(&self, start_y: u16, start_x: u16) -> (String, u16) {
-        let idx = self.coords_to_index(start_x, start_y);
-        let current = &self.current[idx];
-
-        let mut run_length = 1;
-        let mut run_str = String::new();
-        run_str.push(current.ch);
-
-        while start_x + run_length < self.width {
-            let next_idx = self.coords_to_index(start_x + run_length, start_y);
-            let next_cell = &self.current[next_idx];
-            if next_cell.colors != current.colors || !next_cell.modified {
-                break;
-            }
-            run_str.push(next_cell.ch);
-            run_length += 1;
-        }
-
-        (run_str, run_length)
-    }
-
-    fn reset_state(&mut self) {
-        std::mem::swap(&mut self.current, &mut self.previous);
-        for cell in &mut self.current {
-            cell.modified = false;
-        }
-        self.dirty_min_y = None;
-        self.dirty_max_y = None;
-    }
-
     pub fn process_changes(&mut self) -> Vec<BufferChange> {
         let mut changes = Vec::new();
 
