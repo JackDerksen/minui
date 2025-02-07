@@ -171,7 +171,7 @@ impl Buffer {
                         while x + run_length < self.width {
                             let next_idx = self.coords_to_index(x + run_length, y);
                             let next_cell = &self.current[next_idx];
-                            if next_cell.colors != current.colors || !next_cell.modified {
+                            if next_cell.colors != current.colors || !next_cell.modified || next_cell.ch != current.ch {
                                 break;
                             }
                             run_str.push(next_cell.ch);

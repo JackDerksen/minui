@@ -43,7 +43,7 @@ impl KeyboardHandler {
                     KeyCode::Backspace => Event::Backspace,
                     KeyCode::Enter => Event::Enter,
                     KeyCode::F(n) => Event::FunctionKey(n),
-                    KeyCode::Esc => Event::Escape,  // Adding Escape key handling
+                    KeyCode::Esc => Event::Escape,
                     _ => Event::Unknown,
                 }));
             }
