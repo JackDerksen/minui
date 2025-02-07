@@ -1,14 +1,7 @@
 //! Demonstrates how to create, configure, and combine different widget types
 //! to create a rich terminal user interface.
 
-use minui::{
-    TerminalWindow,
-    Event,
-    Result,
-    Color,
-    ColorPair,
-    widgets::{Container, BorderChars, Widget, Label, Alignment, Panel, TextBlock, TextWrapMode, VerticalAlignment}
-};
+use minui::{TerminalWindow, Event, Result, Color, ColorPair, widgets::{Container, BorderChars, Widget, Label, Alignment, Panel, TextBlock, TextWrapMode, VerticalAlignment}, Window};
 
 /// Example demonstrating various widgets and their features.
 ///
@@ -23,6 +16,10 @@ use minui::{
 fn main() -> Result<()> {
     // Create and initialize the terminal window
     let mut window = TerminalWindow::new()?;
+
+    window.set_auto_flush(false);
+
+    window.clear_screen()?;
 
     // Create a panel with a header and styled borders
     // This demonstrates:
@@ -89,6 +86,8 @@ fn main() -> Result<()> {
     floating_label.draw(&mut window)?;
     paragraph_container.draw(&mut window)?;
 
+    window.flush()?;
+
     // Wait for 'q' to be pressed before exiting
     loop {
         if let Ok(event) = window.get_input() {
@@ -98,5 +97,18 @@ fn main() -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn draw_screen_state(
+    window: &mut TerminalWindow,
+    x: u16,
+    y: u16,
+    player: char,
+    colors: ColorPair,
+) -> Result<()> {
+    window.clear_screen()?;
+    window.write_str_colored(y, x, &player.to_string(), colors)?;
+    window.flush()?;
     Ok(())
 }
