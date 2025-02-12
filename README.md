@@ -27,7 +27,7 @@ MinUI is in early development, and I'm actively working on adding more features:
     - [ ] Table widget
     - [ ] Input widget
     - [ ] Predefined widget layouts
-- [ ] Buffered drawing for smooth and efficient updates
+- [x] Buffered drawing for smooth and efficient updates
 - [ ] Built-in game loop utilities
 - [ ] Simple sprite and map management utilities
 - [ ] Easy character movement support with collision detection options

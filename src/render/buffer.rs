@@ -1,5 +1,5 @@
-use std::cmp::{min, max};
-use crate::{ColorPair, Result, Error};
+use crate::{ColorPair, Error, Result};
+use std::cmp::{max, min};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cell {
@@ -17,11 +17,12 @@ pub struct BufferChange {
 }
 
 impl Cell {
+    #[allow(dead_code)] // Currently unused but still a necessary constructor
     pub fn new(ch: char, colors: Option<ColorPair>) -> Self {
         Self {
             ch,
             colors,
-            modified: true,  // New cells start as modified
+            modified: true, // New cells start as modified
         }
     }
 
@@ -37,9 +38,9 @@ impl Cell {
 pub struct Buffer {
     width: u16,
     height: u16,
-    current: Vec<Cell>,   // What should be displayed
-    previous: Vec<Cell>,  // What was last rendered
-    dirty_min_y: Option<u16>,  // Track dirty region
+    current: Vec<Cell>,       // What should be displayed
+    previous: Vec<Cell>,      // What was last rendered
+    dirty_min_y: Option<u16>, // Track dirty region
     dirty_max_y: Option<u16>,
 }
 
@@ -59,15 +60,23 @@ impl Buffer {
         }
     }
 
+    /* Currently unused but will probably come in handy later on
     fn size(&self) -> (u16, u16) {
         (self.width, self.height)
     }
+    */
 
     fn coords_to_index(&self, x: u16, y: u16) -> usize {
         (y as usize * self.width as usize) + x as usize
     }
 
-    pub fn write_char(&mut self, y: u16, x: u16, ch: char, colors: Option<ColorPair>) -> Result<()> {
+    pub fn write_char(
+        &mut self,
+        y: u16,
+        x: u16,
+        ch: char,
+        colors: Option<ColorPair>,
+    ) -> Result<()> {
         if x >= self.width || y >= self.height {
             return Err(Error::WindowError("Position out of bounds".into()));
         }
@@ -103,7 +112,7 @@ impl Buffer {
         for (i, ch) in s.chars().enumerate() {
             let x_pos = x + i as u16;
             if x_pos >= self.width {
-                break;  // Stop at edge of buffer
+                break; // Stop at edge of buffer
             }
             self.write_char(y, x_pos, ch, colors)?;
         }
@@ -171,7 +180,10 @@ impl Buffer {
                         while x + run_length < self.width {
                             let next_idx = self.coords_to_index(x + run_length, y);
                             let next_cell = &self.current[next_idx];
-                            if next_cell.colors != current.colors || !next_cell.modified || next_cell.ch != current.ch {
+                            if next_cell.colors != current.colors
+                                || !next_cell.modified
+                                || next_cell.ch != current.ch
+                            {
                                 break;
                             }
                             run_str.push(next_cell.ch);
