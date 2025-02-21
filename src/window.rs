@@ -1,13 +1,13 @@
-use std::io::{Write, stdout};
+use crate::render::buffer::Buffer;
+use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
-    terminal::{self, enable_raw_mode, disable_raw_mode},
     cursor,
     event::{self, Event as CrosstermEvent, KeyCode},
-    style::{self},
     execute,
+    style::{self},
+    terminal::{self, disable_raw_mode, enable_raw_mode},
 };
-use crate::{Error, Result, Event, ColorPair};
-use crate::render::buffer::Buffer;
+use std::io::{stdout, Write};
 
 pub trait Window {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()>;
@@ -38,7 +38,7 @@ impl TerminalWindow {
 
         execute!(
             stdout(),
-            terminal::EnterAlternateScreen,  // Use separate screen buffer
+            terminal::EnterAlternateScreen, // Use separate screen buffer
             terminal::Clear(terminal::ClearType::All),
             cursor::Hide,
             cursor::MoveTo(0, 0)
@@ -113,7 +113,9 @@ impl TerminalWindow {
 impl Window for TerminalWindow {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         if y >= self.height || x >= self.width {
-            return Err(Error::WindowError("Position out of bounds. Consider resizing your window".into()));
+            return Err(Error::WindowError(
+                "Position out of bounds. Consider resizing your window".into(),
+            ));
         }
 
         self.buffer.write_str(y, x, s, None)?;
@@ -126,7 +128,9 @@ impl Window for TerminalWindow {
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
         if y >= self.height || x >= self.width {
-            return Err(Error::WindowError("Position out of bounds. Consider resizing your window".into()));
+            return Err(Error::WindowError(
+                "Position out of bounds. Consider resizing your window".into(),
+            ));
         }
 
         self.buffer.write_str(y, x, s, Some(colors))?;
@@ -199,3 +203,4 @@ impl Drop for TerminalWindow {
         let _ = self.flush();
     }
 }
+
