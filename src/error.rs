@@ -6,11 +6,28 @@ pub enum Error {
     #[error("Failed to initialize terminal: {0}")]
     InitializationError(String),
 
-    /// Errors related to window operations (e.g., writing out of bounds)
+    /// Errors related to window operations
     #[error("Window operation failed: {0}")]
     WindowError(String),
 
-    /// Errors caused by invalid user input
+    /// Position out of bounds errors (more specific than generic WindowError)
+    #[error("Position ({x}, {y}) is outside window bounds of ({width}, {height})")]
+    OutOfBoundsError {
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+    },
+
+    /// Buffer-related errors
+    #[error("Buffer operation failed: {0}")]
+    BufferError(String),
+
+    /// Widget-related errors
+    #[error("Widget error: {0}")]
+    WidgetError(String),
+
+    /// Input handling errors
     #[error("Invalid Input: {0}")]
     InputError(String),
 
