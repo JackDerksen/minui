@@ -65,7 +65,7 @@ impl BorderChars {
     }
 }
 
-pub struct WindowView<'a> {
+pub(crate) struct WindowView<'a> {
     pub window: &'a mut dyn Window,
     pub x_offset: u16,
     pub y_offset: u16,
@@ -76,11 +76,8 @@ pub struct WindowView<'a> {
 impl<'a> Window for WindowView<'a> {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         if y < self.height && x < self.width {
-            self.window.write_str(
-                y + self.y_offset,
-                x + self.x_offset,
-                s
-            )
+            self.window
+                .write_str(y + self.y_offset, x + self.x_offset, s)
         } else {
             Ok(()) // Silently skip out-of-bounds writes
         }
@@ -88,12 +85,8 @@ impl<'a> Window for WindowView<'a> {
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
         if y < self.height && x < self.width {
-            self.window.write_str_colored(
-                y + self.y_offset,
-                x + self.x_offset,
-                s,
-                colors
-            )
+            self.window
+                .write_str_colored(y + self.y_offset, x + self.x_offset, s, colors)
         } else {
             Ok(()) // Silently skip out-of-bounds writes
         }
@@ -110,7 +103,7 @@ impl<'a> Window for WindowView<'a> {
             self.y_offset,
             self.x_offset,
             self.y_offset + self.height - 1,
-            self.x_offset + self.width - 1
+            self.x_offset + self.width - 1,
         )
     }
 
@@ -121,7 +114,7 @@ impl<'a> Window for WindowView<'a> {
                 self.y_offset + y,
                 self.x_offset,
                 self.y_offset + y,
-                self.x_offset + self.width - 1
+                self.x_offset + self.width - 1,
             )
         } else {
             Ok(()) // Silently skip out-of-bounds clears
@@ -131,7 +124,7 @@ impl<'a> Window for WindowView<'a> {
     fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()> {
         // Check if entirely out of bounds
         if x1 >= self.width || x2 >= self.width || y1 >= self.height || y2 >= self.height {
-            return Ok(());  // Silently skip out-of-bounds clears
+            return Ok(()); // Silently skip out-of-bounds clears
         }
 
         // Translate to window coordinates while clamping to view bounds
@@ -140,6 +133,8 @@ impl<'a> Window for WindowView<'a> {
         let parent_y1 = self.y_offset + y1;
         let parent_y2 = self.y_offset + y2.min(self.height - 1);
 
-        self.window.clear_area(parent_y1, parent_x1, parent_y2, parent_x2)
+        self.window
+            .clear_area(parent_y1, parent_x1, parent_y2, parent_x2)
     }
 }
+

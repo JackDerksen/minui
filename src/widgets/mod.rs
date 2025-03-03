@@ -7,16 +7,16 @@ mod panel;
 mod table;
 mod text_block;
 
-pub use common::{BorderChars, WindowView};
-pub use container::{Container};
-pub use label::{Label, Alignment};
+pub use common::BorderChars;
+pub use container::Container;
+pub use label::{Alignment, Label};
 pub use panel::Panel;
 pub use text_block::{TextBlock, TextWrapMode, VerticalAlignment}; // Horizontal alignment from label
-// pub use input::InputField;
-// pub use layout::{Layout, Direction};
-// pub use table::Table;
+                                                                  // pub use input::InputField;
+                                                                  // pub use layout::{Layout, Direction};
+                                                                  // pub use table::Table;
 
-use crate::{Window, Result};
+use crate::{Result, Window};
 
 /// Common behavior for all widgets
 pub trait Widget {
@@ -39,7 +39,7 @@ pub trait Widget {
         let (pos_x, pos_y) = self.get_position();
         let (width, height) = self.get_size();
 
-        x >= pos_x && x < pos_x + width &&
-            y >= pos_y && y < pos_y + height
+        x >= pos_x && x < pos_x + width && y >= pos_y && y < pos_y + height
     }
 }
+

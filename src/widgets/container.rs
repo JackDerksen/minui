@@ -1,5 +1,6 @@
-use crate::{Window, Result, ColorPair, Color};
-use super::{BorderChars, Widget, WindowView};
+use super::{BorderChars, Widget};
+use crate::widgets::common::WindowView;
+use crate::{Color, ColorPair, Result, Window};
 
 pub struct Container {
     x: u16,
@@ -86,39 +87,67 @@ impl Widget for Container {
         // Draw borders...
         if let Some(color) = self.border_color {
             window.write_str_colored(self.y, self.x, &self.style.top_left.to_string(), color)?;
-            window.write_str_colored(self.y, self.x + self.width - 1, &self.style.top_right.to_string(), color)?;
-            window.write_str_colored(self.y + self.height - 1, self.x, &self.style.bottom_left.to_string(), color)?;
+            window.write_str_colored(
+                self.y,
+                self.x + self.width - 1,
+                &self.style.top_right.to_string(),
+                color,
+            )?;
+            window.write_str_colored(
+                self.y + self.height - 1,
+                self.x,
+                &self.style.bottom_left.to_string(),
+                color,
+            )?;
             window.write_str_colored(
                 self.y + self.height - 1,
                 self.x + self.width - 1,
                 &self.style.bottom_right.to_string(),
-                color
+                color,
             )?;
 
             // Draw edges...
             for i in 1..self.width - 1 {
-                window.write_str_colored(self.y, self.x + i, &self.style.horizontal.to_string(), color)?;
+                window.write_str_colored(
+                    self.y,
+                    self.x + i,
+                    &self.style.horizontal.to_string(),
+                    color,
+                )?;
                 window.write_str_colored(
                     self.y + self.height - 1,
                     self.x + i,
                     &self.style.horizontal.to_string(),
-                    color
+                    color,
                 )?;
             }
 
             for i in 1..self.height - 1 {
-                window.write_str_colored(self.y + i, self.x, &self.style.vertical.to_string(), color)?;
+                window.write_str_colored(
+                    self.y + i,
+                    self.x,
+                    &self.style.vertical.to_string(),
+                    color,
+                )?;
                 window.write_str_colored(
                     self.y + i,
                     self.x + self.width - 1,
                     &self.style.vertical.to_string(),
-                    color
+                    color,
                 )?;
             }
         } else {
             window.write_str(self.y, self.x, &self.style.top_left.to_string())?;
-            window.write_str(self.y, self.x + self.width - 1, &self.style.top_right.to_string())?;
-            window.write_str(self.y + self.height - 1, self.x, &self.style.bottom_left.to_string())?;
+            window.write_str(
+                self.y,
+                self.x + self.width - 1,
+                &self.style.top_right.to_string(),
+            )?;
+            window.write_str(
+                self.y + self.height - 1,
+                self.x,
+                &self.style.bottom_left.to_string(),
+            )?;
             window.write_str(
                 self.y + self.height - 1,
                 self.x + self.width - 1,
@@ -172,3 +201,4 @@ impl Widget for Container {
         (self.x, self.y)
     }
 }
+

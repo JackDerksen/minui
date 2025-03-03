@@ -2,18 +2,18 @@ use crate::{ColorPair, Error, Result};
 use std::cmp::{max, min};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Cell {
-    pub ch: char,
-    pub colors: Option<ColorPair>,
-    modified: bool,
+pub(crate) struct Cell {
+    pub(crate) ch: char,
+    pub(crate) colors: Option<ColorPair>,
+    pub(crate) modified: bool,
 }
 
 #[derive(Debug)]
-pub struct BufferChange {
-    pub y: u16,
-    pub x: u16,
-    pub text: String,
-    pub colors: Option<ColorPair>,
+pub(crate) struct BufferChange {
+    pub(crate) y: u16,
+    pub(crate) x: u16,
+    pub(crate) text: String,
+    pub(crate) colors: Option<ColorPair>,
 }
 
 impl Cell {
@@ -45,7 +45,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(width: u16, height: u16) -> Self {
+    pub(crate) fn new(width: u16, height: u16) -> Self {
         let size = width as usize * height as usize;
         let current = vec![Cell::empty(); size];
         let previous = vec![Cell::empty(); size];
@@ -70,7 +70,7 @@ impl Buffer {
         (y as usize * self.width as usize) + x as usize
     }
 
-    pub fn write_char(
+    pub(crate) fn write_char(
         &mut self,
         y: u16,
         x: u16,
@@ -109,7 +109,13 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn write_str(&mut self, y: u16, x: u16, s: &str, colors: Option<ColorPair>) -> Result<()> {
+    pub(crate) fn write_str(
+        &mut self,
+        y: u16,
+        x: u16,
+        s: &str,
+        colors: Option<ColorPair>,
+    ) -> Result<()> {
         if x >= self.width || y >= self.height {
             return Err(Error::BufferSizeError {
                 x,
@@ -130,7 +136,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         for cell in &mut self.current {
             if cell.ch != ' ' || cell.colors.is_some() {
                 *cell = Cell::empty();
@@ -141,7 +147,7 @@ impl Buffer {
         self.dirty_max_y = Some(self.height - 1);
     }
 
-    pub fn clear_line(&mut self, y: u16) -> Result<()> {
+    pub(crate) fn clear_line(&mut self, y: u16) -> Result<()> {
         if y >= self.height {
             return Err(Error::LineOutOfBoundsError {
                 y,
@@ -172,7 +178,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn process_changes(&mut self) -> Vec<BufferChange> {
+    pub(crate) fn process_changes(&mut self) -> Vec<BufferChange> {
         let mut changes = Vec::new();
 
         // Only process rows in the dirty region

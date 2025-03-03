@@ -1,5 +1,6 @@
+use super::{Alignment, BorderChars, TextBlock, Widget};
+use crate::widgets::common::WindowView;
 use crate::{Color, ColorPair, Window};
-use super::{Alignment, BorderChars, TextBlock, Widget, WindowView};
 
 pub struct Panel {
     x: u16,
@@ -15,34 +16,34 @@ pub struct Panel {
     header_border_color: Option<ColorPair>,
     body_border_color: Option<ColorPair>,
     padding: u16,
-    alignment: Alignment,  // For the body only; header will always be centered
+    alignment: Alignment, // For the body only; header will always be centered
     auto_size: bool,
 }
 
-pub enum PanelContent {
+pub(crate) enum PanelContent {
     Text(String),
     Block(Box<TextBlock>),
 }
 
 impl Panel {
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-       Self {
-           x,
-           y,
-           width,
-           height,
-           header_text: "".to_string(),
-           body_content: PanelContent::Text(String::new()),
-           header_style: BorderChars::single_line(),
-           body_style: BorderChars::single_line(),
-           header_color: None,
-           body_color: None,
-           header_border_color: None,
-           body_border_color: None,
-           padding: 1,
-           alignment: Alignment::Left,
-           auto_size: true, // Auto sizes the panel by default
-       }
+        Self {
+            x,
+            y,
+            width,
+            height,
+            header_text: "".to_string(),
+            body_content: PanelContent::Text(String::new()),
+            header_style: BorderChars::single_line(),
+            body_style: BorderChars::single_line(),
+            header_color: None,
+            body_color: None,
+            header_border_color: None,
+            body_border_color: None,
+            padding: 1,
+            alignment: Alignment::Left,
+            auto_size: true, // Auto sizes the panel by default
+        }
     }
 
     pub fn with_header(mut self, text: impl Into<String>) -> Self {
@@ -94,7 +95,6 @@ impl Panel {
         self
     }
 
-
     pub fn with_body_border_color(mut self, color: Color) -> Self {
         self.body_border_color = Some(ColorPair::new(color, Color::Transparent));
         self
@@ -130,14 +130,13 @@ impl Panel {
         let body_width = match &self.body_content {
             PanelContent::Text(text) => {
                 let body_lines: Vec<&str> = text.lines().collect();
-                body_lines.iter()
+                body_lines
+                    .iter()
                     .map(|line| line.len() as u16)
                     .max()
                     .unwrap_or(0)
             }
-            PanelContent::Block(block) => {
-                block.get_size().0
-            }
+            PanelContent::Block(block) => block.get_size().0,
         };
 
         let max_body_width = body_width + (self.padding * 2) + 2;
@@ -171,29 +170,66 @@ impl Widget for Panel {
     fn draw(&self, window: &mut dyn Window) -> crate::Result<()> {
         // Draw header section
         if let Some(color) = self.header_border_color {
-            window.write_str_colored(self.y, self.x, &self.header_style.top_left.to_string(), color)?;
-            window.write_str_colored(self.y, self.x + self.width - 1, &self.header_style.top_right.to_string(), color)?;
+            window.write_str_colored(
+                self.y,
+                self.x,
+                &self.header_style.top_left.to_string(),
+                color,
+            )?;
+            window.write_str_colored(
+                self.y,
+                self.x + self.width - 1,
+                &self.header_style.top_right.to_string(),
+                color,
+            )?;
 
             // Top border
             for i in 1..self.width - 1 {
-                window.write_str_colored(self.y, self.x + i, &self.header_style.horizontal.to_string(), color)?;
+                window.write_str_colored(
+                    self.y,
+                    self.x + i,
+                    &self.header_style.horizontal.to_string(),
+                    color,
+                )?;
             }
 
             // Header vertical borders
-            window.write_str_colored(self.y + 1, self.x, &self.header_style.vertical.to_string(), color)?;
-            window.write_str_colored(self.y + 1, self.x + self.width - 1, &self.header_style.vertical.to_string(), color)?;
+            window.write_str_colored(
+                self.y + 1,
+                self.x,
+                &self.header_style.vertical.to_string(),
+                color,
+            )?;
+            window.write_str_colored(
+                self.y + 1,
+                self.x + self.width - 1,
+                &self.header_style.vertical.to_string(),
+                color,
+            )?;
         } else {
             window.write_str(self.y, self.x, &self.header_style.top_left.to_string())?;
-            window.write_str(self.y, self.x + self.width - 1, &self.header_style.top_right.to_string())?;
+            window.write_str(
+                self.y,
+                self.x + self.width - 1,
+                &self.header_style.top_right.to_string(),
+            )?;
 
             // Top border
             for i in 1..self.width - 1 {
-                window.write_str(self.y, self.x + i, &self.header_style.horizontal.to_string())?;
+                window.write_str(
+                    self.y,
+                    self.x + i,
+                    &self.header_style.horizontal.to_string(),
+                )?;
             }
 
             // Header vertical borders
             window.write_str(self.y + 1, self.x, &self.header_style.vertical.to_string())?;
-            window.write_str(self.y + 1, self.x + self.width - 1, &self.header_style.vertical.to_string())?;
+            window.write_str(
+                self.y + 1,
+                self.x + self.width - 1,
+                &self.header_style.vertical.to_string(),
+            )?;
         }
 
         // Draw centered header text
@@ -208,16 +244,43 @@ impl Widget for Panel {
 
         // Header bottom border (with side edge intersections)
         if let Some(color) = self.header_border_color {
-            window.write_str_colored(self.y + 2, self.x, &self.header_style.intersect_left.to_string(), color)?;
-            window.write_str_colored(self.y + 2, self.x + self.width - 1, &self.header_style.intersect_right.to_string(), color)?;
+            window.write_str_colored(
+                self.y + 2,
+                self.x,
+                &self.header_style.intersect_left.to_string(),
+                color,
+            )?;
+            window.write_str_colored(
+                self.y + 2,
+                self.x + self.width - 1,
+                &self.header_style.intersect_right.to_string(),
+                color,
+            )?;
             for i in 1..self.width - 1 {
-                window.write_str_colored(self.y + 2, self.x + i, &self.header_style.horizontal.to_string(), color)?;
+                window.write_str_colored(
+                    self.y + 2,
+                    self.x + i,
+                    &self.header_style.horizontal.to_string(),
+                    color,
+                )?;
             }
         } else {
-            window.write_str(self.y + 2, self.x, &self.header_style.intersect_left.to_string())?;
-            window.write_str(self.y + 2, self.x + self.width - 1, &self.header_style.intersect_right.to_string())?;
+            window.write_str(
+                self.y + 2,
+                self.x,
+                &self.header_style.intersect_left.to_string(),
+            )?;
+            window.write_str(
+                self.y + 2,
+                self.x + self.width - 1,
+                &self.header_style.intersect_right.to_string(),
+            )?;
             for i in 1..self.width - 1 {
-                window.write_str(self.y + 2, self.x + i, &self.header_style.horizontal.to_string())?;
+                window.write_str(
+                    self.y + 2,
+                    self.x + i,
+                    &self.header_style.horizontal.to_string(),
+                )?;
             }
         }
 
@@ -228,13 +291,31 @@ impl Widget for Panel {
         // Body vertical borders
         if let Some(color) = self.body_border_color {
             for i in 0..inner_height {
-                window.write_str_colored(body_start_y + i, self.x, &self.body_style.vertical.to_string(), color)?;
-                window.write_str_colored(body_start_y + i, self.x + self.width - 1, &self.body_style.vertical.to_string(), color)?;
+                window.write_str_colored(
+                    body_start_y + i,
+                    self.x,
+                    &self.body_style.vertical.to_string(),
+                    color,
+                )?;
+                window.write_str_colored(
+                    body_start_y + i,
+                    self.x + self.width - 1,
+                    &self.body_style.vertical.to_string(),
+                    color,
+                )?;
             }
         } else {
             for i in 0..inner_height {
-                window.write_str(body_start_y + i, self.x, &self.body_style.vertical.to_string())?;
-                window.write_str(body_start_y + i, self.x + self.width - 1, &self.body_style.vertical.to_string())?;
+                window.write_str(
+                    body_start_y + i,
+                    self.x,
+                    &self.body_style.vertical.to_string(),
+                )?;
+                window.write_str(
+                    body_start_y + i,
+                    self.x + self.width - 1,
+                    &self.body_style.vertical.to_string(),
+                )?;
             }
         }
 
@@ -276,33 +357,42 @@ impl Widget for Panel {
 
         // Bottom border
         if let Some(color) = self.body_border_color {
-            window.write_str_colored(self.y + self.height - 1, self.x, &self.body_style.bottom_left.to_string(), color)?;
+            window.write_str_colored(
+                self.y + self.height - 1,
+                self.x,
+                &self.body_style.bottom_left.to_string(),
+                color,
+            )?;
             window.write_str_colored(
                 self.y + self.height - 1,
                 self.x + self.width - 1,
                 &self.body_style.bottom_right.to_string(),
-                color
+                color,
             )?;
             for i in 1..self.width - 1 {
                 window.write_str_colored(
                     self.y + self.height - 1,
                     self.x + i,
                     &self.body_style.horizontal.to_string(),
-                    color
+                    color,
                 )?;
             }
         } else {
-            window.write_str(self.y + self.height - 1, self.x, &self.body_style.bottom_left.to_string())?;
+            window.write_str(
+                self.y + self.height - 1,
+                self.x,
+                &self.body_style.bottom_left.to_string(),
+            )?;
             window.write_str(
                 self.y + self.height - 1,
                 self.x + self.width - 1,
-                &self.body_style.bottom_right.to_string()
+                &self.body_style.bottom_right.to_string(),
             )?;
             for i in 1..self.width - 1 {
                 window.write_str(
                     self.y + self.height - 1,
                     self.x + i,
-                    &self.body_style.horizontal.to_string()
+                    &self.body_style.horizontal.to_string(),
                 )?;
             }
         }
