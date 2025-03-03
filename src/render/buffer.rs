@@ -78,7 +78,12 @@ impl Buffer {
         colors: Option<ColorPair>,
     ) -> Result<()> {
         if x >= self.width || y >= self.height {
-            return Err(Error::WindowError("Position out of bounds".into()));
+            return Err(Error::BufferSizeError {
+                x,
+                y,
+                width: self.width,
+                height: self.height,
+            });
         }
 
         let idx = self.coords_to_index(x, y);
@@ -106,7 +111,12 @@ impl Buffer {
 
     pub fn write_str(&mut self, y: u16, x: u16, s: &str, colors: Option<ColorPair>) -> Result<()> {
         if x >= self.width || y >= self.height {
-            return Err(Error::WindowError("Position out of bounds".into()));
+            return Err(Error::BufferSizeError {
+                x,
+                y,
+                width: self.width,
+                height: self.height,
+            });
         }
 
         for (i, ch) in s.chars().enumerate() {
@@ -133,7 +143,10 @@ impl Buffer {
 
     pub fn clear_line(&mut self, y: u16) -> Result<()> {
         if y >= self.height {
-            return Err(Error::WindowError("Line number out of bounds".into()));
+            return Err(Error::LineOutOfBoundsError {
+                y,
+                height: self.height,
+            });
         }
 
         let start_idx = self.coords_to_index(0, y);

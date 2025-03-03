@@ -38,6 +38,14 @@ pub enum Error {
     #[error("Buffer operation failed: {0}")]
     BufferError(String),
 
+    #[error("Attempt to write at ({x},{y}) exceeds buffer size {width}x{height}")]
+    BufferSizeError {
+        x: u16,
+        y: u16,
+        width: u16,
+        height: u16,
+    },
+
     /// Widget-related errors
     #[error("Widget error: {0}")]
     WidgetError(String),
