@@ -10,7 +10,7 @@ pub enum Error {
     #[error("Window operation failed: {0}")]
     WindowError(String),
 
-    /// Position out of bounds errors (more specific than generic WindowError)
+    /// Position out of bounds errors
     #[error("Position ({x}, {y}) is outside window bounds of ({width}, {height})")]
     OutOfBoundsError {
         x: u16,
@@ -18,6 +18,21 @@ pub enum Error {
         width: u16,
         height: u16,
     },
+
+    /// Position error for widgets with an area of (x1, y1) - (x2, y2)
+    #[error("Box position (x1: {x2}, y1: {y1}) - (x2: {x2}, y2: {y2}) is outside window bounds of ({width}, {height})")]
+    BoxOutOfBoundsError {
+        x1: u16,
+        y1: u16,
+        x2: u16,
+        y2: u16,
+        width: u16,
+        height: u16,
+    },
+
+    /// Line number out of bounds
+    #[error("Line at y: {y} out of bounds for window height of {height}")]
+    LineOutOfBoundsError { y: u16, height: u16 },
 
     /// Buffer-related errors
     #[error("Buffer operation failed: {0}")]

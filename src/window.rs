@@ -113,9 +113,12 @@ impl TerminalWindow {
 impl Window for TerminalWindow {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         if y >= self.height || x >= self.width {
-            return Err(Error::WindowError(
-                "Position out of bounds. Consider resizing your window".into(),
-            ));
+            return Err(Error::OutOfBoundsError {
+                x,
+                y,
+                width: self.width,
+                height: self.height,
+            });
         }
 
         self.buffer.write_str(y, x, s, None)?;
@@ -128,9 +131,12 @@ impl Window for TerminalWindow {
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
         if y >= self.height || x >= self.width {
-            return Err(Error::WindowError(
-                "Position out of bounds. Consider resizing your window".into(),
-            ));
+            return Err(Error::OutOfBoundsError {
+                x,
+                y,
+                width: self.width,
+                height: self.height,
+            });
         }
 
         self.buffer.write_str(y, x, s, Some(colors))?;
@@ -156,7 +162,10 @@ impl Window for TerminalWindow {
 
     fn clear_line(&mut self, y: u16) -> Result<()> {
         if y >= self.height {
-            return Err(Error::WindowError("Line number out of bounds".into()));
+            return Err(Error::LineOutOfBoundsError {
+                y,
+                height: self.height,
+            });
         }
 
         self.buffer.clear_line(y)?;
@@ -170,7 +179,14 @@ impl Window for TerminalWindow {
     fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()> {
         // Validate all coordinates are within bounds
         if x1 >= self.width || x2 >= self.width || y1 >= self.height || y2 >= self.height {
-            return Err(Error::WindowError("Area coordinates out of bounds".into()));
+            return Err(Error::BoxOutOfBoundsError {
+                x1,
+                y1,
+                x2,
+                y2,
+                width: self.width,
+                height: self.height,
+            });
         }
 
         let (start_y, end_y) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
@@ -203,4 +219,3 @@ impl Drop for TerminalWindow {
         let _ = self.flush();
     }
 }
-
