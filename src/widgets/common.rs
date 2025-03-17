@@ -137,4 +137,3 @@ impl<'a> Window for WindowView<'a> {
             .clear_area(parent_y1, parent_x1, parent_y2, parent_x2)
     }
 }
-

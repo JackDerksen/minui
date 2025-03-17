@@ -1,4 +1,4 @@
-use crossterm::style::{Color as CrosstermColor};
+use crossterm::style::Color as CrosstermColor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
@@ -10,7 +10,7 @@ pub enum Color {
     Magenta,
     Cyan,
     White,
-    Transparent // No color (terminal default)
+    Transparent, // No color (terminal default)
 }
 
 impl Color {
@@ -40,3 +40,4 @@ impl ColorPair {
         Self { fg, bg }
     }
 }
+

@@ -1,5 +1,5 @@
-use crate::{Window, Result, ColorPair, Color};
 use super::Widget;
+use crate::{Color, ColorPair, Result, Window};
 
 pub struct Label {
     x: u16,
@@ -101,3 +101,4 @@ impl Widget for Label {
         (self.x, self.y)
     }
 }
+

@@ -1,6 +1,6 @@
-use std::time::Duration;
-use crossterm::event::{self, Event as CrosstermEvent, KeyCode};
 use crate::{Event, Result};
+use crossterm::event::{self, Event as CrosstermEvent, KeyCode};
+use std::time::Duration;
 
 pub struct KeyboardHandler {
     poll_rate: Duration,
@@ -57,3 +57,4 @@ impl Default for KeyboardHandler {
         Self::new()
     }
 }
+

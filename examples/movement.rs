@@ -1,6 +1,5 @@
-use minui::{TerminalWindow, Event, Color, ColorPair, Result, Window};
-use std::time::Duration;
 use minui::input::KeyboardHandler;
+use minui::{Color, ColorPair, Event, Result, TerminalWindow, Window};
 
 fn main() -> Result<()> {
     let mut window = TerminalWindow::new()?;
@@ -9,8 +8,8 @@ fn main() -> Result<()> {
     window.set_auto_flush(false);
     window.clear_screen()?;
 
-    let mut x = 5u16;
-    let mut y = 0u16;
+    let mut x = 5u16; // Starting x
+    let mut y = 0u16; // Starting y
     let player = '@';
     let colors = ColorPair::new(Color::Green, Color::Black);
 
@@ -18,8 +17,8 @@ fn main() -> Result<()> {
     draw_game_state(&mut window, x, y, player, colors)?;
 
     loop {
-        // Wait between input checks
-        std::thread::sleep(Duration::from_millis(50));
+        // Optional: wait between input checks
+        // std::thread::sleep(Duration::from_millis(50));
 
         if let Some(event) = keyboard.poll()? {
             let mut redraw = true;
