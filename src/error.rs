@@ -20,7 +20,7 @@ pub enum Error {
     },
 
     /// Position error for widgets with an area of (x1, y1) - (x2, y2)
-    #[error("Box position (x1: {x2}, y1: {y1}) - (x2: {x2}, y2: {y2}) is outside window bounds of ({width}, {height})")]
+    #[error("Box position (x1: {x1}, y1: {y1}) - (x2: {x2}, y2: {y2}) is outside window bounds of ({width}, {height})")]
     BoxOutOfBoundsError {
         x1: u16,
         y1: u16,
@@ -50,13 +50,44 @@ pub enum Error {
     #[error("Widget error: {0}")]
     WidgetError(String),
 
+    /// Widget size/position validation errors
+    #[error("Widget validation failed: {message}")]
+    WidgetValidationError { message: String },
+
     /// Input handling errors
-    #[error("Invalid Input: {0}")]
+    #[error("Input error: {0}")]
     InputError(String),
+
+    /// Color-related errors
+    #[error("Color error: {0}")]
+    ColorError(String),
+
+    /// Rendering errors
+    #[error("Render error: {0}")]
+    RenderError(String),
 
     /// Underlying I/O errors from the terminal
     #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),
+}
+
+impl Error {
+    /// Create a widget validation error with context
+    pub fn widget_validation(message: impl Into<String>) -> Self {
+        Self::WidgetValidationError {
+            message: message.into(),
+        }
+    }
+
+    /// Create a render error with context
+    pub fn render(message: impl Into<String>) -> Self {
+        Self::RenderError(message.into())
+    }
+
+    /// Create a buffer error with context
+    pub fn buffer(message: impl Into<String>) -> Self {
+        Self::BufferError(message.into())
+    }
 }
 
 /// Convenience type alias for Results using the custom Error type.

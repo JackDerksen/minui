@@ -1,46 +1,200 @@
-//! Demonstrates how to define and use custom color combinations.
+//! Demonstrates the RGB color capabilities with beautiful gradients and color transitions.
 
-use minui::{Window, Event, Result, Color, ColorPair, define_colors, TerminalWindow};
+use minui::{define_colors, Color, ColorPair, Event, Result, TerminalWindow, Window};
 
-// Define a custom color scheme using the define_colors! macro.
-// This creates constant ColorPair values that can be used throughout the program.
+// Define some custom RGB color schemes
 define_colors! {
-    // Color pairs for UI status messages
-    pub const UI_WARNING = (Color::Yellow, Color::Black);
-    pub const UI_ERROR = (Color::Red, Color::Black);
-    pub const UI_SUCCESS = (Color::Green, Color::Black);
+    // Sunset theme
+    pub const SUNSET_ORANGE = (Color::rgb(255, 165, 0), Color::Black);
+    pub const SUNSET_RED = (Color::rgb(255, 69, 0), Color::Black);
+    pub const SUNSET_PURPLE = (Color::rgb(148, 0, 211), Color::Black);
 
-    // Color pairs for different players or game elements
-    pub const PLAYER_ONE = (Color::Black, Color::Cyan);
-    pub const PLAYER_TWO = (Color::Black, Color::Magenta);
+    // Ocean theme
+    pub const OCEAN_DEEP = (Color::rgb(0, 105, 148), Color::Black);
+    pub const OCEAN_MEDIUM = (Color::rgb(0, 191, 255), Color::Black);
+    pub const OCEAN_LIGHT = (Color::rgb(173, 216, 230), Color::Black);
+
+    // Forest theme
+    pub const FOREST_DARK = (Color::rgb(34, 139, 34), Color::Black);
+    pub const FOREST_BRIGHT = (Color::rgb(124, 252, 0), Color::Black);
+
+    // Neon theme
+    pub const NEON_PINK = (Color::rgb(255, 20, 147), Color::Black);
+    pub const NEON_CYAN = (Color::rgb(0, 255, 255), Color::Black);
+    pub const NEON_GREEN = (Color::rgb(57, 255, 20), Color::Black);
 }
 
-/// Example showing how to create and use custom color schemes.
+/// Example showing RGB colors, gradients, and custom color schemes.
 ///
 /// This example demonstrates:
-/// 1. Defining reusable color combinations
-/// 2. Using the define_colors! macro
-/// 3. Creating semantic color constants
-/// 4. Applying consistent colors across an application
+/// 1. Creating RGB colors with custom values
+/// 2. Generating smooth color gradients
+/// 3. Using predefined color schemes
+/// 4. Creating visual effects with colors
 fn main() -> Result<()> {
     let mut window = TerminalWindow::new()?;
-    window.clear()?;
+    window.clear_screen()?;
 
-    window.write_str(0, 0, "Custom color demo (press 'q' to quit)")?;
+    let (width, height) = window.get_size();
 
-    // Use the predefined color pairs for consistent styling
-    window.write_str_colored(2, 0, "Warning message", UI_WARNING)?;
-    window.write_str_colored(3, 0, "Error message", UI_ERROR)?;
-    window.write_str_colored(4, 0, "Success message", UI_SUCCESS)?;
-    window.write_str_colored(5, 0, "Player 1", PLAYER_ONE)?;
-    window.write_str_colored(6, 0, "Player 2", PLAYER_TWO)?;
+    // Title
+    window.write_str(0, 0, "RGB Color & Gradient Demo (press 'q' to quit)")?;
+
+    // Create a horizontal rainbow gradient
+    draw_rainbow_gradient(&mut window, 2, width)?;
+
+    // Create themed color bars
+    draw_color_themes(&mut window, 6)?;
+
+    // Create a vertical gradient
+    draw_vertical_gradient(&mut window, 12, width, height)?;
+
+    // Create some color blocks with labels
+    draw_color_blocks(&mut window, height)?;
 
     loop {
         match window.get_input()? {
-            Event::Character('q') => break,
+            Event::Character('q') | Event::Escape => break,
             _ => continue,
         }
     }
 
     Ok(())
 }
+
+fn draw_rainbow_gradient(window: &mut TerminalWindow, start_y: u16, width: u16) -> Result<()> {
+    window.write_str(start_y, 0, "Rainbow Gradient:")?;
+
+    let gradient_y = start_y + 1;
+    let gradient_width = (width - 2).min(60); // Limit width for better display
+
+    for x in 0..gradient_width {
+        // Create a rainbow effect by cycling through hue
+        let hue = (x as f32 / gradient_width as f32) * 360.0;
+        let (r, g, b) = hsl_to_rgb(hue, 1.0, 0.5);
+
+        let color = ColorPair::new(Color::rgb(r, g, b), Color::Black);
+        window.write_str_colored(gradient_y, x + 1, "█", color)?;
+    }
+
+    Ok(())
+}
+
+fn draw_color_themes(window: &mut TerminalWindow, start_y: u16) -> Result<()> {
+    window.write_str(start_y, 0, "Color Themes:")?;
+
+    // Sunset theme
+    window.write_str(start_y + 1, 0, "Sunset: ")?;
+    window.write_str_colored(start_y + 1, 8, "█████", SUNSET_ORANGE)?;
+    window.write_str_colored(start_y + 1, 13, "█████", SUNSET_RED)?;
+    window.write_str_colored(start_y + 1, 18, "█████", SUNSET_PURPLE)?;
+
+    // Ocean theme
+    window.write_str(start_y + 2, 0, "Ocean:  ")?;
+    window.write_str_colored(start_y + 2, 8, "█████", OCEAN_DEEP)?;
+    window.write_str_colored(start_y + 2, 13, "█████", OCEAN_MEDIUM)?;
+    window.write_str_colored(start_y + 2, 18, "█████", OCEAN_LIGHT)?;
+
+    // Forest theme
+    window.write_str(start_y + 3, 0, "Forest: ")?;
+    window.write_str_colored(start_y + 3, 8, "█████", FOREST_DARK)?;
+    window.write_str_colored(start_y + 3, 13, "█████", FOREST_BRIGHT)?;
+
+    // Neon theme
+    window.write_str(start_y + 4, 0, "Neon:   ")?;
+    window.write_str_colored(start_y + 4, 8, "█████", NEON_PINK)?;
+    window.write_str_colored(start_y + 4, 13, "█████", NEON_CYAN)?;
+    window.write_str_colored(start_y + 4, 18, "█████", NEON_GREEN)?;
+
+    Ok(())
+}
+
+fn draw_vertical_gradient(
+    window: &mut TerminalWindow,
+    start_y: u16,
+    width: u16,
+    height: u16,
+) -> Result<()> {
+    if start_y + 10 > height {
+        return Ok(()); // Not enough space
+    }
+
+    window.write_str(start_y, 0, "Vertical Blue-to-Red Gradient:")?;
+
+    let gradient_height = (height - start_y - 2).min(8);
+    let gradient_width = (width - 2).min(30);
+
+    for y in 0..gradient_height {
+        let ratio = y as f32 / gradient_height as f32;
+
+        // Interpolate from blue to red
+        let r = (ratio * 255.0) as u8;
+        let g = 0;
+        let b = ((1.0 - ratio) * 255.0) as u8;
+
+        let color = ColorPair::new(Color::rgb(r, g, b), Color::Black);
+
+        for x in 0..gradient_width {
+            window.write_str_colored(start_y + 1 + y, x + 1, "█", color)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn draw_color_blocks(window: &mut TerminalWindow, height: u16) -> Result<()> {
+    let start_y = height.saturating_sub(6);
+
+    window.write_str(start_y, 0, "RGB Color Examples:")?;
+
+    // Show some specific RGB values with labels
+    let colors = [
+        (Color::rgb(255, 0, 0), "Pure Red (255,0,0)"),
+        (Color::rgb(0, 255, 0), "Pure Green (0,255,0)"),
+        (Color::rgb(0, 0, 255), "Pure Blue (0,0,255)"),
+        (Color::rgb(255, 255, 0), "Yellow (255,255,0)"),
+        (Color::rgb(255, 0, 255), "Magenta (255,0,255)"),
+        (Color::rgb(0, 255, 255), "Cyan (0,255,255)"),
+    ];
+
+    for (i, (color, label)) in colors.iter().enumerate() {
+        let y = start_y + 1 + (i as u16 / 3);
+        let x = (i % 3) * 25;
+
+        let color_pair = ColorPair::new(*color, Color::Black);
+        window.write_str_colored(y, x as u16, "███ ", color_pair)?;
+        window.write_str(y, x as u16 + 4, label)?;
+    }
+
+    Ok(())
+}
+
+/// Convert HSL (Hue, Saturation, Lightness) to RGB
+/// This helps create smooth color gradients
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let h = h / 60.0;
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - (h % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+
+    let (r_prime, g_prime, b_prime) = if h < 1.0 {
+        (c, x, 0.0)
+    } else if h < 2.0 {
+        (x, c, 0.0)
+    } else if h < 3.0 {
+        (0.0, c, x)
+    } else if h < 4.0 {
+        (0.0, x, c)
+    } else if h < 5.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    let r = ((r_prime + m) * 255.0) as u8;
+    let g = ((g_prime + m) * 255.0) as u8;
+    let b = ((b_prime + m) * 255.0) as u8;
+
+    (r, g, b)
+}
+

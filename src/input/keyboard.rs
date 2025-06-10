@@ -24,31 +24,54 @@ impl KeyboardHandler {
     }
 
     /// Poll for keyboard input and return an Option<Event>
+    /// This is non-blocking and returns None if no input is available
     pub fn poll(&self) -> Result<Option<Event>> {
-        // Only poll for a very short time to prevent multiple reads
         if event::poll(self.poll_rate)? {
             if let CrosstermEvent::Key(key) = event::read()? {
-                // Immediately drain any pending events to prevent double-processing
+                // Drain any additional pending events to prevent double-processing
                 while event::poll(Duration::from_millis(0))? {
                     let _ = event::read()?;
                 }
-
-                return Ok(Some(match key.code {
-                    KeyCode::Char(c) => Event::Character(c),
-                    KeyCode::Up => Event::KeyUp,
-                    KeyCode::Down => Event::KeyDown,
-                    KeyCode::Left => Event::KeyLeft,
-                    KeyCode::Right => Event::KeyRight,
-                    KeyCode::Delete => Event::Delete,
-                    KeyCode::Backspace => Event::Backspace,
-                    KeyCode::Enter => Event::Enter,
-                    KeyCode::F(n) => Event::FunctionKey(n),
-                    KeyCode::Esc => Event::Escape,
-                    _ => Event::Unknown,
-                }));
+                return Ok(Some(self.convert_key_event(key.code)));
             }
         }
         Ok(None)
+    }
+
+    /// Blocking input - waits for input with a timeout
+    /// This replaces the get_input method from TerminalWindow
+    pub fn get_input(&self, timeout: Duration) -> Result<Event> {
+        if event::poll(timeout)? {
+            if let CrosstermEvent::Key(key) = event::read()? {
+                return Ok(self.convert_key_event(key.code));
+            }
+        }
+        Ok(Event::Unknown)
+    }
+
+    /// Blocking input without timeout - waits indefinitely
+    pub fn wait_for_input(&self) -> Result<Event> {
+        loop {
+            if let CrosstermEvent::Key(key) = event::read()? {
+                return Ok(self.convert_key_event(key.code));
+            }
+        }
+    }
+
+    fn convert_key_event(&self, key_code: KeyCode) -> Event {
+        match key_code {
+            KeyCode::Char(c) => Event::Character(c),
+            KeyCode::Up => Event::KeyUp,
+            KeyCode::Down => Event::KeyDown,
+            KeyCode::Left => Event::KeyLeft,
+            KeyCode::Right => Event::KeyRight,
+            KeyCode::Delete => Event::Delete,
+            KeyCode::Backspace => Event::Backspace,
+            KeyCode::Enter => Event::Enter,
+            KeyCode::F(n) => Event::FunctionKey(n),
+            KeyCode::Esc => Event::Escape,
+            _ => Event::Unknown,
+        }
     }
 }
 
@@ -57,4 +80,3 @@ impl Default for KeyboardHandler {
         Self::new()
     }
 }
-

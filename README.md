@@ -18,19 +18,19 @@ MinUI was born from a desire to create terminal-based games in Rust, specificall
 
 MinUI is in early development, and I'm actively working on adding more features:
 
-- [x] Color support
+- [x] Full color support
 - [x] Simple and customizable widget system
-    - [x] Container widget
-    - [x] Label widget
-    - [x] Text block widget
-    - [x] Panel widget
-    - [ ] Table widget
-    - [ ] Input widget
-    - [ ] Predefined widget layouts
+  - [x] Container widget
+  - [x] Label widget
+  - [x] Text block widget
+  - [x] Panel widget
+  - [ ] Table widget
+  - [ ] Input widget
+  - [ ] Predefined widget layouts
 - [x] Buffered drawing for smooth and efficient updates
 - [ ] Built-in game loop utilities
 - [ ] Simplified sprite and map management utilities
-- [ ] Easy character movement support
+- [x] Easy character movement support
 - [ ] Cell management with collision detection options
 - [ ] Support for various input methods (custom key binds, mouse support, etc.)
 
@@ -39,6 +39,7 @@ MinUI is in early development, and I'm actively working on adding more features:
 **For now, you'll have to clone this repository and build your games/applications locally.**
 
 Once MinUI is formally released as a crate, you could add it to your Cargo.toml like so:
+
 ```toml
 [dependencies]
 minui = "0.1.0"
@@ -99,10 +100,11 @@ MinUI also has a focus on simplifying the task of building TUI applications. Her
 
 ## Games Built with MinUI
 
-- *Coming Soon: [Tet.rs](https://github.com/JackDerksen/tet.rs)*
+- _Coming Soon: [Tet.rs](https://github.com/JackDerksen/tet.rs)_
 
 ## Acknowledgments
 
 Built using:
+
 - [crossterm](https://github.com/crossterm-rs/crossterm) - Cross-platform terminal manipulation library
 - [thiserror](https://github.com/dtolnay/thiserror) - Error handling

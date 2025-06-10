@@ -1,4 +1,4 @@
-use crate::{ColorPair, Error, Result};
+use crate::{ColorPair, Result};
 use std::cmp::{max, min};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -40,7 +40,7 @@ pub struct Buffer {
     height: u16,
     current: Vec<Cell>,       // What should be displayed
     previous: Vec<Cell>,      // What was last rendered
-    dirty_min_y: Option<u16>, // Track dirty region
+    dirty_min_y: Option<u16>, // For tracking the dirty region
     dirty_max_y: Option<u16>,
 }
 
@@ -60,12 +60,6 @@ impl Buffer {
         }
     }
 
-    /* Currently unused but will probably come in handy later on
-    fn size(&self) -> (u16, u16) {
-        (self.width, self.height)
-    }
-    */
-
     fn coords_to_index(&self, x: u16, y: u16) -> usize {
         (y as usize * self.width as usize) + x as usize
     }
@@ -78,7 +72,7 @@ impl Buffer {
         colors: Option<ColorPair>,
     ) -> Result<()> {
         if x >= self.width || y >= self.height {
-            return Err(Error::BufferSizeError {
+            return Err(crate::Error::BufferSizeError {
                 x,
                 y,
                 width: self.width,
@@ -117,7 +111,7 @@ impl Buffer {
         colors: Option<ColorPair>,
     ) -> Result<()> {
         if x >= self.width || y >= self.height {
-            return Err(Error::BufferSizeError {
+            return Err(crate::Error::BufferSizeError {
                 x,
                 y,
                 width: self.width,
@@ -149,7 +143,7 @@ impl Buffer {
 
     pub(crate) fn clear_line(&mut self, y: u16) -> Result<()> {
         if y >= self.height {
-            return Err(Error::LineOutOfBoundsError {
+            return Err(crate::Error::LineOutOfBoundsError {
                 y,
                 height: self.height,
             });
@@ -190,48 +184,86 @@ impl Buffer {
                     let current = &self.current[idx];
                     let previous = &self.previous[idx];
 
-                    if current.modified || current != previous {
-                        // Find run of similar cells for batch update
-                        let mut run_length = 1;
-                        let mut run_str = String::new();
-                        run_str.push(current.ch);
+                    // Skip unchanged cells
+                    if !current.modified && current == previous {
+                        x += 1;
+                        continue;
+                    }
 
-                        while x + run_length < self.width {
-                            let next_idx = self.coords_to_index(x + run_length, y);
-                            let next_cell = &self.current[next_idx];
-                            if next_cell.colors != current.colors
-                                || !next_cell.modified
-                                || next_cell.ch != current.ch
-                            {
-                                break;
-                            }
-                            run_str.push(next_cell.ch);
-                            run_length += 1;
+                    // Find run of consecutive modified cells with same colors
+                    let mut run_length = 1;
+                    let mut run_str = String::with_capacity(self.width as usize);
+                    run_str.push(current.ch);
+
+                    // Look ahead for similar cells to batch
+                    while x + run_length < self.width {
+                        let next_idx = self.coords_to_index(x + run_length, y);
+                        let next_cell = &self.current[next_idx];
+                        let next_prev = &self.previous[next_idx];
+
+                        // Stop if colors differ or cell is unchanged
+                        if next_cell.colors != current.colors
+                            || (!next_cell.modified && next_cell == next_prev)
+                        {
+                            break;
                         }
 
-                        changes.push(BufferChange {
-                            y,
-                            x,
-                            text: run_str,
-                            colors: current.colors,
-                        });
-
-                        x += run_length;
-                    } else {
-                        x += 1;
+                        run_str.push(next_cell.ch);
+                        run_length += 1;
                     }
+
+                    // Always create change for modified content, including spaces
+                    // (spaces are important for clearing previously occupied cells)
+                    changes.push(BufferChange {
+                        y,
+                        x,
+                        text: run_str,
+                        colors: current.colors,
+                    });
+
+                    x += run_length;
                 }
             }
         }
 
         // Swap buffers and reset state
         std::mem::swap(&mut self.current, &mut self.previous);
+
+        // Reset modification flags in bulk
         for cell in &mut self.current {
             cell.modified = false;
         }
+
         self.dirty_min_y = None;
         self.dirty_max_y = None;
 
         changes
     }
+
+    /// Get buffer statistics for debugging/profiling
+    #[allow(dead_code)]
+    pub(crate) fn get_stats(&self) -> BufferStats {
+        let dirty_rows = match (self.dirty_min_y, self.dirty_max_y) {
+            (Some(min), Some(max)) => (max - min + 1) as usize,
+            _ => 0,
+        };
+
+        let modified_cells = self.current.iter().filter(|c| c.modified).count();
+
+        BufferStats {
+            width: self.width,
+            height: self.height,
+            dirty_rows,
+            modified_cells,
+        }
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct BufferStats {
+    pub width: u16,
+    pub height: u16,
+    pub dirty_rows: usize,
+    pub modified_cells: usize,
 }

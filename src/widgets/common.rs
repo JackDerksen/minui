@@ -65,7 +65,7 @@ impl BorderChars {
     }
 }
 
-pub(crate) struct WindowView<'a> {
+pub struct WindowView<'a> {
     pub window: &'a mut dyn Window,
     pub x_offset: u16,
     pub y_offset: u16,

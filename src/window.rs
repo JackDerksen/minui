@@ -1,13 +1,13 @@
+use crate::input::KeyboardHandler;
 use crate::render::buffer::Buffer;
 use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
-    cursor,
-    event::{self, Event as CrosstermEvent, KeyCode},
-    execute,
+    cursor, execute,
     style::{self},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
 use std::io::{stdout, Write};
+use std::time::Duration;
 
 pub trait Window {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()>;
@@ -28,6 +28,7 @@ pub struct TerminalWindow {
     height: u16,
     buffer: Buffer,
     auto_flush: bool,
+    keyboard: KeyboardHandler,
 }
 
 impl TerminalWindow {
@@ -49,6 +50,7 @@ impl TerminalWindow {
             height: rows,
             buffer: Buffer::new(cols, rows),
             auto_flush: true,
+            keyboard: KeyboardHandler::new(),
         })
     }
 
@@ -61,24 +63,34 @@ impl TerminalWindow {
         Ok(())
     }
 
+    /// Get input with a timeout (non-blocking after timeout)
     pub fn get_input(&self) -> Result<Event> {
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let CrosstermEvent::Key(key) = event::read()? {
-                return Ok(match key.code {
-                    KeyCode::Char(c) => Event::Character(c),
-                    KeyCode::Up => Event::KeyUp,
-                    KeyCode::Down => Event::KeyDown,
-                    KeyCode::Left => Event::KeyLeft,
-                    KeyCode::Right => Event::KeyRight,
-                    KeyCode::Delete => Event::Delete,
-                    KeyCode::Backspace => Event::Backspace,
-                    KeyCode::Enter => Event::Enter,
-                    KeyCode::F(n) => Event::FunctionKey(n),
-                    _ => Event::Unknown,
-                });
-            }
-        }
-        Ok(Event::Unknown)
+        self.keyboard.get_input(Duration::from_millis(100))
+    }
+
+    /// Get input with custom timeout
+    pub fn get_input_timeout(&self, timeout: Duration) -> Result<Event> {
+        self.keyboard.get_input(timeout)
+    }
+
+    /// Wait for input indefinitely
+    pub fn wait_for_input(&self) -> Result<Event> {
+        self.keyboard.wait_for_input()
+    }
+
+    /// Poll for input (immediate return)
+    pub fn poll_input(&self) -> Result<Option<Event>> {
+        self.keyboard.poll()
+    }
+
+    /// Get a reference to the keyboard handler for advanced use
+    pub fn keyboard(&self) -> &KeyboardHandler {
+        &self.keyboard
+    }
+
+    /// Get a mutable reference to configure the keyboard handler
+    pub fn keyboard_mut(&mut self) -> &mut KeyboardHandler {
+        &mut self.keyboard
     }
 
     pub fn set_auto_flush(&mut self, enabled: bool) {
