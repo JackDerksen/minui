@@ -80,7 +80,7 @@ fn main() -> minui::Result<()> {
 }
 ```
 
-Run the program with the command: `cargo run example --basic_usage`
+Run the program with the command: `cargo run --example basic_usage`
 
 ## Building Terminal Games with MinUI
 
