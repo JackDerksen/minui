@@ -4,7 +4,7 @@ MinUI is a minimal terminal-based game and UI engine written in Rust. This proje
 
 ## Motivation
 
-MinUI was born from a desire to create terminal-based games in Rust, specifically a terminal Tetris clone in my case. While several terminal UI libraries exist for Rust, none quite offered the perfect balance of simplicity, performance, and game-focused features that I was looking for. MinUI aims to fill this gap by providing a fast, easy-to-use library that makes terminal game and UI development a joy.
+MinUI was born from a desire to create terminal-based games in Rust, specifically a terminal Tetris clone in my case. While several terminal UI libraries exist for Rust, none quite offered the perfect balance of simplicity, performance, and game-focused features that I was looking for. MinUI aims to fill this gap by providing a fast, easy-to-use framework that makes terminal game and UI development a joy.
 
 ## Planned Features
 
