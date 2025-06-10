@@ -4,7 +4,7 @@ MinUI is a minimal terminal-based game and UI engine written in Rust. This proje
 
 ## Motivation
 
-MinUI was born from a desire to create terminal-based games in Rust, specifically a terminal Tetris clone in my case. While several terminal UI libraries exist for Rust, none quite offered the perfect balance of simplicity, performance, and game-focused features that I was looking for. MinUI aims to fill this gap by providing a fast, easy-to-use framework that makes terminal game and UI development a joy.
+MinUI was born from a desire to create terminal-based games in Rust, specifically a terminal Tetris clone in my case. While several terminal UI libraries/frameworks exist for Rust, none quite offered the perfect balance of simplicity, performance, and game-focused features that I was looking for. MinUI aims to fill this gap by providing a fast, easy-to-use framework that makes terminal game and UI development a joy.
 
 ## Planned Features
 
@@ -26,13 +26,13 @@ MinUI is in early development, and I'm actively working on adding more features:
   - [x] Panel widget
   - [ ] Table widget
   - [ ] Input widget
-  - [ ] Predefined widget layouts
+  - [ ] Predefined common widget layouts
 - [x] Buffered drawing for smooth and efficient updates
 - [ ] Built-in game loop utilities
-- [ ] Simplified sprite and map management utilities
-- [ ] Easy character movement support
+- [ ] Simplified character/sprite and map management utilities
+- [ ] Easy character/sprite movement support with common Unicode characters built-in
 - [ ] Cell management with collision detection options
-- [ ] Support for various input methods (custom key binds, mouse support, etc.)
+- [ ] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
 
 ## Getting Started
 
@@ -108,3 +108,4 @@ Built using:
 
 - [crossterm](https://github.com/crossterm-rs/crossterm) - Cross-platform terminal manipulation library
 - [thiserror](https://github.com/dtolnay/thiserror) - Error handling
+- [crokey](https://github.com/Canop/crokey) - Easy keybind configuration
