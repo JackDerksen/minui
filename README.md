@@ -30,7 +30,7 @@ MinUI is in early development, and I'm actively working on adding more features:
 - [x] Buffered drawing for smooth and efficient updates
 - [ ] Built-in game loop utilities
 - [ ] Simplified sprite and map management utilities
-- [x] Easy character movement support
+- [ ] Easy character movement support
 - [ ] Cell management with collision detection options
 - [ ] Support for various input methods (custom key binds, mouse support, etc.)
 
