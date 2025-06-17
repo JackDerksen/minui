@@ -1,9 +1,15 @@
 [package]
 name = "minui"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "A minimalist Rust framework for TUIs and terminal games."
 authors = ["Jack Derksen <jmderksen9@gmail.com>"]
+license = "GPL-3.0"
+repository = "https://github.com/JackDerksen/minui"
+homepage = "https://github.com/JackDerksen/minui"
+readme = "README.md"
+keywords = ["terminal", "framework", "tui", "ui", "games", "crossterm", "thiserror", "minui"]
+categories = ["command-line-interface", "game-development", "graphics", "interface"]
 
 [dependencies]
 crossterm = "0.28.1"
