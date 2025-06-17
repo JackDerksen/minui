@@ -37,14 +37,14 @@ MinUI is in early development, and I'm actively working on adding more features:
 
 ## Getting Started
 
-**For now, you'll have to clone this repository and build your games/applications locally.**
-
-Once MinUI is formally released as a crate, you could add it to your Cargo.toml like so:
+Simply add the MinUI crate to your cargo.toml as follows:
 
 ```toml
 [dependencies]
 minui = "0.1.0"
 ```
+
+Then you can get started using one of the simple, provided example programs.
 
 ### Basic Example
 
@@ -80,7 +80,7 @@ fn main() -> minui::Result<()> {
 }
 ```
 
-Run the program with the command: `cargo run --example basic_usage`
+Run the example program with the command: `cargo run --example basic_usage`
 
 ## Building Terminal Games with MinUI
 
