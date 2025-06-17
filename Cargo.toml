@@ -8,7 +8,7 @@ license = "GPL-3.0"
 repository = "https://github.com/JackDerksen/minui"
 homepage = "https://github.com/JackDerksen/minui"
 readme = "README.md"
-keywords = ["terminal", "framework", "tui", "ui", "games", "crossterm", "thiserror", "minui"]
+keywords = ["terminal", "framework", "tui", "ui", "crossterm"]
 categories = ["command-line-interface", "game-development", "graphics", "interface"]
 
 [dependencies]
