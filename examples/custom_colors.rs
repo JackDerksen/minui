@@ -1,6 +1,6 @@
 //! Demonstrates the RGB color capabilities with beautiful gradients and color transitions.
 
-use minui::{define_colors, Color, ColorPair, Event, Result, TerminalWindow, Window};
+use minui::{Color, ColorPair, Event, Result, TerminalWindow, Window, define_colors};
 
 // Define some custom RGB color schemes
 define_colors! {
@@ -33,6 +33,7 @@ define_colors! {
 /// 4. Creating visual effects with colors
 fn main() -> Result<()> {
     let mut window = TerminalWindow::new()?;
+    window.set_auto_flush(false);
     window.clear_screen()?;
 
     let (width, height) = window.get_size();
@@ -40,22 +41,20 @@ fn main() -> Result<()> {
     // Title
     window.write_str(0, 0, "RGB Color & Gradient Demo (press 'q' to quit)")?;
 
-    // Create a horizontal rainbow gradient
+    // --- All drawing calls happen here ---
     draw_rainbow_gradient(&mut window, 2, width)?;
-
-    // Create themed color bars
     draw_color_themes(&mut window, 6)?;
-
-    // Create a vertical gradient
     draw_vertical_gradient(&mut window, 12, width, height)?;
-
-    // Create some color blocks with labels
     draw_color_blocks(&mut window, height)?;
 
+    window.flush()?;
+
+    // Wait for 'q' to be pressed before exiting
     loop {
-        match window.get_input()? {
-            Event::Character('q') | Event::Escape => break,
-            _ => continue,
+        if let Ok(event) = window.get_input() {
+            if let Event::Character('q') = event {
+                break;
+            }
         }
     }
 
@@ -162,7 +161,7 @@ fn draw_color_blocks(window: &mut TerminalWindow, height: u16) -> Result<()> {
         let x = (i % 3) * 25;
 
         let color_pair = ColorPair::new(*color, Color::Black);
-        window.write_str_colored(y, x as u16, "███ ", color_pair)?;
+        window.write_str_colored(y, x as u16, "███", color_pair)?;
         window.write_str(y, x as u16 + 4, label)?;
     }
 
@@ -197,4 +196,3 @@ fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
 
     (r, g, b)
 }
-

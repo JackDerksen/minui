@@ -3,10 +3,10 @@ use crate::render::buffer::Buffer;
 use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
     cursor, execute,
-    style::{self},
+    style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::time::Duration;
 
 pub trait Window {
@@ -99,24 +99,33 @@ impl TerminalWindow {
 
     pub fn flush(&mut self) -> Result<()> {
         let changes = self.buffer.process_changes();
+        let mut last_colors = None;
+
         for change in changes {
-            if let Some(colors) = change.colors {
-                execute!(
-                    stdout(),
-                    cursor::MoveTo(change.x, change.y),
-                    style::SetForegroundColor(colors.fg.to_crossterm()),
-                    style::SetBackgroundColor(colors.bg.to_crossterm()),
-                    style::Print(&change.text),
-                    style::ResetColor
-                )?;
-            } else {
-                execute!(
-                    stdout(),
-                    cursor::MoveTo(change.x, change.y),
-                    style::Print(&change.text)
-                )?;
+            // Move the cursor to the correct position for the change
+            execute!(stdout(), cursor::MoveTo(change.x, change.y))?;
+
+            if change.colors != last_colors {
+                if let Some(colors) = change.colors {
+                    // Set the foreground and background colors
+                    execute!(
+                        stdout(),
+                        SetForegroundColor(colors.fg.to_crossterm()),
+                        SetBackgroundColor(colors.bg.to_crossterm())
+                    )?;
+                } else {
+                    // If there are no colors, reset to the default
+                    execute!(stdout(), style::ResetColor)?;
+                }
+                last_colors = change.colors;
             }
+
+            // Print the text for the change
+            execute!(stdout(), style::Print(&change.text))?;
         }
+
+        // Reset the color at the end of the flush
+        execute!(stdout(), style::ResetColor)?;
         stdout().flush()?;
         Ok(())
     }
