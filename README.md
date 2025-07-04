@@ -41,7 +41,7 @@ Simply add the MinUI crate to your cargo.toml as follows:
 
 ```toml
 [dependencies]
-minui = "0.1.0"
+minui = "0.1.1"
 ```
 
 Then you can get started using one of the simple, provided example programs.
