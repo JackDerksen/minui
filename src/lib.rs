@@ -1,3 +1,4 @@
+pub mod app;
 pub mod color;
 pub mod error;
 pub mod event;
@@ -9,6 +10,7 @@ pub mod widgets;
 pub mod window;
 
 // Core types
+pub use app::App;
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
 pub use event::{Event, MouseButton};
@@ -30,4 +32,3 @@ pub mod prelude {
         Result, TerminalWindow, TextBlock, VerticalAlignment, Widget, Window,
     };
 }
-

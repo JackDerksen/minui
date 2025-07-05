@@ -20,6 +20,9 @@ pub enum Event {
     // Window events (optional, for future use)
     Resize { width: u16, height: u16 },
 
+    // Fixed step updates in game/app loops
+    Tick,
+
     Unknown,
 }
 
@@ -30,3 +33,4 @@ pub enum MouseButton {
     Middle,
     Other(u8),
 }
+

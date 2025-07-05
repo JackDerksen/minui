@@ -29,7 +29,7 @@ MinUI is in early development, and I'm actively working on adding more features:
   - [ ] Predefined common widget layouts
 - [x] Robust error handling
 - [x] Buffered drawing for smooth and efficient updates
-- [ ] Built-in game loop utilities
+- [x] Built-in game loop utilities
 - [ ] Simplified character/sprite and map management utilities
 - [ ] Easy character/sprite movement support with common Unicode characters built-in
 - [ ] Cell management with collision detection options
@@ -41,7 +41,7 @@ Simply add the MinUI crate to your cargo.toml as follows:
 
 ```toml
 [dependencies]
-minui = "0.1.1"
+minui = "0.1.2"
 ```
 
 Then you can get started using one of the simple, provided example programs.
