@@ -1,6 +1,24 @@
+//! Efficient terminal screen buffer implementation with change tracking.
+//!
+//! This module provides the core buffering functionality that enables MinUI's efficient
+//! rendering system. It implements a double-buffered approach with intelligent change
+//! detection and optimization.
+
 use crate::{ColorPair, Result};
 use std::cmp::{max, min};
 
+/// Represents a single character cell in the terminal buffer.
+///
+/// Each cell stores a character, optional color information, and a modification flag
+/// used for change tracking. Cells are the basic unit of the rendering system.
+///
+/// # Memory Layout
+///
+/// Cells are designed to be compact and efficient:
+/// - `char`: 4 bytes (Unicode character)
+/// - `Option<ColorPair>`: ~9 bytes (color information)
+/// - `bool`: 1 byte (modification flag)
+/// - Total: ~14 bytes per cell (plus padding)
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Cell {
     pub(crate) ch: char,
@@ -8,6 +26,18 @@ pub(crate) struct Cell {
     pub(crate) modified: bool,
 }
 
+/// Represents a batched change to the terminal buffer.
+///
+/// Buffer changes are generated during the rendering process to represent
+/// contiguous runs of characters that need to be updated in the terminal.
+/// This batching approach significantly reduces the number of cursor movements
+/// and color changes required.
+///
+/// # Fields
+///
+/// - `y`, `x`: Starting position of the change
+/// - `text`: The string of characters to write (may be multiple characters)
+/// - `colors`: Color styling to apply to the entire text run
 #[derive(Debug)]
 pub(crate) struct BufferChange {
     pub(crate) y: u16,
@@ -17,6 +47,10 @@ pub(crate) struct BufferChange {
 }
 
 impl Cell {
+    /// Creates a new cell with the specified character and colors.
+    ///
+    /// New cells are automatically marked as modified to ensure they
+    /// are included in the next rendering pass.
     #[allow(dead_code)] // Currently unused but still a necessary constructor
     pub fn new(ch: char, colors: Option<ColorPair>) -> Self {
         Self {
@@ -26,6 +60,10 @@ impl Cell {
         }
     }
 
+    /// Creates an empty cell (space character with no colors).
+    ///
+    /// Empty cells are not marked as modified by default, as they
+    /// represent the initial state of the buffer.
     pub fn empty() -> Self {
         Self {
             ch: ' ',
@@ -35,6 +73,51 @@ impl Cell {
     }
 }
 
+/// A double-buffered screen representation with intelligent change detection.
+///
+/// `Buffer` is the core of MinUI's efficient rendering system. It maintains two copies
+/// of the screen state (current and previous) and tracks which areas have changed,
+/// enabling minimal terminal updates.
+///
+/// # Architecture
+///
+/// The buffer uses several optimization strategies:
+///
+/// ## Double Buffering
+/// - **Current Buffer**: The desired state of the screen
+/// - **Previous Buffer**: The last rendered state  
+/// - **Change Detection**: Only cells that differ between buffers are updated
+///
+/// ## Dirty Region Tracking
+/// - Tracks the minimum and maximum Y coordinates that have changed
+/// - Skips processing of unchanged rows entirely
+/// - Reduces processing time for sparse updates
+///
+/// ## Run-Length Encoding
+/// - Groups consecutive characters with identical styling
+/// - Reduces cursor movements and color changes
+/// - Significantly improves rendering performance
+///
+/// # Performance Characteristics
+///
+/// - **Memory**: 2 × (width × height × ~14 bytes per cell)
+/// - **Time Complexity**: O(changed_cells) for processing
+/// - **Terminal I/O**: Minimized through batching and change detection
+///
+/// # Example Usage
+///
+/// ```rust,ignore
+/// // Buffer is used internally by TerminalWindow
+/// let mut buffer = Buffer::new(80, 24);
+///
+/// // Write some content
+/// buffer.write_str(0, 0, "Hello, World!", None)?;
+/// buffer.write_char(1, 5, '★', Some(ColorPair::new(Color::Yellow, Color::Black)))?;
+///
+/// // Process changes for rendering
+/// let changes = buffer.process_changes();
+/// // changes now contains optimized rendering commands
+/// ```
 pub struct Buffer {
     width: u16,
     height: u16,
