@@ -1,3 +1,73 @@
+//! # Terminal Window Management
+//!
+//! This module provides the core window abstraction for terminal-based user interfaces.
+//! It defines the [`Window`] trait for drawing operations and provides [`TerminalWindow`]
+//! as the primary implementation for real terminal windows.
+//!
+//! ## Core Concepts
+//!
+//! - **Window Trait**: Abstract interface for all drawing operations
+//! - **Terminal Window**: Concrete implementation using crossterm for cross-platform terminal control
+//! - **Buffered Rendering**: Efficient rendering using internal buffers to minimize terminal updates
+//! - **Input Integration**: Built-in keyboard and mouse input handling
+//! - **Automatic Cleanup**: Proper terminal state restoration on exit
+//!
+//! ## Features
+//!
+//! - **Cross-platform**: Works on Windows, macOS, and Linux terminals
+//! - **Color Support**: Full RGB, ANSI, and named color rendering
+//! - **Efficient Rendering**: Uses alternate screen buffer and change tracking
+//! - **Input Handling**: Non-blocking, timeout-based, and polling input methods
+//! - **Flexible Flushing**: Manual or automatic buffer flushing control
+//!
+//! ## Examples
+//!
+//! ### Basic Window Usage
+//!
+//! ```rust
+//! use minui::{TerminalWindow, Window, Result};
+//!
+//! let mut window = TerminalWindow::new()?;
+//! 
+//! // Write text at position (0, 0)
+//! window.write_str(0, 0, "Hello, World!")?;
+//! 
+//! // Get terminal dimensions
+//! let (width, height) = window.get_size();
+//! println!("Terminal size: {}x{}", width, height);
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ### Colored Text Rendering
+//!
+//! ```rust
+//! use minui::{TerminalWindow, Window, Color, ColorPair};
+//!
+//! let mut window = TerminalWindow::new()?;
+//! let colors = ColorPair::new(Color::Yellow, Color::Blue);
+//!
+//! window.write_str_colored(1, 0, "Colored text!", colors)?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ### Input Handling
+//!
+//! ```rust
+//! use minui::{TerminalWindow, Event};
+//! use std::time::Duration;
+//!
+//! let window = TerminalWindow::new()?;
+//!
+//! // Poll for immediate input (non-blocking)
+//! if let Some(event) = window.poll_input()? {
+//!     println!("Received event: {:?}", event);
+//! }
+//!
+//! // Wait for input with timeout
+//! let event = window.get_input_timeout(Duration::from_secs(1))?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+
 use crate::input::KeyboardHandler;
 use crate::render::buffer::Buffer;
 use crate::{ColorPair, Error, Event, Result};
@@ -9,20 +79,259 @@ use crossterm::{
 use std::io::{Write, stdout};
 use std::time::Duration;
 
+/// Core trait for all window drawing operations.
+///
+/// `Window` provides the fundamental interface that all UI components use for drawing.
+/// It abstracts away the underlying terminal implementation, allowing widgets to work
+/// with any window type.
+///
+/// All drawing operations use a coordinate system where (0, 0) is the top-left corner,
+/// x increases to the right, and y increases downward.
+///
+/// # Implementation Notes
+///
+/// - Coordinates are 0-indexed terminal character positions
+/// - Out-of-bounds writes should return appropriate errors
+/// - Implementations may buffer drawing operations for efficiency
+/// - Color support is optional but recommended
+///
+/// # Examples
+///
+/// ```rust
+/// use minui::{Window, Color, ColorPair};
+///
+/// fn draw_header(window: &mut dyn Window) -> minui::Result<()> {
+///     let title = "Application Title";
+///     let colors = ColorPair::new(Color::White, Color::Blue);
+///     
+///     // Clear the top line and draw centered title
+///     window.clear_line(0)?;
+///     let (width, _) = window.get_size();
+///     let x = (width - title.len() as u16) / 2;
+///     window.write_str_colored(0, x, title, colors)?;
+///     
+///     Ok(())
+/// }
+/// ```
 pub trait Window {
+    /// Writes a string to the window at the specified coordinates.
+    ///
+    /// This method draws text using the terminal's default colors. The text
+    /// is drawn starting at position (x, y) using terminal character coordinates.
+    ///
+    /// # Arguments
+    ///
+    /// * `y` - The row position (0-indexed from top)
+    /// * `x` - The column position (0-indexed from left)
+    /// * `s` - The string to write
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if the coordinates are out of bounds
+    /// or if the write operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// window.write_str(0, 0, "Hello, World!")?;
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()>;
 
+    /// Writes a colored string to the window at the specified coordinates.
+    ///
+    /// This method draws text with custom foreground and background colors.
+    /// The text is drawn starting at position (x, y) using terminal character coordinates.
+    ///
+    /// # Arguments
+    ///
+    /// * `y` - The row position (0-indexed from top)
+    /// * `x` - The column position (0-indexed from left)
+    /// * `s` - The string to write
+    /// * `colors` - The color pair defining foreground and background colors
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if the coordinates are out of bounds
+    /// or if the write operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window, Color, ColorPair};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// let colors = ColorPair::new(Color::Red, Color::Yellow);
+    /// window.write_str_colored(1, 0, "Colored text!", colors)?;
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()>;
 
+    /// Returns the dimensions of the window as (width, height).
+    ///
+    /// The dimensions represent the number of character positions available
+    /// in the terminal window.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing (width, height) in terminal character units.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// let (width, height) = window.get_size();
+    /// println!("Terminal is {} columns by {} rows", width, height);
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     fn get_size(&self) -> (u16, u16);
 
+    /// Clears the entire window.
+    ///
+    /// This method fills the entire window with spaces, effectively clearing
+    /// all visible content. The cursor position is not affected.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if the clear operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// window.write_str(0, 0, "This will be cleared")?;
+    /// window.clear_screen()?; // Screen is now blank
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     fn clear_screen(&mut self) -> Result<()>;
 
+    /// Clears a single line in the window.
+    ///
+    /// This method fills the specified line with spaces, clearing all content
+    /// on that row.
+    ///
+    /// # Arguments
+    ///
+    /// * `y` - The row to clear (0-indexed from top)
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if the line is out of bounds
+    /// or if the clear operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// window.write_str(5, 0, "This line will be cleared")?;
+    /// window.clear_line(5)?; // Line 5 is now blank
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     fn clear_line(&mut self, y: u16) -> Result<()>;
 
+    /// Clears a rectangular area within the window.
+    ///
+    /// This method clears all content within the rectangle defined by the
+    /// two corner points. The coordinates can be provided in any order.
+    ///
+    /// # Arguments
+    ///
+    /// * `y1` - First corner row coordinate
+    /// * `x1` - First corner column coordinate
+    /// * `y2` - Second corner row coordinate
+    /// * `x2` - Second corner column coordinate
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if any coordinates are out of bounds
+    /// or if the clear operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// // Clear a 10x5 rectangle starting at (2, 1)
+    /// window.clear_area(1, 2, 5, 11)?;
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()>;
 }
 
+/// A terminal window implementation using crossterm for cross-platform terminal control.
+///
+/// `TerminalWindow` provides a complete terminal-based window with buffered rendering,
+/// input handling, and automatic terminal state management. It uses crossterm internally
+/// for cross-platform compatibility.
+///
+/// # Features
+///
+/// - **Buffered Rendering**: All drawing operations are buffered and only sent to the
+///   terminal when explicitly flushed or when auto-flush is enabled
+/// - **Alternate Screen**: Uses the terminal's alternate screen buffer to avoid
+///   disrupting the user's terminal session
+/// - **Input Handling**: Integrated keyboard and mouse input processing with multiple
+///   input modes (blocking, non-blocking, timeout-based)
+/// - **Automatic Cleanup**: Properly restores terminal state when dropped
+/// - **Color Support**: Full support for RGB, ANSI, and named colors
+///
+/// # Coordinate System
+///
+/// - (0, 0) is the top-left corner
+/// - X coordinates increase to the right
+/// - Y coordinates increase downward
+/// - All coordinates are in terminal character units
+///
+/// # Examples
+///
+/// ## Basic Usage
+///
+/// ```rust
+/// use minui::{TerminalWindow, Window};
+///
+/// let mut window = TerminalWindow::new()?;
+/// let (width, height) = window.get_size();
+///
+/// // Draw a border around the terminal
+/// let border = "+";
+/// for x in 0..width {
+///     window.write_str(0, x, border)?; // Top border
+///     window.write_str(height - 1, x, border)?; // Bottom border
+/// }
+/// for y in 0..height {
+///     window.write_str(y, 0, border)?; // Left border
+///     window.write_str(y, width - 1, border)?; // Right border
+/// }
+/// # Ok::<(), minui::Error>(())
+/// ```
+///
+/// ## Manual Flush Control
+///
+/// ```rust
+/// use minui::TerminalWindow;
+///
+/// let mut window = TerminalWindow::new()?;
+/// window.set_auto_flush(false); // Disable automatic flushing
+///
+/// // Multiple operations without terminal updates
+/// window.write_str(0, 0, "Line 1")?;
+/// window.write_str(1, 0, "Line 2")?;
+/// window.write_str(2, 0, "Line 3")?;
+///
+/// // All changes rendered at once
+/// window.flush()?;
+/// # Ok::<(), minui::Error>(())
+/// ```
 pub struct TerminalWindow {
     width: u16,
     height: u16,
@@ -32,6 +341,31 @@ pub struct TerminalWindow {
 }
 
 impl TerminalWindow {
+    /// Creates a new terminal window with full-screen access.
+    ///
+    /// This constructor initializes a terminal window by:
+    /// - Enabling raw mode for direct input handling
+    /// - Switching to the alternate screen buffer
+    /// - Hiding the cursor
+    /// - Clearing the screen
+    /// - Setting up internal buffers and input handlers
+    ///
+    /// The window will automatically restore the terminal state when dropped.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new `TerminalWindow` instance, or an error if terminal
+    /// initialization fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// // Terminal is now in full-screen mode with raw input
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn new() -> Result<Self> {
         enable_raw_mode()?;
 
@@ -54,6 +388,25 @@ impl TerminalWindow {
         })
     }
 
+    /// Immediately clears the entire terminal screen.
+    ///
+    /// This method bypasses the internal buffer and directly clears the terminal.
+    /// It's different from `clear_screen()` which uses the buffered approach.
+    /// Use this for immediate clearing operations.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on success, or an error if the clear operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// window.clear()?; // Screen cleared immediately
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn clear(&self) -> Result<()> {
         execute!(
             stdout(),
@@ -63,40 +416,232 @@ impl TerminalWindow {
         Ok(())
     }
 
-    /// Get input with a timeout (non-blocking after timeout)
+    /// Gets input with a default 100ms timeout.
+    ///
+    /// This is a convenience method that waits up to 100ms for user input.
+    /// If no input is available within the timeout, it returns a timeout error.
+    ///
+    /// # Returns
+    ///
+    /// Returns the input `Event` if available within 100ms, or an error if
+    /// no input is received or if an input error occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Event};
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// match window.get_input() {
+    ///     Ok(Event::Character(c)) => println!("Got character: {}", c),
+    ///     Ok(event) => println!("Got event: {:?}", event),
+    ///     Err(_) => println!("No input within 100ms"),
+    /// }
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn get_input(&self) -> Result<Event> {
         self.keyboard.get_input(Duration::from_millis(100))
     }
 
-    /// Get input with custom timeout
+    /// Gets input with a custom timeout duration.
+    ///
+    /// This method waits up to the specified duration for user input.
+    /// Use this when you need precise control over input timing.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout` - Maximum duration to wait for input
+    ///
+    /// # Returns
+    ///
+    /// Returns the input `Event` if available within the timeout, or an error if
+    /// no input is received or if an input error occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    /// use std::time::Duration;
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// 
+    /// // Wait up to 2 seconds for input
+    /// match window.get_input_timeout(Duration::from_secs(2)) {
+    ///     Ok(event) => println!("Received: {:?}", event),
+    ///     Err(_) => println!("No input within 2 seconds"),
+    /// }
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn get_input_timeout(&self, timeout: Duration) -> Result<Event> {
         self.keyboard.get_input(timeout)
     }
 
-    /// Wait for input indefinitely
+    /// Waits indefinitely for user input.
+    ///
+    /// This method blocks until user input is available. Use this when you
+    /// need to wait for user interaction without any time constraints.
+    ///
+    /// # Returns
+    ///
+    /// Returns the input `Event` when available, or an error if an input error occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Event};
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// 
+    /// println!("Press any key to continue...");
+    /// let event = window.wait_for_input()?;
+    /// println!("You pressed: {:?}", event);
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn wait_for_input(&self) -> Result<Event> {
         self.keyboard.wait_for_input()
     }
 
-    /// Poll for input (immediate return)
+    /// Polls for input without blocking.
+    ///
+    /// This method immediately returns whether input is available or not.
+    /// Use this for non-blocking input checking in game loops or real-time applications.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(Event)` if input is immediately available, `None` if no input
+    /// is available, or an error if an input error occurs.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// 
+    /// loop {
+    ///     if let Some(event) = window.poll_input()? {
+    ///         println!("Got immediate input: {:?}", event);
+    ///         break;
+    ///     }
+    ///     // Do other work...
+    ///     std::thread::sleep(std::time::Duration::from_millis(16));
+    /// }
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn poll_input(&self) -> Result<Option<Event>> {
         self.keyboard.poll()
     }
 
-    /// Get a reference to the keyboard handler for advanced use
+    /// Gets a reference to the keyboard handler for advanced configuration.
+    ///
+    /// This provides access to the underlying keyboard handler for advanced
+    /// input configuration and monitoring.
+    ///
+    /// # Returns
+    ///
+    /// Returns a reference to the internal `KeyboardHandler`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// let keyboard = window.keyboard();
+    /// // Use keyboard for advanced operations
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn keyboard(&self) -> &KeyboardHandler {
         &self.keyboard
     }
 
-    /// Get a mutable reference to configure the keyboard handler
+    /// Gets a mutable reference to the keyboard handler for configuration changes.
+    ///
+    /// This provides mutable access to the underlying keyboard handler for
+    /// configuration modifications.
+    ///
+    /// # Returns
+    ///
+    /// Returns a mutable reference to the internal `KeyboardHandler`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// let keyboard = window.keyboard_mut();
+    /// // Configure keyboard settings
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn keyboard_mut(&mut self) -> &mut KeyboardHandler {
         &mut self.keyboard
     }
 
+    /// Controls automatic buffer flushing behavior.
+    ///
+    /// When auto-flush is enabled (default), all drawing operations immediately
+    /// update the terminal. When disabled, you must manually call `flush()` to
+    /// render buffered changes.
+    ///
+    /// Disabling auto-flush can improve performance when making many drawing
+    /// operations, as it allows batching multiple changes into a single render.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - Whether to enable automatic flushing after each drawing operation
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// 
+    /// // Disable auto-flush for better performance
+    /// window.set_auto_flush(false);
+    /// 
+    /// // Multiple operations are buffered
+    /// window.write_str(0, 0, "Line 1")?;
+    /// window.write_str(1, 0, "Line 2")?;
+    /// window.write_str(2, 0, "Line 3")?;
+    /// 
+    /// // Render all changes at once
+    /// window.flush()?;
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn set_auto_flush(&mut self, enabled: bool) {
         self.auto_flush = enabled;
     }
 
+    /// Manually flushes all buffered drawing operations to the terminal.
+    ///
+    /// This method processes all pending changes in the internal buffer and
+    /// renders them to the terminal. It optimizes rendering by:
+    /// - Only updating changed areas
+    /// - Minimizing color change operations
+    /// - Batching cursor movements
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` on successful flush, or an error if rendering fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{TerminalWindow, Window};
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// window.set_auto_flush(false);
+    /// 
+    /// // Buffer some operations
+    /// window.write_str(0, 0, "Buffered text 1")?;
+    /// window.write_str(1, 0, "Buffered text 2")?;
+    /// 
+    /// // Nothing is visible yet
+    /// window.flush()?; // Now both lines appear
+    /// # Ok::<(), minui::Error>(())
+    /// ```
     pub fn flush(&mut self) -> Result<()> {
         let changes = self.buffer.process_changes();
         let mut last_colors = None;
