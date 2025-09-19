@@ -1,13 +1,44 @@
-//! A simple, optional application runner for managing the main loop.
+//! Simple application runner for handling main loops.
+//!
+//! The [`App`] runner handles the tedious parts of terminal applications - setting up
+//! the window, managing the event loop, and handling timing. You just provide the logic
+//! for updating state and drawing the UI.
+//!
+//! ## Two Modes
+//!
+//! - **Event-driven** (default): Waits for user input, great for TUI apps
+//! - **Game mode**: Fixed tick rate for smooth animations and games
+//!
+//! ## Example
+//!
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! struct MyState { counter: i32 }
+//!
+//! let mut app = App::new(MyState { counter: 0 })?;
+//!
+//! app.run(
+//!     |state, event| match event {
+//!         Event::Character('q') => false, // Exit
+//!         Event::Character(' ') => { state.counter += 1; true },
+//!         _ => true,
+//!     },
+//!     |state, window| {
+//!         window.write_str(0, 0, &format!("Count: {}", state.counter))?;
+//!         Ok(())
+//!     }
+//! )?;
+//! # Ok::<(), minui::Error>(())
+//! ```
 
 use crate::{Event, Result, TerminalWindow, Window};
 use std::time::{Duration, Instant};
 
-/// An application runner that handles the main event loop.
+/// Application runner that manages the main loop.
 ///
-/// This runner can operate in two modes:
-/// - TUI Mode (Default): An event-driven loop that waits for user input.
-/// - Game Mode: A continuous loop with a fixed tick rate for game logic updates.
+/// Handles window setup, input polling, and timing so you can focus on your application logic.
+/// Can run in event-driven mode (default) or with a fixed tick rate for games.
 pub struct App<S> {
     window: TerminalWindow,
     state: S,
@@ -15,7 +46,7 @@ pub struct App<S> {
 }
 
 impl<S> App<S> {
-    /// Creates a new 'App' with the given initial state.
+    /// Creates a new app with the given initial state.
     pub fn new(initial_state: S) -> Result<Self> {
         let mut window = TerminalWindow::new()?;
         window.set_auto_flush(false);
@@ -26,8 +57,9 @@ impl<S> App<S> {
         })
     }
 
-    /// Configures the app to run in "game mode" with a fixed tick rate.
-    /// The 'update' closure will be called with an 'Event::Tick' at the specified interval.
+    /// Enables game mode with a fixed tick rate.
+    ///
+    /// Your update function will receive `Event::Tick` at regular intervals.
     pub fn with_tick_rate(mut self, tick_rate: Duration) -> Self {
         self.tick_rate = Some(tick_rate);
         self
@@ -35,11 +67,8 @@ impl<S> App<S> {
 
     /// Runs the main application loop.
     ///
-    /// # Arguments
-    ///
-    ///  'update': A closure that is called to update the state. It receives the current state
-    ///   and an 'Event'. It should return 'true' to continue running or 'false' to exit.
-    ///  'draw': A closure that is called to draw the UI using the current state.
+    /// - `update`: Called for each event. Return `false` to exit.
+    /// - `draw`: Called to render the current state.
     pub fn run<U, D>(&mut self, mut update: U, mut draw: D) -> Result<()>
     where
         U: FnMut(&mut S, Event) -> bool, // Return bool to control running
