@@ -1,19 +1,11 @@
-//! # Event System
+//! # Input Events
 //!
-//! This module provides a comprehensive event system for handling user input and system events
-//! in terminal applications. Events are generated from various sources including keyboard input,
-//! mouse interactions, window changes, and application timers.
+//! Events represent user input and system changes like keyboard presses, mouse clicks,
+//! window resizes, and timer ticks for games.
 //!
-//! ## Event Types
+//! ## Usage
 //!
-//! - **Keyboard Events**: Character input, arrow keys, function keys, and special keys
-//! - **Mouse Events**: Movement, clicks, and scroll wheel interactions
-//! - **Window Events**: Terminal resize events
-//! - **Application Events**: Fixed-rate tick events for game loops
-//!
-//! ## Usage in Event Loops
-//!
-//! Events are typically processed in the main application loop:
+//! Handle events in your main loop:
 //!
 //! ```rust
 //! use minui::{Event, App};
@@ -23,61 +15,21 @@
 //! app.run(
 //!     |state, event| {
 //!         match event {
-//!             Event::Character('q') | Event::Escape => false, // Exit
-//!             Event::KeyUp => {
-//!                 // Handle up arrow key
-//!                 true
-//!             },
-//!             Event::MouseClick { x, y, button } => {
-//!                 // Handle mouse click at position (x, y)
-//!                 true
-//!             },
-//!             Event::Tick => {
-//!                 // Fixed-rate update for games
-//!                 true
-//!             },
-//!             _ => true, // Continue for other events
+//!             Event::Character('q') => false, // Exit
+//!             Event::KeyUp => { /* move up */ true },
+//!             Event::MouseClick { x, y, .. } => { /* handle click */ true },
+//!             Event::Tick => { /* game update */ true },
+//!             _ => true,
 //!         }
 //!     },
-//!     |state, window| {
-//!         // Drawing logic
-//!     }
+//!     |state, window| { /* draw */ }
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```
 
-/// Represents an input or system event that can occur during application execution.
+/// An input or system event.
 ///
-/// Events are generated from various sources and are typically processed in the main
-/// application loop to handle user interaction and system changes.
-///
-/// ## Event Categories
-///
-/// - **Keyboard**: Character input and special keys
-/// - **Mouse**: Clicks, movement, and scrolling
-/// - **System**: Window resize and application ticks
-///
-/// # Examples
-///
-/// ```rust
-/// use minui::{Event, MouseButton};
-///
-/// // Keyboard events
-/// let char_event = Event::Character('a');
-/// let arrow_event = Event::KeyUp;
-/// let function_event = Event::FunctionKey(1); // F1
-///
-/// // Mouse events
-/// let click_event = Event::MouseClick {
-///     x: 10,
-///     y: 5,
-///     button: MouseButton::Left,
-/// };
-///
-/// // System events
-/// let resize_event = Event::Resize { width: 80, height: 24 };
-/// let tick_event = Event::Tick;
-/// ```
+/// Generated from keyboard input, mouse activity, window changes, and application timers.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     // Keyboard events
@@ -117,41 +69,14 @@ pub enum Event {
     Resize { width: u16, height: u16 },
 
     // Fixed step updates in game/app loops
-    /// Fixed-rate tick event for game loops and timed updates
-    /// Generated at regular intervals when using [`App::with_tick_rate`]
+    /// Fixed-rate tick event for game loops (generated when using `App::with_tick_rate`)
     Tick,
 
     /// Unknown or unhandled event type
     Unknown,
 }
 
-/// Represents the different mouse buttons that can be clicked.
-///
-/// This enum covers the standard mouse buttons and provides an extension
-/// point for additional buttons that might be present on some mice.
-///
-/// # Examples
-///
-/// ```rust
-/// use minui::{Event, MouseButton};
-///
-/// // Handle different mouse buttons
-/// match event {
-///     Event::MouseClick { x, y, button: MouseButton::Left } => {
-///         // Handle left click
-///     },
-///     Event::MouseClick { x, y, button: MouseButton::Right } => {
-///         // Handle right click (context menu)
-///     },
-///     Event::MouseClick { x, y, button: MouseButton::Middle } => {
-///         // Handle middle click (scroll wheel click)
-///     },
-///     Event::MouseClick { x, y, button: MouseButton::Other(4) } => {
-///         // Handle additional mouse button (e.g., "back" button)
-///     },
-///     _ => {}
-/// }
-/// ```
+/// Mouse button types for click events.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MouseButton {
     /// Primary mouse button (usually left button)
@@ -164,4 +89,3 @@ pub enum MouseButton {
     /// Common values: 4 (back), 5 (forward)
     Other(u8),
 }
-

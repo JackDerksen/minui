@@ -1,70 +1,38 @@
-//! # Terminal Window Management
+//! # Terminal Window
 //!
-//! This module provides the core window abstraction for terminal-based user interfaces.
-//! It defines the [`Window`] trait for drawing operations and provides [`TerminalWindow`]
-//! as the primary implementation for real terminal windows.
-//!
-//! ## Core Concepts
-//!
-//! - **Window Trait**: Abstract interface for all drawing operations
-//! - **Terminal Window**: Concrete implementation using crossterm for cross-platform terminal control
-//! - **Buffered Rendering**: Efficient rendering using internal buffers to minimize terminal updates
-//! - **Input Integration**: Built-in keyboard and mouse input handling
-//! - **Automatic Cleanup**: Proper terminal state restoration on exit
+//! The [`Window`] trait provides the drawing interface, and [`TerminalWindow`] is the
+//! main implementation that handles the actual terminal. It manages buffered rendering,
+//! input handling, and automatic cleanup.
 //!
 //! ## Features
 //!
-//! - **Cross-platform**: Works on Windows, macOS, and Linux terminals
-//! - **Color Support**: Full RGB, ANSI, and named color rendering
-//! - **Efficient Rendering**: Uses alternate screen buffer and change tracking
-//! - **Input Handling**: Non-blocking, timeout-based, and polling input methods
-//! - **Flexible Flushing**: Manual or automatic buffer flushing control
+//! - Cross-platform terminal control (Windows, macOS, Linux)
+//! - Buffered rendering for smooth updates
+//! - Full color support (RGB, ANSI, named colors)
+//! - Keyboard and mouse input handling
+//! - Automatic terminal state restoration
 //!
-//! ## Examples
-//!
-//! ### Basic Window Usage
+//! ## Basic Usage
 //!
 //! ```rust
-//! use minui::{TerminalWindow, Window, Result};
+//! use minui::{TerminalWindow, Window, ColorPair, Color};
 //!
 //! let mut window = TerminalWindow::new()?;
-//! 
-//! // Write text at position (0, 0)
+//!
+//! // Write text
 //! window.write_str(0, 0, "Hello, World!")?;
-//! 
-//! // Get terminal dimensions
-//! let (width, height) = window.get_size();
-//! println!("Terminal size: {}x{}", width, height);
-//! # Ok::<(), minui::Error>(())
-//! ```
 //!
-//! ### Colored Text Rendering
-//!
-//! ```rust
-//! use minui::{TerminalWindow, Window, Color, ColorPair};
-//!
-//! let mut window = TerminalWindow::new()?;
+//! // Write colored text
 //! let colors = ColorPair::new(Color::Yellow, Color::Blue);
-//!
 //! window.write_str_colored(1, 0, "Colored text!", colors)?;
-//! # Ok::<(), minui::Error>(())
-//! ```
 //!
-//! ### Input Handling
+//! // Get terminal size
+//! let (width, height) = window.get_size();
 //!
-//! ```rust
-//! use minui::{TerminalWindow, Event};
-//! use std::time::Duration;
-//!
-//! let window = TerminalWindow::new()?;
-//!
-//! // Poll for immediate input (non-blocking)
+//! // Handle input
 //! if let Some(event) = window.poll_input()? {
-//!     println!("Received event: {:?}", event);
+//!     // Process the event
 //! }
-//!
-//! // Wait for input with timeout
-//! let event = window.get_input_timeout(Duration::from_secs(1))?;
 //! # Ok::<(), minui::Error>(())
 //! ```
 
@@ -79,40 +47,10 @@ use crossterm::{
 use std::io::{Write, stdout};
 use std::time::Duration;
 
-/// Core trait for all window drawing operations.
+/// The core drawing interface for all UI components.
 ///
-/// `Window` provides the fundamental interface that all UI components use for drawing.
-/// It abstracts away the underlying terminal implementation, allowing widgets to work
-/// with any window type.
-///
-/// All drawing operations use a coordinate system where (0, 0) is the top-left corner,
-/// x increases to the right, and y increases downward.
-///
-/// # Implementation Notes
-///
-/// - Coordinates are 0-indexed terminal character positions
-/// - Out-of-bounds writes should return appropriate errors
-/// - Implementations may buffer drawing operations for efficiency
-/// - Color support is optional but recommended
-///
-/// # Examples
-///
-/// ```rust
-/// use minui::{Window, Color, ColorPair};
-///
-/// fn draw_header(window: &mut dyn Window) -> minui::Result<()> {
-///     let title = "Application Title";
-///     let colors = ColorPair::new(Color::White, Color::Blue);
-///     
-///     // Clear the top line and draw centered title
-///     window.clear_line(0)?;
-///     let (width, _) = window.get_size();
-///     let x = (width - title.len() as u16) / 2;
-///     window.write_str_colored(0, x, title, colors)?;
-///     
-///     Ok(())
-/// }
-/// ```
+/// Provides methods for writing text, colors, clearing areas, and getting terminal dimensions.
+/// Coordinates start at (0, 0) in the top-left corner.
 pub trait Window {
     /// Writes a string to the window at the specified coordinates.
     ///
@@ -464,7 +402,7 @@ impl TerminalWindow {
     /// use std::time::Duration;
     ///
     /// let window = TerminalWindow::new()?;
-    /// 
+    ///
     /// // Wait up to 2 seconds for input
     /// match window.get_input_timeout(Duration::from_secs(2)) {
     ///     Ok(event) => println!("Received: {:?}", event),
@@ -491,7 +429,7 @@ impl TerminalWindow {
     /// use minui::{TerminalWindow, Event};
     ///
     /// let window = TerminalWindow::new()?;
-    /// 
+    ///
     /// println!("Press any key to continue...");
     /// let event = window.wait_for_input()?;
     /// println!("You pressed: {:?}", event);
@@ -517,7 +455,7 @@ impl TerminalWindow {
     /// use minui::TerminalWindow;
     ///
     /// let window = TerminalWindow::new()?;
-    /// 
+    ///
     /// loop {
     ///     if let Some(event) = window.poll_input()? {
     ///         println!("Got immediate input: {:?}", event);
@@ -597,15 +535,15 @@ impl TerminalWindow {
     /// use minui::{TerminalWindow, Window};
     ///
     /// let mut window = TerminalWindow::new()?;
-    /// 
+    ///
     /// // Disable auto-flush for better performance
     /// window.set_auto_flush(false);
-    /// 
+    ///
     /// // Multiple operations are buffered
     /// window.write_str(0, 0, "Line 1")?;
     /// window.write_str(1, 0, "Line 2")?;
     /// window.write_str(2, 0, "Line 3")?;
-    /// 
+    ///
     /// // Render all changes at once
     /// window.flush()?;
     /// # Ok::<(), minui::Error>(())
@@ -633,11 +571,11 @@ impl TerminalWindow {
     ///
     /// let mut window = TerminalWindow::new()?;
     /// window.set_auto_flush(false);
-    /// 
+    ///
     /// // Buffer some operations
     /// window.write_str(0, 0, "Buffered text 1")?;
     /// window.write_str(1, 0, "Buffered text 2")?;
-    /// 
+    ///
     /// // Nothing is visible yet
     /// window.flush()?; // Now both lines appear
     /// # Ok::<(), minui::Error>(())

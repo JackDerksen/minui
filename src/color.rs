@@ -1,71 +1,30 @@
-//! # Color System
+//! # Colors and Styling
 //!
-//! This module provides a comprehensive color system for terminal applications.
-//! It supports various color formats including named colors, RGB values, and ANSI color codes.
-//!
-//! ## Color Types
-//!
-//! - **Named Colors**: Basic 16-color palette (Black, Red, Green, etc.)
-//! - **RGB Colors**: True-color support with 24-bit color values
-//! - **ANSI Colors**: 256-color palette using ANSI escape codes
-//! - **Special Colors**: Reset and Transparent for flexible styling
-//!
-//! ## Usage Examples
+//! MinUI supports named colors, RGB values, and ANSI color codes. You can use
+//! individual colors or create color pairs for foreground/background styling.
 //!
 //! ```rust
-//! use minui::color::{Color, ColorPair};
+//! use minui::{Color, ColorPair};
 //!
 //! // Named colors
 //! let red = Color::Red;
-//! let blue = Color::Blue;
 //!
-//! // RGB colors
-//! let custom = Color::rgb(128, 64, 255);
+//! // RGB colors (24-bit)
+//! let purple = Color::rgb(128, 64, 255);
 //!
-//! // ANSI colors
-//! let ansi_color = Color::ansi(196); // Bright red
+//! // ANSI colors (256-color palette)
+//! let bright_red = Color::ansi(196);
 //!
-//! // Color pairs for foreground/background
-//! let pair = ColorPair::new(Color::White, Color::Blue);
-//! let fg_only = ColorPair::fg(Color::Green);
-//! let bg_only = ColorPair::bg(Color::Red);
-//!
-//! // Predefined color pairs
-//! let error_style = ColorPair::ERROR;
-//! let success_style = ColorPair::SUCCESS;
+//! // Color pairs for text styling
+//! let header = ColorPair::new(Color::White, Color::Blue);
+//! let error_text = ColorPair::ERROR; // Red text
 //! ```
 
 use crossterm::style::Color as CrosstermColor;
 
-/// Represents a color that can be displayed in the terminal.
+/// A color that can be displayed in the terminal.
 ///
-/// This enum supports multiple color formats:
-/// - Named colors from the standard 16-color palette
-/// - Custom RGB colors for true-color terminals
-/// - ANSI color codes for the extended 256-color palette
-/// - Special values for flexible color handling
-///
-/// ## Examples
-///
-/// ```rust
-/// use minui::Color;
-///
-/// // Named colors
-/// let red = Color::Red;
-/// let blue = Color::Blue;
-///
-/// // RGB colors (24-bit true color)
-/// let purple = Color::rgb(128, 0, 128);
-/// let orange = Color::rgb(255, 165, 0);
-///
-/// // ANSI colors (256-color palette)
-/// let bright_red = Color::ansi(196);
-/// let dark_green = Color::ansi(22);
-///
-/// // Special colors
-/// let default = Color::Reset;       // Uses terminal's default color
-/// let no_change = Color::Transparent; // Doesn't change the current color
-/// ```
+/// Supports named colors, RGB values, and ANSI color codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Color {
     /// Standard black color (ANSI 0)
@@ -111,48 +70,17 @@ pub enum Color {
 }
 
 impl Color {
-
-    /// Create an RGB color with the specified red, green, and blue components.
-    ///
-    /// Each component should be in the range 0-255.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::Color;
-    ///
-    /// let purple = Color::rgb(128, 0, 128);
-    /// let orange = Color::rgb(255, 165, 0);
-    /// let white = Color::rgb(255, 255, 255);
-    /// ```
+    /// Create an RGB color. Each component should be 0-255.
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Color::Rgb { r, g, b }
     }
 
-    /// Create an ANSI color using a color code from the 256-color palette.
-    ///
-    /// The value should be in the range 0-255, where:
-    /// - 0-15: Standard colors (same as named colors)
-    /// - 16-231: 216 RGB colors in a 6×6×6 color cube
-    /// - 232-255: 24 grayscale colors
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::Color;
-    ///
-    /// let bright_red = Color::ansi(196);  // Bright red from 256-color palette
-    /// let dark_blue = Color::ansi(18);    // Dark blue
-    /// let gray = Color::ansi(240);        // Medium gray
-    /// ```
+    /// Create an ANSI color from the 256-color palette (0-255).
     pub const fn ansi(value: u8) -> Self {
         Color::AnsiValue(value)
     }
 
-    /// Converts this color to the underlying crossterm color type.
-    ///
-    /// This method is primarily used internally for rendering but can be useful
-    /// when integrating with other crossterm-based libraries.
+    /// Converts to crossterm color type (used internally).
     pub fn to_crossterm(self) -> CrosstermColor {
         match self {
             Color::Black => CrosstermColor::Black,
@@ -178,30 +106,7 @@ impl Color {
     }
 }
 
-/// A pair of foreground and background colors.
-///
-/// `ColorPair` represents a complete color scheme with both foreground and background colors.
-/// This is commonly used in terminal applications to style text and UI elements.
-///
-/// # Examples
-///
-/// ```rust
-/// use minui::{Color, ColorPair};
-///
-/// // Create a color pair with both foreground and background
-/// let header = ColorPair::new(Color::White, Color::Blue);
-///
-/// // Create pairs with only foreground or background
-/// let text = ColorPair::fg(Color::Green);    // Green text, transparent background
-/// let highlight = ColorPair::bg(Color::Yellow); // Default text, yellow background
-///
-/// // Use predefined color pairs
-/// let error = ColorPair::ERROR;      // Red text for errors
-/// let success = ColorPair::SUCCESS;  // Green text for success messages
-/// 
-/// // Invert colors
-/// let inverted = header.inverted(); // Blue text on white background
-/// ```
+/// A foreground and background color pair for text styling.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ColorPair {
     /// The foreground (text) color
@@ -211,32 +116,12 @@ pub struct ColorPair {
 }
 
 impl ColorPair {
-    /// Create a new color pair with the specified foreground and background colors.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::{Color, ColorPair};
-    ///
-    /// let pair = ColorPair::new(Color::White, Color::Blue);
-    /// let custom = ColorPair::new(Color::rgb(255, 128, 0), Color::Black);
-    /// ```
+    /// Create a color pair with foreground and background colors.
     pub const fn new(fg: Color, bg: Color) -> Self {
         Self { fg, bg }
     }
 
-    /// Create a color pair with only a foreground color.
-    ///
-    /// The background will be transparent (no change from current background).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::{Color, ColorPair};
-    ///
-    /// let green_text = ColorPair::fg(Color::Green);
-    /// let red_text = ColorPair::fg(Color::Red);
-    /// ```
+    /// Create a color pair with only foreground color (transparent background).
     pub const fn fg(color: Color) -> Self {
         Self {
             fg: color,
@@ -244,18 +129,7 @@ impl ColorPair {
         }
     }
 
-    /// Create a color pair with only a background color.
-    ///
-    /// The foreground will use the terminal's default color.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::{Color, ColorPair};
-    ///
-    /// let yellow_bg = ColorPair::bg(Color::Yellow);
-    /// let blue_bg = ColorPair::bg(Color::Blue);
-    /// ```
+    /// Create a color pair with only background color (default foreground).
     pub const fn bg(color: Color) -> Self {
         Self {
             fg: Color::Reset,
@@ -263,21 +137,7 @@ impl ColorPair {
         }
     }
 
-    /// Create an inverted version of this color pair.
-    ///
-    /// This swaps the foreground and background colors.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::{Color, ColorPair};
-    ///
-    /// let original = ColorPair::new(Color::White, Color::Blue);
-    /// let inverted = original.inverted(); // Blue text on white background
-    /// 
-    /// assert_eq!(inverted.fg, Color::Blue);
-    /// assert_eq!(inverted.bg, Color::White);
-    /// ```
+    /// Swap foreground and background colors.
     pub const fn inverted(self) -> Self {
         Self {
             fg: self.bg,
@@ -286,10 +146,7 @@ impl ColorPair {
     }
 }
 
-/// Predefined color pairs for common use cases.
-///
-/// These constants provide ready-to-use color schemes for typical UI elements
-/// like error messages, success notifications, and highlighted content.
+/// Common color pairs for typical UI elements.
 impl ColorPair {
     /// Red text on transparent background - typically used for error messages
     pub const ERROR: Self = Self::new(Color::Red, Color::Transparent);

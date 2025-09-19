@@ -1,14 +1,14 @@
-//! Demonstrates the various ways to use colors in terminal output.
+//! Color system demonstration showing different ways to style terminal text.
+//!
+//! This example shows:
+//! - Named colors vs RGB vs ANSI colors
+//! - Foreground and background styling
+//! - Predefined color pairs for common use cases
+//! - Practical color usage patterns
 
-use minui::{Window, Event, Result, Color, ColorPair, TerminalWindow};
+use minui::{Color, ColorPair, Event, Result, TerminalWindow, Window};
 
-/// Example showing how to use colors for terminal text.
-///
-/// This example demonstrates:
-/// 1. Writing plain vs colored text
-/// 2. Using different foreground colors
-/// 3. Using background colors
-/// 4. Common use cases for colored output (errors, warnings, etc.)
+/// Demonstrates MinUI's color capabilities with various styling examples.
 fn main() -> Result<()> {
     // Initialize the terminal window
     let mut window = TerminalWindow::new()?;
@@ -32,37 +32,41 @@ fn main() -> Result<()> {
     for (i, &color) in colors.iter().enumerate() {
         let color_pair = ColorPair::new(color, Color::Black);
         window.write_str_colored(
-            2,                     // Row 2
-            (i as u16) * 10,      // Column 0, 10, 20, etc.
+            2,               // Row 2
+            (i as u16) * 10, // Column 0, 10, 20, etc.
             &format!("{:?}", color),
-            color_pair
+            color_pair,
         )?;
     }
 
     // Show practical examples of color usage for different types of messages
     window.write_str_colored(
-        4, 0,
+        4,
+        0,
         "Error: Something went wrong!",
-        ColorPair::new(Color::Red, Color::Black)
+        ColorPair::new(Color::Red, Color::Black),
     )?;
 
     window.write_str_colored(
-        5, 0,
+        5,
+        0,
         "Success: Operation completed!",
-        ColorPair::new(Color::Green, Color::Black)
+        ColorPair::new(Color::Green, Color::Black),
     )?;
 
     window.write_str_colored(
-        6, 0,
+        6,
+        0,
         "Warning: Disk space low",
-        ColorPair::new(Color::Yellow, Color::Black)
+        ColorPair::new(Color::Yellow, Color::Black),
     )?;
 
     // Example of using background color for emphasis
     window.write_str_colored(
-        7, 0,
+        7,
+        0,
         "URGENT: System failure! jk :)",
-        ColorPair::new(Color::Black, Color::Red)
+        ColorPair::new(Color::Black, Color::Red),
     )?;
 
     // Input loop

@@ -1,62 +1,50 @@
 //! # MinUI - A Minimal Terminal UI Framework
 //!
-//! MinUI is a lightweight, flexible terminal user interface framework for Rust applications.
-//! It provides essential building blocks for creating both traditional TUI applications
-//! and terminal-based games with a simple, intuitive API.
+//! MinUI is a lightweight terminal UI framework for building both traditional TUI applications
+//! and terminal-based games. It focuses on simplicity and ease of use while providing the
+//! essential tools you need to create engaging terminal interfaces.
 //!
-//! ## Key Features
+//! ## What MinUI Offers
 //!
-//! - **Dual-mode Operation**: Supports both event-driven TUI mode and fixed-tick game mode
-//! - **Flexible Widget System**: Extensible widget architecture with built-in components
-//! - **Color Support**: Rich color handling with RGB, ANSI, and named color support
-//! - **Input Handling**: Comprehensive keyboard and mouse input processing
-//! - **Game Development**: Built-in support for sprites, tiles, collision detection, and game loops
-//! - **Cross-platform**: Works on Windows, macOS, and Linux terminals
+//! - Event-driven TUI applications and fixed-rate game loops
+//! - Simple widget system with containers, labels, panels, and text blocks
+//! - Full color support (RGB, ANSI, named colors)
+//! - Cross-platform keyboard and mouse input
+//! - Game development tools (sprites, collision detection, maps)
+//! - Buffered rendering for smooth updates
 //!
 //! ## Quick Start
 //!
 //! ```rust
 //! use minui::prelude::*;
 //!
-//! // Create a simple TUI application
-//! let mut app = App::new(())?
-//!     .with_tick_rate(std::time::Duration::from_millis(16));
+//! let mut app = App::new(())?;
 //!
 //! app.run(
 //!     |_state, event| {
-//!         // Handle events - return false to exit
+//!         // Return false to exit on 'q' key
 //!         !matches!(event, Event::Character('q'))
 //!     },
 //!     |_state, window| {
-//!         // Draw UI
-//!         let label = Label::new("Hello, MinUI!", 0, 0);
+//!         let label = Label::new("Hello, MinUI!");
 //!         let _ = label.draw(window);
 //!     }
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```
 //!
-//! ## Architecture
+//! ## Main Components
 //!
-//! MinUI is organized into several key modules:
-//!
-//! - [`app`] - Application runner and main loop management
-//! - [`widgets`] - UI components like labels, panels, and containers
-//! - [`color`] - Color handling and terminal styling
-//! - [`input`] - Keyboard and mouse input processing
-//! - [`render`] - Low-level rendering and buffering
-//! - [`game`] - Game development utilities (sprites, tiles, collision)
+//! - [`app`] - Application runner and main loops
+//! - [`widgets`] - UI components (labels, panels, containers)
+//! - [`color`] - Color handling and styling
+//! - [`input`] - Keyboard and mouse input
+//! - [`render`] - Low-level rendering and buffers
+//! - [`game`] - Game development utilities
 //! - [`window`] - Terminal window management
 //!
-//! ## Examples
-//!
-//! The `examples/` directory contains comprehensive examples showing:
-//! - Basic widget usage
-//! - Color and styling
-//! - Game development patterns
-//! - Custom widget implementation
-//!
-//! Run examples with: `cargo run --example basic_usage`
+//! Check out the examples in the `examples/` directory to see MinUI in action.
+//! Run them with: `cargo run --example basic_usage`
 
 pub mod app;
 pub mod color;
@@ -81,37 +69,79 @@ pub use input::KeyboardHandler;
 
 // Widget system
 pub use widgets::{
-    Alignment, BorderChars, Container, Label, Panel, TextBlock, TextWrapMode, VerticalAlignment,
-    Widget, WidgetArea,
+    Alignment,
+    // Utilities
+    BorderChars,
+    BorderStyle,
+    // Container system
+    Container,
+    // Text widgets
+    Label,
+    LayoutDirection,
+    Padding,
+
+    // Other widgets
+    Panel,
+
+    Text,
+    TextBlock,
+    TextWrapMode,
+
+    VerticalAlignment,
+    // Core widget trait and utilities
+    Widget,
+    WidgetArea,
 };
 
-/// Convenience re-exports for common patterns.
+/// Common imports for MinUI applications.
 ///
-/// This module provides a curated set of the most commonly used types and traits
-/// from across the MinUI crate. Import this module to get started quickly:
+/// This module contains the most frequently used types and traits.
+/// Import everything with `use minui::prelude::*;` to get started quickly:
 ///
 /// ```rust
 /// use minui::prelude::*;
 ///
-/// // Now you can use common types directly:
-/// let label = Label::new("Hello", 0, 0);
+/// let label = Label::new("Hello");
 /// let color = Color::rgb(255, 0, 0);
 /// let app = App::new(my_state)?;
 /// # Ok::<(), minui::Error>(())
 /// ```
-///
-/// ## Included Types
-///
-/// - **Core**: [`App`], [`Result`], [`Error`]
-/// - **Events**: [`Event`]
-/// - **Colors**: [`Color`], [`ColorPair`]
-/// - **Widgets**: [`Widget`], [`Label`], [`Panel`], [`Container`], [`TextBlock`]
-/// - **Layout**: [`Alignment`], [`VerticalAlignment`], [`BorderChars`]
-/// - **Window**: [`Window`], [`TerminalWindow`]
-/// - **Input**: [`KeyboardHandler`]
 pub mod prelude {
     pub use crate::{
-        Alignment, BorderChars, Color, ColorPair, Container, Event, KeyboardHandler, Label, Panel,
-        Result, TerminalWindow, TextBlock, VerticalAlignment, Widget, Window,
+        Alignment,
+        // Core types
+        App,
+        // Utilities
+        BorderChars,
+        BorderStyle,
+        // Colors
+        Color,
+        ColorPair,
+
+        // Layout system
+        Container,
+        Error,
+        Event,
+
+        KeyboardHandler,
+
+        // Text widgets
+        Label,
+        LayoutDirection,
+        Padding,
+
+        // Other widgets
+        Panel,
+        Result,
+        TerminalWindow,
+        Text,
+        TextBlock,
+        TextWrapMode,
+
+        VerticalAlignment,
+        Widget,
+
+        // Window and input
+        Window,
     };
 }

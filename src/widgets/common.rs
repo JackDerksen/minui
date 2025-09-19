@@ -1,27 +1,103 @@
 //! # Common Widget Utilities
 //!
-//! This module provides shared types and utilities used across different widgets.
-//! It includes border character sets and window view utilities for creating
-//! constrained drawing areas.
+//! A collection of shared types, utilities, and building blocks used across all MinUI
+//! widgets. This module provides the foundational components that enable consistent
+//! visual styling and drawing operations throughout the widget system, including
+//! comprehensive border character sets and window view management for constrained
+//! rendering within specific areas.
+//!
+//! ## Features
+//!
+//! - **Rich border styles**: Unicode and ASCII-compatible border character sets
+//! - **Flexible styling**: Support for single-line, double-line, and custom borders
+//! - **Window constraints**: Bounded drawing areas for contained widget rendering
+//! - **Cross-platform compatibility**: ASCII fallbacks for terminal compatibility
+//! - **Consistent theming**: Standardized visual elements across all widgets
+//! - **Drawing optimization**: Efficient rendering within specified boundaries
 //!
 //! ## Key Components
 //!
-//! - [`BorderChars`] - Character sets for drawing borders and boxes
-//! - [`WindowView`] - A constrained view of a window for contained drawing
+//! ### BorderChars
+//! Comprehensive character sets for drawing borders, frames, and decorative elements.
+//! Provides predefined styles for different visual aesthetics and terminal capabilities.
 //!
-//! ## Examples
+//! ### WindowView
+//! A constrained view system that enables widgets to draw within specific rectangular
+//! areas while automatically handling boundary clipping and coordinate translation.
+//!
+//! ## Visual Border Styles
+//!
+//! ```text
+//! Single Line:              Double Line:              ASCII Compatible:
+//! ┌─────────────────┐       ╔═══════════════════╗     +-------------------+
+//! │     Content     │       ║      Content      ║     |      Content      |
+//! ├─────────────────┤       ╠═══════════════════╣     +-------------------+
+//! │   More Content  │       ║   More Content    ║     |   More Content    |
+//! └─────────────────┘       ╚═══════════════════╝     +-------------------+
+//! ```
+//!
+//! ## Basic Usage
+//!
+//! ```rust
+//! use minui::{BorderChars, Panel};
+//!
+//! // Apply different border styles to widgets
+//! let elegant_panel = Panel::new(30, 8)
+//!     .with_header("Elegant Design")
+//!     .with_header_style(BorderChars::single_line())
+//!     .with_body_style(BorderChars::single_line());
+//!
+//! let bold_panel = Panel::new(30, 8)
+//!     .with_header("Bold Design")
+//!     .with_header_style(BorderChars::double_line())
+//!     .with_body_style(BorderChars::double_line());
+//!
+//! let compatible_panel = Panel::new(30, 8)
+//!     .with_header("Compatible Design")
+//!     .with_header_style(BorderChars::ascii())
+//!     .with_body_style(BorderChars::ascii());
+//! ```
+//!
+//! ## Advanced Border Customization
 //!
 //! ```rust
 //! use minui::BorderChars;
 //!
-//! // Use predefined border styles
-//! let single = BorderChars::single_line();
-//! let double = BorderChars::double_line();
-//! let ascii = BorderChars::ascii();
+//! // Create custom border characters
+//! let custom_border = BorderChars {
+//!     top_left: '╭',
+//!     top_right: '╮',
+//!     bottom_left: '╰',
+//!     bottom_right: '╯',
+//!     horizontal: '─',
+//!     vertical: '│',
+//!     intersect: '┼',
+//!     intersect_left: '┤',
+//!     intersect_right: '├',
+//!     intersect_top: '┴',
+//!     intersect_bottom: '┬',
+//! };
 //!
-//! // Access individual border characters
-//! println!("Corner: {}", single.top_left); // ┌
+//! // Use custom borders in widgets
+//! let rounded_panel = Panel::new(25, 6)
+//!     .with_header_style(custom_border)
+//!     .with_body_style(custom_border);
 //! ```
+//!
+//! ## Window View Usage
+//!
+//! ```rust
+//! use minui::common::WindowView;
+//!
+//! // Create a constrained drawing area
+//! let view = WindowView::new(window, 10, 5, 40, 15);
+//! // All drawing operations within this view are automatically
+//! // clipped to the specified rectangular bounds
+//! ```
+//!
+//! Common utilities form the foundation of MinUI's consistent visual design,
+//! enabling widgets to share styling elements while maintaining flexibility
+//! for custom appearances and cross-platform terminal compatibility.
 
 use crate::{ColorPair, Result, Window};
 
@@ -47,7 +123,7 @@ use crate::{ColorPair, Result, Window};
 /// let compatible = BorderChars::ascii();
 ///
 /// // Use in widget creation
-/// // let panel = Panel::new(0, 0, 20, 10)
+/// // let panel = Panel::new(20, 10)
 /// //     .with_border_style(elegant);
 /// ```
 #[derive(Debug, Clone, Copy)]

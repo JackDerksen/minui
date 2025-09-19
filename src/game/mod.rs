@@ -1,156 +1,84 @@
-//! # Game Development Framework
+//! # Game Development Tools
 //!
-//! This module provides specialized tools and utilities for developing terminal-based games
-//! with MinUI. It includes systems for sprite management, collision detection, map handling,
-//! and game loop utilities that complement the core UI framework.
+//! Game-specific utilities for terminal games including sprites, tiles, collision detection,
+//! and game loop management. Complements MinUI's core UI system with game-focused features.
 //!
-//! ## Overview
+//! ## Components
 //!
-//! The game module bridges the gap between MinUI's widget-based UI system and the specific
-//! needs of game development. While MinUI handles rendering, input, and basic UI components,
-//! the game module adds game-specific concepts like sprites, tiles, collision detection,
-//! and frame-rate management.
+//! - [`tile`] - Grid-based game graphics and behaviors
+//! - [`sprite`] - Sprite management and movement
+//! - [`map`] - Level and world management
+//! - [`collision`] - Collision detection between objects
+//! - [`game_loop`] - Timing and frame rate management
 //!
-//! ## Core Components
+//! ## Quick Examples
 //!
-//! ### Tiles and Sprites
-//! - [`tile`] - Tile-based graphics and behaviors for grid-based games
-//! - [`sprite`] - Sprite management with movement and animation support
-//!
-//! ### World Management
-//! - [`map`] - Map and level layout management systems
-//! - [`collision`] - Collision detection between game objects
-//!
-//! ### Game Loop
-//! - [`game_loop`] - Frame rate management, timing, and game state utilities
-//!
-//! ## Game Development Patterns
-//!
-//! ### Fixed Timestep Games
-//! Perfect for turn-based games, roguelikes, and puzzle games where timing isn't critical:
-//!
+//! **Turn-based game** (chess, roguelike):
 //! ```rust
 //! use minui::prelude::*;
 //!
-//! struct GameState {
-//!     player_x: u16,
-//!     player_y: u16,
-//! }
-//!
-//! let mut app = App::new(GameState { player_x: 5, player_y: 5 })?;
+//! struct Player { x: u16, y: u16 }
+//! let mut app = App::new(Player { x: 5, y: 5 })?;
 //!
 //! app.run(
-//!     |state, event| {
-//!         match event {
-//!             Event::Character('q') => false, // Quit
-//!             Event::KeyUp => { state.player_y = state.player_y.saturating_sub(1); true }
-//!             Event::KeyDown => { state.player_y += 1; true }
-//!             Event::KeyLeft => { state.player_x = state.player_x.saturating_sub(1); true }
-//!             Event::KeyRight => { state.player_x += 1; true }
-//!             _ => true,
-//!         }
+//!     |player, event| match event {
+//!         Event::Character('q') => false,
+//!         Event::KeyUp => { player.y = player.y.saturating_sub(1); true }
+//!         Event::KeyDown => { player.y += 1; true }
+//!         _ => true,
 //!     },
-//!     |state, window| {
-//!         window.write_str(state.player_y, state.player_x, "@")?;
+//!     |player, window| {
+//!         window.write_str(player.y, player.x, "@")?;
 //!         Ok(())
 //!     }
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```
 //!
-//! ### Real-time Games
-//! For action games, arcade-style games, and smooth animation:
-//!
+//! **Real-time game** (action, arcade):
 //! ```rust
 //! use minui::prelude::*;
 //! use std::time::Duration;
 //!
-//! struct ActionGame {
-//!     player_x: f32,
-//!     player_y: f32,
-//!     velocity_x: f32,
-//!     velocity_y: f32,
-//! }
+//! struct Game { x: f32, y: f32, dx: f32, dy: f32 }
 //!
-//! let mut app = App::new(ActionGame {
-//!     player_x: 40.0,
-//!     player_y: 12.0,
-//!     velocity_x: 0.0,
-//!     velocity_y: 0.0,
-//! })?
-//! .with_tick_rate(Duration::from_millis(16)); // ~60 FPS
+//! let mut app = App::new(Game { x: 40.0, y: 12.0, dx: 0.0, dy: 0.0 })?
+//!     .with_tick_rate(Duration::from_millis(16)); // 60 FPS
 //!
 //! app.run(
-//!     |state, event| {
-//!         match event {
-//!             Event::Tick => {
-//!                 // Update physics
-//!                 state.player_x += state.velocity_x;
-//!                 state.player_y += state.velocity_y;
-//!                 
-//!                 // Apply friction
-//!                 state.velocity_x *= 0.9;
-//!                 state.velocity_y *= 0.9;
-//!                 true
-//!             }
-//!             Event::Character('w') => { state.velocity_y -= 0.5; true }
-//!             Event::Character('s') => { state.velocity_y += 0.5; true }
-//!             Event::Character('a') => { state.velocity_x -= 0.5; true }
-//!             Event::Character('d') => { state.velocity_x += 0.5; true }
-//!             Event::Character('q') => false,
-//!             _ => true,
+//!     |game, event| match event {
+//!         Event::Tick => {
+//!             game.x += game.dx; game.y += game.dy;
+//!             game.dx *= 0.9; game.dy *= 0.9; // friction
+//!             true
 //!         }
+//!         Event::Character('w') => { game.dy -= 0.5; true }
+//!         Event::Character('q') => false,
+//!         _ => true,
 //!     },
-//!     |state, window| {
-//!         window.write_str(state.player_y as u16, state.player_x as u16, "◉")?;
+//!     |game, window| {
+//!         window.write_str(game.y as u16, game.x as u16, "●")?;
 //!         Ok(())
 //!     }
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```
 //!
-//! ## Game Types Supported
+//! ## Great for These Game Types
 //!
-//! The MinUI game framework is particularly well-suited for:
+//! - **Roguelikes** - Dungeon crawlers, procedural worlds
+//! - **Puzzle games** - Tetris, Sokoban, word games
+//! - **Arcade games** - Snake, Pong, shoot-em-ups
+//! - **Strategy** - Chess, tower defense, turn-based tactics
+//! - **Text adventures** - Interactive fiction, MUDs
 //!
-//! ### Classic Terminal Games
-//! - **Roguelikes**: Dungeon crawlers with procedural generation
-//! - **Text Adventures**: Interactive fiction with rich narratives
-//! - **MUDs/RPGs**: Multi-user dungeons and role-playing games
+//! ## Status
 //!
-//! ### Puzzle Games
-//! - **Tetris-style**: Block-falling puzzle games
-//! - **Sokoban**: Box-pushing puzzle games
-//! - **Word Games**: Crosswords, word searches, text-based puzzles
-//!
-//! ### Arcade Games
-//! - **Snake**: Classic snake game with smooth movement
-//! - **Pong**: Simple paddle and ball games
-//! - **Space Invaders**: Scrolling shoot-em-up style games
-//!
-//! ### Strategy Games
-//! - **Turn-based Strategy**: Chess, checkers, tactical games
-//! - **Tower Defense**: Real-time strategy with tower placement
-//! - **4X Games**: Explore, expand, exploit, exterminate strategy games
-//!
-//! ## Implementation Status
-//!
-//! The game module is currently in early development with placeholder implementations.
-//! The framework provides the foundation for game development, but specific game
-//! utilities are planned for future releases.
-//!
-//! ## Future Enhancements
-//!
-//! Planned features for the game module include:
-//! - Entity-Component-System (ECS) architecture
-//! - Physics simulation and collision detection
-//! - Sound system integration (where supported)
-//! - Save/load system for game state
-//! - Networking support for multiplayer games
-//! - Procedural generation utilities
+//! The game module is in early development. Core MinUI functionality is stable,
+//! but game-specific utilities are still being built out.
 
-mod tile;
-mod sprite;
 mod collision;
-mod map;
 mod game_loop;
+mod map;
+mod sprite;
+mod tile;
