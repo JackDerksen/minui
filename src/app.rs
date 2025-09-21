@@ -72,7 +72,7 @@ impl<S> App<S> {
     pub fn run<U, D>(&mut self, mut update: U, mut draw: D) -> Result<()>
     where
         U: FnMut(&mut S, Event) -> bool, // Return bool to control running
-        D: FnMut(&mut S, &mut dyn Window),
+        D: FnMut(&mut S, &mut dyn Window) -> Result<()>,
     {
         let mut last_tick = Instant::now();
 
@@ -99,7 +99,7 @@ impl<S> App<S> {
             // --- Drawing ---
             // Always draw the current state of the application.
             self.window.clear_screen()?;
-            draw(&mut self.state, &mut self.window);
+            draw(&mut self.state, &mut self.window)?;
             self.window.flush()?;
 
             // Yield CPU time to avoid spinning, especially in game mode.
