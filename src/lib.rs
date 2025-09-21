@@ -88,9 +88,32 @@ pub use widgets::{
     TextWrapMode,
 
     VerticalAlignment,
+
     // Core widget trait and utilities
     Widget,
     WidgetArea,
+
+    // Helper functions
+    code_block,
+    error_panel,
+    error_text,
+    footer_section,
+    header_section,
+    help_text,
+    highlighted_panel,
+    info_card,
+    info_panel,
+    main_content_area,
+    metric_card,
+    minimal_panel,
+    progress_bar,
+    sidebar,
+    status_bar,
+    subtitle_text,
+    success_panel,
+    success_text,
+    title_text,
+    warning_panel,
 };
 
 /// Common imports for MinUI applications.
@@ -140,8 +163,29 @@ pub mod prelude {
 
         VerticalAlignment,
         Widget,
-
         // Window and input
         Window,
+
+        // Helper functions
+        code_block,
+        error_panel,
+        error_text,
+        footer_section,
+        header_section,
+        help_text,
+        highlighted_panel,
+        info_card,
+        info_panel,
+        main_content_area,
+        metric_card,
+        minimal_panel,
+        progress_bar,
+        sidebar,
+        status_bar,
+        subtitle_text,
+        success_panel,
+        success_text,
+        title_text,
+        warning_panel,
     };
 }

@@ -51,8 +51,9 @@ fn main() -> minui::Result<()> {
         },
         // Draw function: render the current state
         |state, window| {
-            window.write_str(state.y, state.x, "@").unwrap();
-            window.write_str(0, 0, "Press 'q' to quit").unwrap();
+            window.write_str(state.y, state.x, "@")?;
+            window.write_str(0, 0, "Press 'q' to quit")?;
+            Ok(())
         },
     )?;
 
