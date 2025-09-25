@@ -1,7 +1,129 @@
 //! # Widget System
 //!
-//! UI components for building terminal interfaces. Widgets can be drawn individually
-//! or arranged using the container system for automatic layout management.
+//! A comprehensive collection of UI components for building terminal interfaces. The widget
+//! system provides both individual components that can be positioned manually, and a powerful
+//! container system for automatic layout management and responsive design.
+//!
+//! ## Core Concepts
+//!
+//! ### Widgets
+//! All UI elements implement the [`Widget`] trait, providing consistent drawing, sizing,
+//! and positioning behavior. Widgets handle their own content and styling, while containers
+//! manage layout and positioning.
+//!
+//! ### Layout System
+//! The container system automatically arranges widgets using:
+//! - **Flexible layouts**: Horizontal and vertical arrangements with automatic sizing
+//! - **Padding and borders**: Configurable spacing and decorative elements
+//! - **Content alignment**: Center, left, right, and justified text alignment
+//! - **Responsive design**: Widgets adapt to available terminal space
+//!
+//! ## Available Components
+//!
+//! ### Text Widgets
+//! - [`Label`] - Single-line text with color and alignment
+//! - [`Text`] - Multi-line text blocks with wrapping
+//! - [`TextBlock`] - Advanced text formatting with multiple styles
+//!
+//! ### Container Widgets
+//! - [`Container`] - Layout management with padding, borders, and alignment
+//! - [`Panel`] - Bordered containers with titles and content areas
+//!
+//! ### Helper Functions
+//! Pre-built styled components for common UI patterns:
+//! - [`title_text`], [`subtitle_text`] - Hierarchical headings
+//! - [`error_panel`], [`success_panel`], [`warning_panel`] - Status indicators
+//! - [`progress_bar`], [`status_bar`] - Progress and status displays
+//! - [`sidebar`], [`main_content_area`] - Layout helpers
+//!
+//! ## Quick Examples
+//!
+//! ### Simple Text Display
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! let label = Label::new("Hello, MinUI!")
+//!     .with_color_pair(ColorPair::new(Color::Yellow, Color::Blue));
+//!
+//! label.draw(window)?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ### Container Layout
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! let container = Container::new(LayoutDirection::Vertical)
+//!     .with_border_style(BorderStyle::Single)
+//!     .with_padding(Padding::uniform(1));
+//!
+//! let title = title_text("My Application");
+//! let content = Text::new("Welcome to the main content area.");
+//!
+//! container
+//!     .add_child(title)
+//!     .add_child(content)
+//!     .draw(window)?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ### Status Dashboard
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! // Create a dashboard with status panels
+//! let main_container = Container::new(LayoutDirection::Vertical);
+//!
+//! let header = header_section("System Status");
+//! let success_msg = success_panel("All systems operational");
+//! let warning_msg = warning_panel("High memory usage detected");
+//! let info_card = info_card("Connected Users", "42");
+//!
+//! main_container
+//!     .add_child(header)
+//!     .add_child(success_msg)
+//!     .add_child(warning_msg)
+//!     .add_child(info_card)
+//!     .draw(window)?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ## Advanced Features
+//!
+//! ### Text Wrapping and Alignment
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! let text = TextBlock::new("Long text that will be wrapped automatically...")
+//!     .with_wrap_mode(TextWrapMode::WordWrap)
+//!     .with_alignment(Alignment::Center)
+//!     .with_vertical_alignment(VerticalAlignment::Middle);
+//! ```
+//!
+//! ### Custom Borders and Styling
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! let custom_border = BorderChars {
+//!     top_left: '╭',
+//!     top_right: '╮',
+//!     bottom_left: '╰',
+//!     bottom_right: '╯',
+//!     horizontal: '─',
+//!     vertical: '│',
+//! };
+//!
+//! let panel = Panel::new("Custom Panel")
+//!     .with_custom_border(custom_border)
+//!     .with_color_pair(ColorPair::new(Color::Cyan, Color::Black));
+//! ```
+//!
+//! ## Performance Tips
+//!
+//! - Use containers for automatic layout instead of manual positioning
+//! - Reuse widget instances when possible rather than creating new ones each frame
+//! - Prefer helper functions for common patterns - they're optimized and consistent
+//! - Use appropriate text wrapping modes for your content length and update frequency
 
 mod common;
 mod container;

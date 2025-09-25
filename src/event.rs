@@ -22,7 +22,7 @@
 //!             _ => true,
 //!         }
 //!     },
-//!     |state, window| { /* draw */ }
+//!     |state, window| { /* draw */ Ok(()) }
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```

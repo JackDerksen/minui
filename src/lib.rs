@@ -27,7 +27,7 @@
 //!     },
 //!     |_state, window| {
 //!         let label = Label::new("Hello, MinUI!");
-//!         let _ = label.draw(window);
+//!         label.draw(window)
 //!     }
 //! )?;
 //! # Ok::<(), minui::Error>(())
@@ -126,7 +126,7 @@ pub use widgets::{
 ///
 /// let label = Label::new("Hello");
 /// let color = Color::rgb(255, 0, 0);
-/// let app = App::new(my_state)?;
+/// let app = App::new(())?;
 /// # Ok::<(), minui::Error>(())
 /// ```
 pub mod prelude {

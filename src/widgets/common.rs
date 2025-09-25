@@ -61,7 +61,7 @@
 //! ## Advanced Border Customization
 //!
 //! ```rust
-//! use minui::BorderChars;
+//! use minui::{BorderChars, Panel};
 //!
 //! // Create custom border characters
 //! let custom_border = BorderChars {
@@ -85,12 +85,15 @@
 //! ```
 //!
 //! ## Window View Usage
+//! ## Constrained Drawing with WindowView
 //!
 //! ```rust
-//! use minui::common::WindowView;
+//! use minui::widgets::WindowView;
+//! # use minui::{TerminalWindow, Window};
+//! # let mut window = TerminalWindow::new().unwrap();
 //!
 //! // Create a constrained drawing area
-//! let view = WindowView::new(window, 10, 5, 40, 15);
+//! let view = WindowView::new(&mut window, 10, 5, 40, 15);
 //! // All drawing operations within this view are automatically
 //! // clipped to the specified rectangular bounds
 //! ```
@@ -272,7 +275,9 @@ impl BorderChars {
 /// # Examples
 ///
 /// ```rust
-/// use minui::{WindowView, Window};
+/// use minui::widgets::WindowView;
+/// use minui::{TerminalWindow, Window};
+/// # let mut window = TerminalWindow::new().unwrap();
 ///
 /// // Create a view within a larger window
 /// // let mut view = WindowView {

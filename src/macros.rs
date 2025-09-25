@@ -5,7 +5,7 @@
 //! The main macro here is `define_colors!` which lets you define multiple color pairs at once:
 //!
 //! ```rust
-//! use minui::{Color, define_colors};
+//! use minui::{Color, ColorPair, define_colors};
 //!
 //! define_colors! {
 //!     pub const ERROR_STYLE = (Color::Red, Color::Black);
@@ -22,7 +22,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use minui::{Color, define_colors};
+/// use minui::{Color, ColorPair, define_colors};
 ///
 /// define_colors! {
 ///     pub const ERROR_STYLE = (Color::Red, Color::Black);
@@ -36,6 +36,8 @@
 ///
 /// With RGB colors:
 /// ```rust
+/// use minui::{Color, ColorPair, define_colors};
+///
 /// define_colors! {
 ///     pub const BRAND_BLUE = (Color::rgb(0, 123, 255), Color::Black);
 ///     pub const BRAND_GRAY = (Color::rgb(108, 117, 125), Color::White);

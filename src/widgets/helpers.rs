@@ -1,3 +1,116 @@
+//! # Widget Helper Functions
+//!
+//! A comprehensive collection of pre-built, styled UI components for common interface patterns.
+//! These helper functions provide ready-to-use widgets with consistent styling and behavior,
+//! making it easy to build professional-looking terminal interfaces quickly.
+//!
+//! ## Categories
+//!
+//! ### Status and Notification Panels
+//! Pre-styled panels for different message types with appropriate colors and icons:
+//! - [`success_panel`] - Green success messages with checkmark
+//! - [`warning_panel`] - Yellow warning messages with caution icon
+//! - [`error_panel`] - Red error messages with error icon
+//! - [`info_panel`] - Blue informational messages with info icon
+//!
+//! ### Text Styling Functions
+//! Consistently styled text components for hierarchical content:
+//! - [`title_text`] - Large, prominent titles
+//! - [`subtitle_text`] - Secondary headings
+//! - [`help_text`] - Dimmed help and instruction text
+//! - [`success_text`], [`error_text`] - Status-colored text
+//!
+//! ### Layout Components
+//! Container helpers for common layout patterns:
+//! - [`header_section`] - Page/section headers with centering
+//! - [`footer_section`] - Page footers with status information
+//! - [`sidebar`] - Side navigation areas
+//! - [`main_content_area`] - Primary content containers
+//!
+//! ### Specialized Widgets
+//! Task-specific components for common UI needs:
+//! - [`progress_bar`] - Progress indication with percentage
+//! - [`status_bar`] - Application status display
+//! - [`metric_card`] - Key-value metric display
+//! - [`info_card`] - Information cards with titles and content
+//! - [`code_block`] - Code display with monospace formatting
+//!
+//! ## Design Philosophy
+//!
+//! These helpers follow consistent design principles:
+//! - **Semantic colors**: Green for success, red for errors, yellow for warnings
+//! - **Clear hierarchy**: Different text sizes and weights for content organization
+//! - **Consistent spacing**: Uniform padding and margins across components
+//! - **Accessibility**: High contrast colors and clear visual indicators
+//!
+//! ## Quick Examples
+//!
+//! ### Status Messages
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! // Show different types of status messages
+//! let success = success_panel("Operation completed successfully!");
+//! let warning = warning_panel("Low disk space detected");
+//! let error = error_panel("Failed to connect to server");
+//! let info = info_panel("Tip", "Press 'h' for help");
+//!
+//! success.draw(window)?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ### Application Layout
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! // Build a complete application layout
+//! let header = header_section("My Application v1.0");
+//! let main_content = main_content_area()
+//!     .add_child(title_text("Welcome"))
+//!     .add_child(help_text("Use arrow keys to navigate"));
+//! let footer = footer_section("Press 'q' to quit | 'h' for help");
+//!
+//! let layout = Container::new(LayoutDirection::Vertical)
+//!     .add_child(header)
+//!     .add_child(main_content)
+//!     .add_child(footer);
+//!
+//! layout.draw(window)?;
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ### Dashboard with Metrics
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! // Create a metrics dashboard
+//! let cpu_card = metric_card("CPU Usage", "45%");
+//! let memory_card = info_card("Memory", "2.1GB / 8GB");
+//! let status_bar = status_bar("All systems operational", Color::Green);
+//! let progress = progress_bar(75, "Loading...");
+//!
+//! let dashboard = Container::new(LayoutDirection::Horizontal)
+//!     .add_child(cpu_card)
+//!     .add_child(memory_card);
+//! # Ok::<(), minui::Error>(())
+//! ```
+//!
+//! ## Customization
+//!
+//! While these helpers provide good defaults, you can customize them further:
+//!
+//! ```rust
+//! use minui::prelude::*;
+//!
+//! // Start with a helper and customize it
+//! let custom_panel = success_panel("Custom message")
+//!     .with_header("✨ Custom Success")
+//!     .with_header_color(Some(ColorPair::new(Color::LightGreen, Color::Black)));
+//! ```
+//!
+//! These helper functions are designed to be building blocks - use them as-is for quick
+//! development, or as starting points for your own custom styled components.
+
 use crate::{
     Alignment, BorderChars, Color, ColorPair, Container, Label, Panel, Text, TextBlock,
     TextWrapMode,

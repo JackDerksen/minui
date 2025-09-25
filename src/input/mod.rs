@@ -53,6 +53,7 @@
 //!
 //! ```rust
 //! use minui::input::KeyboardHandler;
+//! use minui::Event;
 //! use std::time::Duration;
 //!
 //! let keyboard = KeyboardHandler::new();
