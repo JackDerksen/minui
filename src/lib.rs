@@ -65,7 +65,7 @@ pub use event::{Event, MouseButton};
 pub use window::{TerminalWindow, Window};
 
 // Input handling
-pub use input::KeyboardHandler;
+pub use input::{CombinedInputHandler, KeybindAction, KeyboardHandler, MouseHandler};
 
 // Widget system
 pub use widgets::{
@@ -141,16 +141,20 @@ pub mod prelude {
         Color,
         ColorPair,
 
+        // Input handling
+        CombinedInputHandler,
         // Layout system
         Container,
         Error,
         Event,
 
+        KeybindAction,
         KeyboardHandler,
-
         // Text widgets
         Label,
         LayoutDirection,
+        MouseHandler,
+
         Padding,
 
         // Other widgets

@@ -36,11 +36,13 @@
 //! # Ok::<(), minui::Error>(())
 //! ```
 
-use crate::input::KeyboardHandler;
+use crate::input::{KeyboardHandler, MouseHandler};
 use crate::render::buffer::Buffer;
 use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
-    cursor, execute,
+    cursor,
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent},
+    execute,
     style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
@@ -276,6 +278,7 @@ pub struct TerminalWindow {
     buffer: Buffer,
     auto_flush: bool,
     keyboard: KeyboardHandler,
+    mouse: MouseHandler,
 }
 
 impl TerminalWindow {
@@ -314,7 +317,8 @@ impl TerminalWindow {
             terminal::EnterAlternateScreen, // Use separate screen buffer
             terminal::Clear(terminal::ClearType::All),
             cursor::Hide,
-            cursor::MoveTo(0, 0)
+            cursor::MoveTo(0, 0),
+            EnableMouseCapture // Enable mouse event capture
         )?;
 
         Ok(Self {
@@ -323,6 +327,7 @@ impl TerminalWindow {
             buffer: Buffer::new(cols, rows),
             auto_flush: true,
             keyboard: KeyboardHandler::new(),
+            mouse: MouseHandler::new(),
         })
     }
 
@@ -410,8 +415,23 @@ impl TerminalWindow {
     /// }
     /// # Ok::<(), minui::Error>(())
     /// ```
-    pub fn get_input_timeout(&self, timeout: Duration) -> Result<Event> {
-        self.keyboard.get_input(timeout)
+    pub fn get_input_timeout(&mut self, timeout: Duration) -> Result<Event> {
+        // Use crossterm's unified event system to handle both keyboard and mouse
+        if event::poll(timeout)? {
+            match event::read()? {
+                CrosstermEvent::Key(key_event) => Ok(self.keyboard.process_key_event(key_event)),
+                CrosstermEvent::Mouse(mouse_event) => {
+                    Ok(self.mouse.process_mouse_event(mouse_event))
+                }
+                CrosstermEvent::Resize(cols, rows) => Ok(Event::Resize {
+                    width: cols,
+                    height: rows,
+                }),
+                _ => Ok(Event::Unknown),
+            }
+        } else {
+            Ok(Event::Unknown)
+        }
     }
 
     /// Waits indefinitely for user input.
@@ -435,8 +455,25 @@ impl TerminalWindow {
     /// println!("You pressed: {:?}", event);
     /// # Ok::<(), minui::Error>(())
     /// ```
-    pub fn wait_for_input(&self) -> Result<Event> {
-        self.keyboard.wait_for_input()
+    pub fn wait_for_input(&mut self) -> Result<Event> {
+        // Use crossterm's unified event system to handle both keyboard and mouse
+        loop {
+            match event::read()? {
+                CrosstermEvent::Key(key_event) => {
+                    return Ok(self.keyboard.process_key_event(key_event));
+                }
+                CrosstermEvent::Mouse(mouse_event) => {
+                    return Ok(self.mouse.process_mouse_event(mouse_event));
+                }
+                CrosstermEvent::Resize(cols, rows) => {
+                    return Ok(Event::Resize {
+                        width: cols,
+                        height: rows,
+                    });
+                }
+                _ => continue,
+            }
+        }
     }
 
     /// Polls for input without blocking.
@@ -466,7 +503,12 @@ impl TerminalWindow {
     /// }
     /// # Ok::<(), minui::Error>(())
     /// ```
-    pub fn poll_input(&self) -> Result<Option<Event>> {
+    pub fn poll_input(&mut self) -> Result<Option<Event>> {
+        // Check mouse input first (more interactive)
+        if let Some(event) = self.mouse.poll()? {
+            return Ok(Some(event));
+        }
+        // Then check keyboard input
         self.keyboard.poll()
     }
 
@@ -514,6 +556,52 @@ impl TerminalWindow {
     /// ```
     pub fn keyboard_mut(&mut self) -> &mut KeyboardHandler {
         &mut self.keyboard
+    }
+
+    /// Gets a reference to the mouse handler for advanced configuration.
+    ///
+    /// This provides access to the underlying mouse handler for advanced
+    /// input configuration and monitoring.
+    ///
+    /// # Returns
+    ///
+    /// Returns a reference to the internal `MouseHandler`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let window = TerminalWindow::new()?;
+    /// let mouse = window.mouse();
+    /// // Use mouse for advanced operations
+    /// # Ok::<(), minui::Error>(())
+    /// ```
+    pub fn mouse(&self) -> &MouseHandler {
+        &self.mouse
+    }
+
+    /// Gets a mutable reference to the mouse handler for configuration changes.
+    ///
+    /// This provides mutable access to the underlying mouse handler for
+    /// configuration modifications.
+    ///
+    /// # Returns
+    ///
+    /// Returns a mutable reference to the internal `MouseHandler`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TerminalWindow;
+    ///
+    /// let mut window = TerminalWindow::new()?;
+    /// let mouse = window.mouse_mut();
+    /// mouse.enable_drag_detection(true);
+    /// # Ok::<(), minui::Error>(())
+    /// ```
+    pub fn mouse_mut(&mut self) -> &mut MouseHandler {
+        &mut self.mouse
     }
 
     /// Controls automatic buffer flushing behavior.
@@ -714,6 +802,7 @@ impl Drop for TerminalWindow {
         let _ = disable_raw_mode();
         let _ = execute!(
             stdout(),
+            DisableMouseCapture, // Disable mouse event capture
             style::ResetColor,
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0),

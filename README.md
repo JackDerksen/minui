@@ -11,7 +11,7 @@ I wanted to build terminal games in Rust, but I found existing libraries either 
 - 🚀 **Fast**: Performance-focused with game development in mind
 - 🎮 **Game-friendly**: Supports both event-driven apps and fixed-rate game loops
 - 🎯 **Simple**: Clean, intuitive API that gets out of your way
-- ⌨️ **Input handling**: Keyboard and mouse events
+- ⌨️ **Input handling**: Very comprehensive keyboard and mouse event handling
 - 🎨 **Full color support**: RGB, ANSI, and named colors
 - 🧰 **Safe**: Proper error handling and automatic cleanup
 
@@ -34,7 +34,7 @@ MinUI is actively developed with these features available:
 - [ ] Simplified character/sprite and map management utilities
 - [ ] Easy character/sprite movement support with common Unicode characters built-in
 - [ ] Cell management with collision detection options
-- [ ] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
+- [x] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
 
 ## Getting Started
 

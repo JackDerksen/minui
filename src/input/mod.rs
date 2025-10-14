@@ -102,4 +102,8 @@
 mod keyboard;
 mod mouse;
 
-pub use keyboard::KeyboardHandler;
+#[cfg(test)]
+mod tests;
+
+pub use keyboard::{KeybindAction, KeyboardHandler};
+pub use mouse::{CombinedInputHandler, MouseHandler};

@@ -9,6 +9,7 @@
 //!
 //! ```rust
 //! use minui::{Event, App};
+//! use minui::input::KeybindAction;
 //!
 //! let mut app = App::new(())?;
 //!
@@ -17,6 +18,7 @@
 //!         match event {
 //!             Event::Character('q') => false, // Exit
 //!             Event::KeyUp => { /* move up */ true },
+//!             Event::Keybind(KeybindAction::Quit) => false, // Exit via keybind
 //!             Event::MouseClick { x, y, .. } => { /* handle click */ true },
 //!             Event::Tick => { /* game update */ true },
 //!             _ => true,
@@ -54,15 +56,25 @@ pub enum Event {
     /// Function key was pressed (F1-F12, etc.)
     /// The u8 value represents the function key number (1 for F1, 2 for F2, etc.)
     FunctionKey(u8),
+    /// Custom keybind was triggered (e.g., Ctrl+C, Alt+Enter)
+    /// Contains the action associated with the key combination
+    Keybind(crate::input::KeybindAction),
 
-    // Mouse events (placeholder for future implementation)
+    // Mouse events
     /// Mouse cursor moved to the specified coordinates
     MouseMove { x: u16, y: u16 },
     /// Mouse button was clicked at the specified coordinates
     MouseClick { x: u16, y: u16, button: MouseButton },
-    /// Mouse wheel was scrolled
-    /// Positive delta indicates scrolling up/away, negative indicates scrolling down/toward
+    /// Mouse button was dragged (click + move) to the specified coordinates
+    MouseDrag { x: u16, y: u16, button: MouseButton },
+    /// Mouse button was released at the specified coordinates
+    MouseRelease { x: u16, y: u16, button: MouseButton },
+    /// Mouse wheel was scrolled vertically
+    /// Positive delta indicates scrolling up, negative indicates scrolling down
     MouseScroll { delta: i8 },
+    /// Mouse wheel was scrolled horizontally
+    /// Positive delta indicates scrolling right, negative indicates scrolling left
+    MouseScrollHorizontal { delta: i8 },
 
     // Window events (optional, for future use)
     /// Terminal window was resized to the new dimensions
