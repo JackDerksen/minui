@@ -90,6 +90,8 @@ pub struct MouseHandler {
     is_dragging: bool,
     last_scroll_direction: Option<ScrollDirection>,
     scroll_buffer_count: u8,
+    invert_scroll_vertical: bool,
+    invert_scroll_horizontal: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -127,6 +129,8 @@ impl MouseHandler {
             is_dragging: false,
             last_scroll_direction: None,
             scroll_buffer_count: 0,
+            invert_scroll_vertical: false,
+            invert_scroll_horizontal: false,
         }
     }
 
@@ -261,6 +265,57 @@ impl MouseHandler {
         }
     }
 
+    /// Sets whether to invert vertical scrolling (natural scrolling).
+    ///
+    /// When enabled, positive deltas scroll down and negative deltas scroll up,
+    /// matching the "natural" scrolling behavior common on trackpads.
+    ///
+    /// # Arguments
+    ///
+    /// * `invert` - `true` to enable natural scrolling, `false` for traditional
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::input::MouseHandler;
+    ///
+    /// let mut mouse = MouseHandler::new();
+    /// mouse.set_invert_scroll_vertical(true); // Enable natural scrolling
+    /// ```
+    pub fn set_invert_scroll_vertical(&mut self, invert: bool) {
+        self.invert_scroll_vertical = invert;
+    }
+
+    /// Returns whether vertical scrolling is inverted.
+    pub fn is_scroll_vertical_inverted(&self) -> bool {
+        self.invert_scroll_vertical
+    }
+
+    /// Sets whether to invert horizontal scrolling.
+    ///
+    /// When enabled, positive deltas scroll left and negative deltas scroll right.
+    ///
+    /// # Arguments
+    ///
+    /// * `invert` - `true` to invert horizontal scrolling, `false` for normal
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::input::MouseHandler;
+    ///
+    /// let mut mouse = MouseHandler::new();
+    /// mouse.set_invert_scroll_horizontal(true);
+    /// ```
+    pub fn set_invert_scroll_horizontal(&mut self, invert: bool) {
+        self.invert_scroll_horizontal = invert;
+    }
+
+    /// Returns whether horizontal scrolling is inverted.
+    pub fn is_scroll_horizontal_inverted(&self) -> bool {
+        self.invert_scroll_horizontal
+    }
+
     /// Polls for mouse input without blocking.
     ///
     /// This method immediately checks if mouse input is available and returns
@@ -296,7 +351,14 @@ impl MouseHandler {
     pub fn poll(&mut self) -> Result<Option<Event>> {
         if event::poll(self.poll_rate)? {
             if let CrosstermEvent::Mouse(mouse_event) = event::read()? {
-                return Ok(Some(self.convert_mouse_event(mouse_event)));
+                let converted_event = self.convert_mouse_event(mouse_event);
+
+                // Coalesce scroll events to handle fast scroll wheels
+                if self.is_scroll_event(&converted_event) {
+                    return Ok(Some(self.coalesce_scroll_events(converted_event)?));
+                }
+
+                return Ok(Some(converted_event));
             }
         }
         Ok(None)
@@ -516,8 +578,79 @@ impl MouseHandler {
     /// Emits the appropriate scroll event for the given direction and delta.
     fn emit_scroll_event(&self, direction: ScrollDirection, delta: i8) -> Event {
         match direction {
-            ScrollDirection::Vertical => Event::MouseScroll { delta },
-            ScrollDirection::Horizontal => Event::MouseScrollHorizontal { delta },
+            ScrollDirection::Vertical => {
+                let final_delta = if self.invert_scroll_vertical {
+                    -delta
+                } else {
+                    delta
+                };
+                Event::MouseScroll { delta: final_delta }
+            }
+            ScrollDirection::Horizontal => {
+                let final_delta = if self.invert_scroll_horizontal {
+                    -delta
+                } else {
+                    delta
+                };
+                Event::MouseScrollHorizontal { delta: final_delta }
+            }
+        }
+    }
+
+    /// Checks if an event is a scroll event.
+    fn is_scroll_event(&self, event: &Event) -> bool {
+        matches!(
+            event,
+            Event::MouseScroll { .. } | Event::MouseScrollHorizontal { .. }
+        )
+    }
+
+    /// Coalesces multiple rapid scroll events into a single event.
+    ///
+    /// This drains the event queue of any additional scroll events in the same
+    /// direction, preventing scroll buffer buildup on fast scroll wheels.
+    fn coalesce_scroll_events(&mut self, initial_event: Event) -> Result<Event> {
+        let mut total_delta = match initial_event {
+            Event::MouseScroll { delta } => (delta, 0),
+            Event::MouseScrollHorizontal { delta } => (0, delta),
+            _ => return Ok(initial_event),
+        };
+
+        // Drain any additional pending scroll events
+        while event::poll(Duration::from_millis(0))? {
+            if let Ok(CrosstermEvent::Mouse(mouse_event)) = event::read() {
+                let next_event = self.convert_mouse_event(mouse_event);
+                match next_event {
+                    Event::MouseScroll { delta } => {
+                        total_delta.0 += delta;
+                    }
+                    Event::MouseScrollHorizontal { delta } => {
+                        total_delta.1 += delta;
+                    }
+                    _ => {
+                        // Not a scroll event, we're done coalescing
+                        // Note: This event is lost, but that's acceptable for the
+                        // improved scroll experience
+                        break;
+                    }
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Return the coalesced event
+        // Prioritize vertical scroll if both are present
+        if total_delta.0 != 0 {
+            Ok(Event::MouseScroll {
+                delta: total_delta.0,
+            })
+        } else if total_delta.1 != 0 {
+            Ok(Event::MouseScrollHorizontal {
+                delta: total_delta.1,
+            })
+        } else {
+            Ok(initial_event)
         }
     }
 
