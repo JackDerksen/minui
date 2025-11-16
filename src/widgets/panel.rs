@@ -84,6 +84,7 @@
 //! The panel widget integrates seamlessly with MinUI's container-based layout system,
 //! automatically positioning and sizing itself within parent containers.
 
+use crate::input::scroll::Scroller;
 use crate::widgets::common::WindowView;
 use crate::widgets::text::{Alignment, TextBlock};
 use crate::widgets::{BorderChars, Widget};
@@ -132,6 +133,12 @@ pub struct Panel {
     padding: u16,
     alignment: Alignment, // For the body only; header will always be centered
     auto_size: bool,
+    /// Scroll state manager for body content
+    scroller: Scroller,
+    /// Whether scrolling is enabled for the body
+    scrollable: bool,
+    /// Whether to show scroll indicators
+    show_scroll_indicators: bool,
 }
 
 /// The content type for a panel's body section.
@@ -171,6 +178,9 @@ impl Panel {
             padding: 1,
             alignment: Alignment::Left,
             auto_size: width == 0 || height == 0, // Auto sizes when dimensions are 0
+            scroller: Scroller::new(),
+            scrollable: false,
+            show_scroll_indicators: false,
         }
     }
 
@@ -270,6 +280,232 @@ impl Panel {
         self.body_content = PanelContent::Text(text.into());
         if self.auto_size {
             self.adjust_size();
+        }
+        // Reset scroll when content changes
+        self.scroller.scroll_to_top();
+    }
+
+    /// Updates the body content using a TextBlock.
+    pub fn set_body_block(&mut self, text_block: TextBlock) {
+        self.body_content = PanelContent::Block(Box::new(text_block));
+        if self.auto_size {
+            self.adjust_size();
+        }
+        // Reset scroll when content changes
+        self.scroller.scroll_to_top();
+    }
+
+    /// Gets a mutable reference to the body TextBlock if it exists.
+    /// Returns None if the body contains plain text instead of a TextBlock.
+    pub fn body_block_mut(&mut self) -> Option<&mut TextBlock> {
+        match &mut self.body_content {
+            PanelContent::Block(block) => Some(block.as_mut()),
+            PanelContent::Text(_) => None,
+        }
+    }
+
+    /// Gets a reference to the body TextBlock if it exists.
+    pub fn body_block(&self) -> Option<&TextBlock> {
+        match &self.body_content {
+            PanelContent::Block(block) => Some(block.as_ref()),
+            PanelContent::Text(_) => None,
+        }
+    }
+
+    /// Enables scrolling for the panel body.
+    pub fn with_scrollable(mut self, scrollable: bool) -> Self {
+        self.scrollable = scrollable;
+        self
+    }
+
+    /// Enables or disables scroll indicators.
+    pub fn with_scroll_indicators(mut self, show: bool) -> Self {
+        self.show_scroll_indicators = show;
+        self
+    }
+
+    /// Sets the scroll direction for the panel.
+    ///
+    /// # Arguments
+    /// * `natural` - `true` for natural scrolling (default), `false` for inverted scrolling
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::Panel;
+    ///
+    /// let panel = Panel::new(40, 20)
+    ///     .with_scrollable(true)
+    ///     .with_scroll_direction(false); // Inverted scrolling
+    /// ```
+    pub fn with_scroll_direction(mut self, natural: bool) -> Self {
+        self.scroller.set_invert_scroll_vertical(!natural);
+        self
+    }
+
+    /// Sets whether scroll direction is inverted for the panel.
+    ///
+    /// When enabled, scrolling direction is reversed (e.g., up becomes down).
+    pub fn set_invert_scroll(&mut self, invert: bool) {
+        self.scroller.set_invert_scroll_vertical(invert);
+    }
+
+    /// Returns whether scroll direction is inverted for the panel.
+    pub fn is_scroll_inverted(&self) -> bool {
+        self.scroller.is_scroll_vertical_inverted()
+    }
+
+    /// Scrolls the body content by a relative amount.
+    /// Positive values scroll down, negative values scroll up.
+    pub fn scroll_by(&mut self, delta: i16) {
+        if !self.scrollable {
+            return;
+        }
+
+        let max_offset = self.max_scroll_offset();
+        self.scroller.scroll_by(delta, max_offset);
+    }
+
+    /// Scrolls to a specific line in the body content.
+    pub fn scroll_to(&mut self, line: u16) {
+        if !self.scrollable {
+            return;
+        }
+        let max_offset = self.max_scroll_offset();
+        self.scroller.scroll_to(line, max_offset);
+    }
+
+    /// Scrolls to the top of the body content.
+    pub fn scroll_to_top(&mut self) {
+        self.scroller.scroll_to_top();
+    }
+
+    /// Scrolls to the bottom of the body content.
+    pub fn scroll_to_bottom(&mut self) {
+        if self.scrollable {
+            let max_offset = self.max_scroll_offset();
+            self.scroller.scroll_to_bottom(max_offset);
+        }
+    }
+
+    /// Returns the current scroll offset.
+    pub fn scroll_offset(&self) -> u16 {
+        self.scroller.offset()
+    }
+
+    /// Returns the maximum valid scroll offset based on content.
+    pub fn max_scroll_offset(&self) -> u16 {
+        let (_, inner_height) = self.get_inner_dimensions();
+        let content_lines = self.get_content_line_count();
+        content_lines.saturating_sub(inner_height)
+    }
+
+    /// Returns whether the panel can be scrolled.
+    pub fn can_scroll(&self) -> bool {
+        if !self.scrollable {
+            return false;
+        }
+        let (_, inner_height) = self.get_inner_dimensions();
+        self.get_content_line_count() > inner_height
+    }
+
+    /// Returns whether scrolling up is possible.
+    pub fn can_scroll_up(&self) -> bool {
+        self.scrollable && self.scroller.can_scroll_up()
+    }
+
+    /// Returns whether scrolling down is possible.
+    pub fn can_scroll_down(&self) -> bool {
+        self.scrollable && self.scroller.can_scroll_down(self.max_scroll_offset())
+    }
+
+    /// Handles a mouse scroll event and updates the scroll position.
+    /// Returns true if the scroll position changed.
+    pub fn handle_scroll_event(&mut self, delta: i8) -> bool {
+        if !self.scrollable {
+            return false;
+        }
+        let max_offset = self.max_scroll_offset();
+        self.scroller.handle_scroll_event(delta, max_offset)
+    }
+
+    /// Handles a mouse drag event on the panel.
+    /// If the drag is on or near the scrollbar, scrolls to that position.
+    /// Returns true if the scroll position changed.
+    ///
+    /// # Arguments
+    /// * `drag_x` - X coordinate of drag relative to panel's top-left
+    /// * `drag_y` - Y coordinate of drag relative to panel's top-left
+    pub fn handle_drag_event(&mut self, drag_x: u16, drag_y: u16) -> bool {
+        if !self.scrollable || !self.can_scroll() {
+            return false;
+        }
+
+        let scrollbar_x = self.width - 2;
+        let (_, inner_height) = self.get_inner_dimensions();
+
+        // Calculate content area start
+        let content_start_y = if !self.header_text.is_empty() {
+            3 + self.padding // header top + header text + separator + padding
+        } else {
+            1 + self.padding // body top border + padding
+        };
+
+        let max_scroll = self.max_scroll_offset();
+        self.scroller.handle_drag_event(
+            drag_x,
+            drag_y,
+            scrollbar_x,
+            inner_height,
+            content_start_y,
+            max_scroll,
+        )
+    }
+
+    /// Handles a mouse click event on the panel.
+    /// If the click is on or near the scrollbar, scrolls to that position.
+    /// Returns true if the scroll position changed.
+    ///
+    /// # Arguments
+    /// * `click_x` - X coordinate of click relative to panel's top-left
+    /// * `click_y` - Y coordinate of click relative to panel's top-left
+    pub fn handle_click_event(&mut self, click_x: u16, click_y: u16) -> bool {
+        if !self.scrollable || !self.can_scroll() {
+            return false;
+        }
+
+        let scrollbar_x = self.width - 2;
+        let (_, inner_height) = self.get_inner_dimensions();
+
+        // Calculate content area start
+        let content_start_y = if !self.header_text.is_empty() {
+            3 + self.padding // header top + header text + separator + padding
+        } else {
+            1 + self.padding // body top border + padding
+        };
+
+        let max_scroll = self.max_scroll_offset();
+        self.scroller.handle_scrollbar_event(
+            click_x,
+            click_y,
+            scrollbar_x,
+            inner_height,
+            content_start_y,
+            max_scroll,
+        )
+    }
+
+    /// Returns the number of lines in the body content.
+    fn get_content_line_count(&self) -> u16 {
+        match &self.body_content {
+            PanelContent::Text(text) => {
+                if text.is_empty() {
+                    0
+                } else {
+                    text.lines().count() as u16
+                }
+            }
+            PanelContent::Block(block) => block.line_count() as u16,
         }
     }
 
@@ -500,6 +736,68 @@ impl Panel {
             }
         }
 
+        // Draw scroll indicators if enabled and scrollable
+        if self.show_scroll_indicators && self.scrollable {
+            let indicator_color = ColorPair::new(Color::DarkGray, Color::Transparent);
+
+            // Draw scrollbar on the right side
+            if self.can_scroll() {
+                let max_scroll = self.max_scroll_offset();
+                if max_scroll > 0 {
+                    let scrollbar_height = inner_height;
+                    let scrollbar_x = self.width - 2;
+                    let scrollbar_start_y = start_y + self.padding;
+
+                    // Calculate thumb position and size
+                    let content_lines = self.get_content_line_count();
+                    let thumb_size = ((inner_height as f32 / content_lines as f32)
+                        * scrollbar_height as f32)
+                        .max(1.0) as u16;
+                    let thumb_pos = ((self.scroller.offset() as f32 / max_scroll as f32)
+                        * (scrollbar_height - thumb_size) as f32)
+                        as u16;
+
+                    // Draw scrollbar track and thumb
+                    for i in 0..scrollbar_height {
+                        let y = scrollbar_start_y + i;
+                        if i >= thumb_pos && i < thumb_pos + thumb_size {
+                            // Thumb
+                            window.write_str_colored(y, scrollbar_x, "█", indicator_color)?;
+                        } else {
+                            // Track
+                            window.write_str_colored(
+                                y,
+                                scrollbar_x,
+                                "│",
+                                ColorPair::new(Color::DarkGray, Color::Transparent),
+                            )?;
+                        }
+                    }
+
+                    // Draw scroll indicators at top and bottom of scrollbar
+                    if self.can_scroll_up() {
+                        window.write_str_colored(
+                            scrollbar_start_y,
+                            scrollbar_x,
+                            "▲",
+                            indicator_color,
+                        )?;
+                    }
+
+                    if self.can_scroll_down() {
+                        let scrollbar_end_y =
+                            scrollbar_start_y + scrollbar_height.saturating_sub(1);
+                        window.write_str_colored(
+                            scrollbar_end_y,
+                            scrollbar_x,
+                            "▼",
+                            indicator_color,
+                        )?;
+                    }
+                }
+            }
+        }
+
         // Draw actual content with padding
         let content_start_x = 1 + self.padding;
         let content_start_y = start_y + self.padding;
@@ -532,11 +830,16 @@ impl Panel {
         let lines: Vec<&str> = text.lines().collect();
         let (window_width, window_height) = window.get_size();
 
-        for (i, line) in lines.iter().enumerate() {
-            if i as u16 >= window_height {
-                break; // Don't exceed available height
-            }
+        // Apply scroll offset if scrolling is enabled
+        let start_line = if self.scrollable {
+            self.scroller.offset() as usize
+        } else {
+            0
+        };
 
+        let visible_lines = lines.iter().skip(start_line).take(window_height as usize);
+
+        for (i, line) in visible_lines.enumerate() {
             let x_pos = match self.alignment {
                 Alignment::Left => 0,
                 Alignment::Center => {

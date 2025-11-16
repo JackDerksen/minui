@@ -65,7 +65,9 @@ pub use event::{Event, MouseButton};
 pub use window::{TerminalWindow, Window};
 
 // Input handling
-pub use input::{CombinedInputHandler, KeybindAction, KeyboardHandler, MouseHandler};
+pub use input::{
+    CombinedInputHandler, KeybindAction, KeyboardHandler, MouseHandler, ScrollDirection, Scroller,
+};
 
 // Widget system
 pub use widgets::{
@@ -88,6 +90,9 @@ pub use widgets::{
     TextWrapMode,
 
     VerticalAlignment,
+
+    // Viewport for scrolling
+    Viewport,
 
     // Core widget trait and utilities
     Widget,
@@ -160,12 +165,18 @@ pub mod prelude {
         // Other widgets
         Panel,
         Result,
+        ScrollDirection,
+        Scroller,
         TerminalWindow,
         Text,
         TextBlock,
         TextWrapMode,
 
         VerticalAlignment,
+
+        // Viewport for scrolling
+        Viewport,
+
         Widget,
         // Window and input
         Window,

@@ -31,10 +31,11 @@ MinUI is actively developed with these features available:
 - [x] Robust error handling
 - [x] Buffered drawing for smooth and efficient updates
 - [x] Built-in game/app loop utilities
+- [x] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
+- [x] Content scrolling support
 - [ ] Simplified character/sprite and map management utilities
 - [ ] Easy character/sprite movement support with common Unicode characters built-in
 - [ ] Cell management with collision detection options
-- [x] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
 
 ## Getting Started
 
@@ -42,7 +43,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.3.1"
+minui = "0.3.2"
 ```
 
 ### Basic Example
