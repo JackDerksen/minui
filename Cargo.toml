@@ -1,6 +1,6 @@
 [package]
 name = "minui"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "A minimalist Rust framework for TUIs and terminal games."
 authors = ["Jack Derksen <jmderksen9@gmail.com>"]

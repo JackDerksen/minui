@@ -101,9 +101,11 @@
 
 mod keyboard;
 mod mouse;
+pub mod scroll;
 
 #[cfg(test)]
 mod tests;
 
 pub use keyboard::{KeybindAction, KeyboardHandler};
 pub use mouse::{CombinedInputHandler, MouseHandler};
+pub use scroll::{ScrollDirection, Scroller};

@@ -133,6 +133,7 @@ mod layout;
 mod panel;
 mod table;
 mod text;
+mod viewport;
 
 pub use common::{BorderChars, WindowView};
 pub use container::{BorderStyle, Container, ContentAlignment, LayoutDirection, Padding};
@@ -144,6 +145,7 @@ pub use helpers::{
 };
 pub use panel::Panel;
 pub use text::{Alignment, Label, Text, TextBlock, TextWrapMode, VerticalAlignment};
+pub use viewport::Viewport;
 
 use crate::{Error, Result, Window};
 

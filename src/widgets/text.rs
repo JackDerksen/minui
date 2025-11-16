@@ -87,6 +87,7 @@
 //! maintaining proper text formatting and alignment.
 
 use super::Widget;
+use crate::input::scroll::Scroller;
 use crate::{Color, ColorPair, Result, Window};
 
 /// How to align text horizontally
@@ -335,8 +336,10 @@ pub struct TextBlock {
     h_align: Alignment,
     /// Vertical text alignment
     v_align: VerticalAlignment,
-    /// Scroll offset for displaying large content
-    scroll_offset: u16,
+    /// Scroll state manager for displaying large content
+    scroller: Scroller,
+    /// Whether to show scroll indicators
+    show_scroll_indicators: bool,
 }
 
 impl TextBlock {
@@ -350,7 +353,8 @@ impl TextBlock {
             wrap_mode: TextWrapMode::Wrap,
             h_align: Alignment::Left,
             v_align: VerticalAlignment::Top,
-            scroll_offset: 0,
+            scroller: Scroller::new(),
+            show_scroll_indicators: false,
         }
     }
 
@@ -435,23 +439,169 @@ impl TextBlock {
         self
     }
 
+    /// Enables or disables scroll indicators
+    pub fn with_scroll_indicators(mut self, show: bool) -> Self {
+        self.show_scroll_indicators = show;
+        self
+    }
+
+    /// Sets the scroll direction for the text block.
+    ///
+    /// # Arguments
+    /// * `natural` - `true` for natural scrolling (default), `false` for inverted scrolling
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::TextBlock;
+    ///
+    /// let text = TextBlock::new(40, 20, "Some content...")
+    ///     .with_scroll_direction(false); // Inverted scrolling
+    /// ```
+    pub fn with_scroll_direction(mut self, natural: bool) -> Self {
+        self.scroller.set_invert_scroll_vertical(!natural);
+        self
+    }
+
+    /// Sets whether scroll direction is inverted for the text block.
+    ///
+    /// When enabled, scrolling direction is reversed (e.g., up becomes down).
+    pub fn set_invert_scroll(&mut self, invert: bool) {
+        self.scroller.set_invert_scroll_vertical(invert);
+    }
+
+    /// Returns whether scroll direction is inverted for the text block.
+    pub fn is_scroll_inverted(&self) -> bool {
+        self.scroller.is_scroll_vertical_inverted()
+    }
+
     /// Scrolls to a specific line
     pub fn scroll_to(&mut self, line: u16) {
-        self.scroll_offset = line;
+        let max_offset = self.max_scroll_offset();
+        self.scroller.scroll_to(line, max_offset);
     }
 
     /// Scrolls by a relative amount (positive = down, negative = up)
     pub fn scroll_by(&mut self, delta: i16) {
-        self.scroll_offset = if delta.is_negative() {
-            self.scroll_offset.saturating_sub(delta.abs() as u16)
-        } else {
-            self.scroll_offset.saturating_add(delta as u16)
-        };
+        let max_offset = self.max_scroll_offset();
+        self.scroller.scroll_by(delta, max_offset);
+    }
+
+    /// Scrolls to the top of the content
+    pub fn scroll_to_top(&mut self) {
+        self.scroller.scroll_to_top();
+    }
+
+    /// Scrolls to the bottom of the content
+    pub fn scroll_to_bottom(&mut self) {
+        let max_offset = self.max_scroll_offset();
+        self.scroller.scroll_to_bottom(max_offset);
+    }
+
+    /// Returns the current scroll offset
+    pub fn scroll_offset(&self) -> u16 {
+        self.scroller.offset()
+    }
+
+    /// Returns the maximum valid scroll offset
+    pub fn max_scroll_offset(&self) -> u16 {
+        let lines = self.get_wrapped_lines();
+        let total_lines = lines.len() as u16;
+        total_lines.saturating_sub(self.height)
+    }
+
+    /// Returns whether the content can be scrolled
+    pub fn can_scroll(&self) -> bool {
+        let lines = self.get_wrapped_lines();
+        lines.len() as u16 > self.height
+    }
+
+    /// Returns whether scrolling up is possible
+    pub fn can_scroll_up(&self) -> bool {
+        self.scroller.can_scroll_up()
+    }
+
+    /// Returns whether scrolling down is possible
+    pub fn can_scroll_down(&self) -> bool {
+        self.scroller.can_scroll_down(self.max_scroll_offset())
+    }
+
+    /// Handles a mouse scroll event and updates the scroll position
+    ///
+    /// Returns true if the scroll position changed
+    pub fn handle_scroll_event(&mut self, delta: i8) -> bool {
+        let max_offset = self.max_scroll_offset();
+        self.scroller.handle_scroll_event(delta, max_offset)
+    }
+
+    /// Handles a mouse drag event on the TextBlock.
+    /// If the drag is on the scrollbar, scrolls to that position.
+    /// Returns true if the scroll position changed.
+    ///
+    /// # Arguments
+    /// * `drag_x` - X coordinate of drag relative to TextBlock's top-left
+    /// * `drag_y` - Y coordinate of drag relative to TextBlock's top-left
+    pub fn handle_drag_event(&mut self, drag_x: u16, drag_y: u16) -> bool {
+        if !self.can_scroll() {
+            return false;
+        }
+
+        let scrollbar_x = self.width.saturating_sub(1);
+        let max_scroll = self.max_scroll_offset();
+
+        // Use dedicated drag method for smoother interaction
+        self.scroller
+            .handle_drag_event(drag_x, drag_y, scrollbar_x, self.height, 0, max_scroll)
+    }
+
+    /// Handles a mouse click event on the TextBlock.
+    /// If the click is on the scrollbar, scrolls to that position.
+    /// Returns true if the scroll position changed.
+    ///
+    /// # Arguments
+    /// * `click_x` - X coordinate of click relative to TextBlock's top-left
+    /// * `click_y` - Y coordinate of click relative to TextBlock's top-left
+    pub fn handle_click_event(&mut self, click_x: u16, click_y: u16) -> bool {
+        if !self.can_scroll() {
+            return false;
+        }
+
+        let scrollbar_x = self.width.saturating_sub(1);
+        let max_scroll = self.max_scroll_offset();
+
+        // Check if click is on scrollbar
+        if click_x == scrollbar_x && click_y < self.height {
+            return self.scroller.handle_scrollbar_event(
+                click_x,
+                click_y,
+                scrollbar_x,
+                self.height,
+                0,
+                max_scroll,
+            );
+        }
+
+        false
+    }
+
+    /// Returns the number of lines in the wrapped content
+    pub fn line_count(&self) -> usize {
+        self.get_wrapped_lines().len()
+    }
+
+    /// Returns the visible line range as (start, end)
+    pub fn visible_range(&self) -> (u16, u16) {
+        let start = self.scroller.offset();
+        let end = (start + self.height).min(self.line_count() as u16);
+        (start, end)
     }
 
     /// Changes the text content
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
+        // Clamp scroll offset to new content bounds
+        let max_offset = self.max_scroll_offset();
+        self.scroller.set_offset(self.scroller.offset(), max_offset);
     }
 
     /// Returns the current text
@@ -527,7 +677,7 @@ impl Widget for TextBlock {
         };
 
         // Get displayable lines with scroll offset
-        let start_line = self.scroll_offset as usize;
+        let start_line = self.scroller.offset() as usize;
         let display_lines: Vec<String> = lines
             .into_iter()
             .skip(start_line)

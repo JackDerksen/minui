@@ -375,6 +375,31 @@ impl Container {
         self
     }
 
+    /// Returns the content area size (width, height) available for child widgets
+    ///
+    /// This accounts for borders and padding, giving you the exact dimensions
+    /// you should use when sizing child widgets for proper viewport constraint.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let container = Container::new(0, 0, 60, 18);
+    /// let (content_width, content_height) = container.get_content_size();
+    /// let text_block = TextBlock::new(content_width, content_height, "...");
+    /// ```
+    pub fn get_content_size(&self) -> (u16, u16) {
+        let border_thickness = self.border_thickness();
+        let content_width = self
+            .width
+            .saturating_sub(border_thickness * 2)
+            .saturating_sub(self.padding.horizontal_total());
+        let content_height = self
+            .height
+            .saturating_sub(border_thickness * 2)
+            .saturating_sub(self.padding.vertical_total());
+
+        (content_width, content_height)
+    }
+
     /// Returns the border thickness (0 for invisible borders)
     fn border_thickness(&self) -> u16 {
         match self.border_style {
