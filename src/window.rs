@@ -504,12 +504,24 @@ impl TerminalWindow {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn poll_input(&mut self) -> Result<Option<Event>> {
-        // Check mouse input first (more interactive)
-        if let Some(event) = self.mouse.poll()? {
-            return Ok(Some(event));
+        // Use a minimal poll timeout to check for any events
+        if event::poll(Duration::from_millis(0))? {
+            match event::read()? {
+                CrosstermEvent::Key(key_event) => {
+                    Ok(Some(self.keyboard.process_key_event(key_event)))
+                }
+                CrosstermEvent::Mouse(mouse_event) => {
+                    Ok(Some(self.mouse.process_mouse_event(mouse_event)))
+                }
+                CrosstermEvent::Resize(cols, rows) => Ok(Some(Event::Resize {
+                    width: cols,
+                    height: rows,
+                })),
+                _ => Ok(None),
+            }
+        } else {
+            Ok(None)
         }
-        // Then check keyboard input
-        self.keyboard.poll()
     }
 
     /// Gets a reference to the keyboard handler for advanced configuration.
