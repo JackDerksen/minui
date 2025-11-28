@@ -78,6 +78,7 @@ pub use widgets::{
     // Container system
     Container,
     // Text widgets
+    FigletText,
     Label,
     LayoutDirection,
     Padding,
@@ -153,9 +154,11 @@ pub mod prelude {
         Error,
         Event,
 
+        // Text widgets
+        FigletText,
+
         KeybindAction,
         KeyboardHandler,
-        // Text widgets
         Label,
         LayoutDirection,
         MouseHandler,
