@@ -382,11 +382,6 @@ impl KeyboardHandler {
     pub fn poll_with_keybinds(&self) -> Result<Option<Event>> {
         if event::poll(self.poll_rate)? {
             if let CrosstermEvent::Key(key) = event::read()? {
-                // Drain any additional pending events to prevent double-processing
-                while event::poll(Duration::from_millis(0))? {
-                    let _ = event::read()?;
-                }
-
                 // Check for keybind matches first
                 if let Some(action) = self.check_keybind_match(&key) {
                     return Ok(Some(Event::Keybind(action)));
@@ -433,10 +428,6 @@ impl KeyboardHandler {
     pub fn poll(&self) -> Result<Option<Event>> {
         if event::poll(self.poll_rate)? {
             if let CrosstermEvent::Key(key) = event::read()? {
-                // Drain any additional pending events to prevent double-processing
-                while event::poll(Duration::from_millis(0))? {
-                    let _ = event::read()?;
-                }
                 return Ok(Some(self.convert_key_event(key.code)));
             }
         }

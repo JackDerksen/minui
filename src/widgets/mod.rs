@@ -127,6 +127,7 @@
 
 mod common;
 mod container;
+mod figlet;
 mod helpers;
 mod input;
 mod layout;
@@ -137,6 +138,7 @@ mod viewport;
 
 pub use common::{BorderChars, WindowView};
 pub use container::{BorderStyle, Container, ContentAlignment, LayoutDirection, Padding};
+pub use figlet::FigletText;
 pub use helpers::{
     code_block, error_panel, error_text, footer_section, header_section, help_text,
     highlighted_panel, info_card, info_panel, main_content_area, metric_card, minimal_panel,
