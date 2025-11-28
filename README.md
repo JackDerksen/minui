@@ -25,7 +25,7 @@ MinUI is actively developed with these features available:
   - [x] Label widget
   - [x] Text block widget
   - [x] Panel widget
-  - [x] FIGlet text widget
+  - [x] FIGlet text widget for rendering ASCII text labels
   - [ ] Table widget
   - [ ] Input widget
   - [ ] Predefined common widget layouts
