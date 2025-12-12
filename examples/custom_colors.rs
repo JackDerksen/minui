@@ -1,6 +1,7 @@
 //! Demonstrates the RGB color capabilities with beautiful gradients and color transitions.
 
-use minui::{Color, ColorPair, Event, Result, TerminalWindow, Window, define_colors};
+use minui::define_colors;
+use minui::prelude::*;
 
 // Define some custom RGB color schemes
 define_colors! {
@@ -31,37 +32,34 @@ define_colors! {
 /// 2. Generating smooth color gradients
 /// 3. Using predefined color schemes
 /// 4. Creating visual effects with colors
-fn main() -> Result<()> {
-    let mut window = TerminalWindow::new()?;
-    window.set_auto_flush(false);
-    window.clear_screen()?;
+fn main() -> minui::Result<()> {
+    let mut app = App::new(())?;
 
-    let (width, height) = window.get_size();
+    app.run(
+        |_state, event| {
+            // Return false to exit
+            !matches!(event, Event::Character('q'))
+        },
+        |_state, window| {
+            let (width, height) = window.get_size();
 
-    // Title
-    window.write_str(0, 0, "RGB Color & Gradient Demo (press 'q' to quit)")?;
+            // Title
+            window.write_str(0, 0, "RGB Color & Gradient Demo (press 'q' to quit)")?;
 
-    // --- All drawing calls happen here ---
-    draw_rainbow_gradient(&mut window, 2, width)?;
-    draw_color_themes(&mut window, 6)?;
-    draw_vertical_gradient(&mut window, 12, width, height)?;
-    draw_color_blocks(&mut window, height)?;
+            // --- All drawing calls happen here ---
+            draw_rainbow_gradient(window, 2, width)?;
+            draw_color_themes(window, 6)?;
+            draw_vertical_gradient(window, 12, width, height)?;
+            draw_color_blocks(window, height)?;
 
-    window.flush()?;
-
-    // Wait for 'q' to be pressed before exiting
-    loop {
-        if let Ok(event) = window.get_input() {
-            if let Event::Character('q') = event {
-                break;
-            }
-        }
-    }
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
 
-fn draw_rainbow_gradient(window: &mut TerminalWindow, start_y: u16, width: u16) -> Result<()> {
+fn draw_rainbow_gradient(window: &mut dyn Window, start_y: u16, width: u16) -> minui::Result<()> {
     window.write_str(start_y, 0, "Rainbow Gradient:")?;
 
     let gradient_y = start_y + 1;
@@ -79,7 +77,7 @@ fn draw_rainbow_gradient(window: &mut TerminalWindow, start_y: u16, width: u16) 
     Ok(())
 }
 
-fn draw_color_themes(window: &mut TerminalWindow, start_y: u16) -> Result<()> {
+fn draw_color_themes(window: &mut dyn Window, start_y: u16) -> minui::Result<()> {
     window.write_str(start_y, 0, "Color Themes:")?;
 
     // Sunset theme
@@ -109,11 +107,11 @@ fn draw_color_themes(window: &mut TerminalWindow, start_y: u16) -> Result<()> {
 }
 
 fn draw_vertical_gradient(
-    window: &mut TerminalWindow,
+    window: &mut dyn Window,
     start_y: u16,
     width: u16,
     height: u16,
-) -> Result<()> {
+) -> minui::Result<()> {
     if start_y + 10 > height {
         return Ok(()); // Not enough space
     }
@@ -141,7 +139,7 @@ fn draw_vertical_gradient(
     Ok(())
 }
 
-fn draw_color_blocks(window: &mut TerminalWindow, height: u16) -> Result<()> {
+fn draw_color_blocks(window: &mut dyn Window, height: u16) -> minui::Result<()> {
     let start_y = height.saturating_sub(6);
 
     window.write_str(start_y, 0, "RGB Color Examples:")?;

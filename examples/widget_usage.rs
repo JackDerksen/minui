@@ -7,100 +7,79 @@
 //! - Auto-centering and padding
 //! - Color styling
 
-use minui::{
-    Alignment, BorderChars, Color, ColorPair, Container, Event, Label, Panel, Result,
-    TerminalWindow, Text, TextBlock, VerticalAlignment, Widget, Window,
-};
+use minui::prelude::*;
 
-fn main() -> Result<()> {
-    let mut window = TerminalWindow::new()?;
-    window.set_auto_flush(false);
-    window.clear_screen()?;
+fn main() -> minui::Result<()> {
+    let mut app = App::new(())?;
 
-    // Create and draw the demo layout
-    let app_layout = create_app_layout(&window);
-    app_layout.draw(&mut window)?;
-    window.flush()?;
+    app.run(
+        |_state, event| {
+            // Return false to exit
+            !matches!(event, Event::Character('q'))
+        },
+        |_state, window| {
+            let (terminal_width, terminal_height) = window.get_size();
 
-    // Wait for 'q' to exit
-    loop {
-        if let Ok(event) = window.get_input() {
-            if let Event::Character('q') = event {
-                break;
-            }
-        }
-    }
+            // Create and draw the demo layout
+            let app_layout = create_app_layout(terminal_width, terminal_height);
+            app_layout.draw(window)?;
+
+            Ok(())
+        },
+    )?;
+
     Ok(())
 }
 
 /// Creates a full-screen layout demonstrating various widgets and containers.
 /// Shows header/footer structure, side-by-side panels, and text alignment.
-
-fn create_app_layout(window: &TerminalWindow) -> Container {
-    let (terminal_width, terminal_height) = window.get_size();
-
-    // Header section with a styled panel
-    let header = Container::div()
-        .add_child(
-            Panel::auto_sized()
-                .with_header("MinUI Widget Demo")
-                .with_body("Press 'q' to quit")
-                .with_header_style(BorderChars::double_line())
-                .with_body_style(BorderChars::single_line())
-                .with_header_color(Some(ColorPair::new(Color::LightBlue, Color::Transparent)))
-                .with_header_border_color(Color::Blue)
-                .with_alignment(Alignment::Right)
-                .with_padding(1),
-        )
-        .with_auto_center();
+fn create_app_layout(_width: u16, _height: u16) -> Container {
+    // Header section with a title panel
+    let header = Panel::auto_sized()
+        .with_header("MinUI Widget Demo")
+        .with_body("Press 'q' to quit")
+        .with_header_style(BorderChars::double_line())
+        .with_body_style(BorderChars::single_line())
+        .with_header_color(Some(ColorPair::new(Color::LightBlue, Color::Transparent)))
+        .with_body_color(Some(ColorPair::new(Color::Cyan, Color::Transparent)))
+        .with_header_border_color(Color::Blue)
+        .with_body_border_color(Color::DarkGray);
 
     // Two side-by-side panels demonstrating horizontal layout
+    let left_panel = Panel::new(30, 10)
+        .with_header("Left Panel")
+        .with_body("This demonstrates how panels\ncan be arranged side-by-side\nusing containers.\n\nPanels support custom styling,\npadding, and alignment options.")
+        .with_header_style(BorderChars::single_line())
+        .with_body_style(BorderChars::single_line())
+        .with_header_color(Some(ColorPair::new(Color::Red, Color::Transparent)))
+        .with_header_border_color(Color::Red)
+        .with_padding(1);
+
+    let right_panel = Panel::new(30, 10)
+        .with_header("Right Panel")
+        .with_body("This panel shows that multiple\nwidgets can coexist in a\ncontainer layout.\n\nEach panel automatically manages\nits own content and styling\nindependently.")
+        .with_header_style(BorderChars::single_line())
+        .with_body_style(BorderChars::single_line())
+        .with_header_color(Some(ColorPair::new(Color::Green, Color::Transparent)))
+        .with_header_border_color(Color::Green)
+        .with_padding(1);
+
     let demo_boxes = Container::horizontal()
-        .add_child(
-            Container::panel()
-                .add_child(
-                    Label::new("Left Panel")
-                        .with_text_color(Color::Red)
-                        .with_alignment(Alignment::Center),
-                )
-                .add_child(
-                    TextBlock::auto_sized_with_word_wrap(
-                        "This demonstrates word wrapping in a constrained panel width",
-                        18,
-                    )
-                    .with_alignment(Alignment::Center, VerticalAlignment::Top),
-                ),
-        )
-        .add_child(
-            Container::panel()
-                .add_child(
-                    Label::new("Right Panel")
-                        .with_text_color(Color::Red)
-                        .with_alignment(Alignment::Center),
-                )
-                .add_child(
-                    TextBlock::auto_sized_with_word_wrap(
-                        "Each panel automatically sizes to fit its content with proper alignment",
-                        18,
-                    )
-                    .with_alignment(Alignment::Center, VerticalAlignment::Top),
-                ),
-        );
+        .add_child(left_panel)
+        .add_child(right_panel);
 
     // Footer with status text
-    let footer = Container::div()
-        .add_child(
-            Text::new("Status: Ready")
-                .with_text_color(Color::Green)
-                .with_alignment(Alignment::Center),
-        )
-        .with_auto_center();
+    let footer = Panel::auto_sized()
+        .with_body("Status: Ready • All systems operational")
+        .with_body_style(BorderChars::single_line())
+        .with_body_color(Some(ColorPair::new(Color::Yellow, Color::Transparent)))
+        .with_body_border_color(Color::Yellow)
+        .with_padding(1);
 
     // Main container that fills the entire terminal
-    Container::fullscreen_with_size(terminal_width, terminal_height)
+    Container::vertical()
         .add_child(header)
         .add_child(demo_boxes)
         .add_child(footer)
         .with_padding(1)
-        .with_auto_center()
 }

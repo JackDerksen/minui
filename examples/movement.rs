@@ -1,65 +1,83 @@
-use minui::input::KeyboardHandler;
-use minui::{Color, ColorPair, Event, Result, TerminalWindow, Window};
+//! Movement example demonstrating character movement with arrow keys.
+//!
+//! This example shows:
+//! - Handling keyboard input for movement
+//! - Updating state based on events
+//! - Drawing a moving character on the screen
 
-fn main() -> Result<()> {
-    let mut window = TerminalWindow::new()?;
-    let keyboard = KeyboardHandler::new();
+use minui::prelude::*;
+use std::time::Duration;
 
-    window.set_auto_flush(false);
-    window.clear_screen()?;
-
-    let mut x = 5u16; // Starting x
-    let mut y = 0u16; // Starting y
-    let player = '@';
-    let colors = ColorPair::new(Color::Green, Color::Black);
-
-    // Initial draw
-    draw_game_state(&mut window, x, y, player, colors)?;
-
-    loop {
-        // Optional: wait between input checks
-        // std::thread::sleep(Duration::from_millis(50));
-
-        if let Some(event) = keyboard.poll()? {
-            let mut redraw = true;
-
-            match event {
-                Event::Character('q') | Event::Escape => break,
-                Event::KeyUp if y > 0 => y -= 1,
-                Event::KeyDown => {
-                    let (_, height) = window.get_size();
-                    if y < height - 1 {
-                        y += 1;
-                    }
-                }
-                Event::KeyLeft if x > 0 => x -= 1,
-                Event::KeyRight => {
-                    let (width, _) = window.get_size();
-                    if x < width - 1 {
-                        x += 1;
-                    }
-                }
-                _ => redraw = false,
-            }
-
-            if redraw {
-                draw_game_state(&mut window, x, y, player, colors)?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn draw_game_state(
-    window: &mut TerminalWindow,
+struct MovementState {
     x: u16,
     y: u16,
-    player: char,
-    colors: ColorPair,
-) -> Result<()> {
-    window.clear_screen()?;
-    window.write_str_colored(y, x, &player.to_string(), colors)?;
-    window.flush()?;
+}
+
+fn main() -> minui::Result<()> {
+    let initial_state = MovementState { x: 5, y: 0 };
+
+    let mut app = App::new(initial_state)?.with_tick_rate(Duration::from_millis(50));
+
+    app.run(
+        |state, event| {
+            let (width, height) = (80u16, 24u16); // Reasonable defaults
+
+            match event {
+                Event::Character('q') | Event::Escape => return false,
+                Event::KeyUp => {
+                    if state.y > 0 {
+                        state.y -= 1;
+                    }
+                }
+                Event::KeyDown => {
+                    if state.y < height - 1 {
+                        state.y += 1;
+                    }
+                }
+                Event::KeyLeft => {
+                    if state.x > 0 {
+                        state.x -= 1;
+                    }
+                }
+                Event::KeyRight => {
+                    if state.x < width - 1 {
+                        state.x += 1;
+                    }
+                }
+                _ => {}
+            }
+
+            true
+        },
+        |state, window| {
+            let (width, height) = window.get_size();
+
+            // Draw instructions
+            let instructions =
+                Label::new("Use arrow keys to move, 'q' to quit").with_text_color(Color::Cyan);
+            instructions.draw(window)?;
+
+            // Draw the player character
+            window.write_str_colored(
+                state.y,
+                state.x,
+                "@",
+                ColorPair::new(Color::Green, Color::Transparent),
+            )?;
+
+            // Draw boundary indicators
+            window.write_str(
+                height - 1,
+                0,
+                &format!(
+                    "Position: ({}, {}) | Terminal: {}x{}",
+                    state.x, state.y, width, height
+                ),
+            )?;
+
+            Ok(())
+        },
+    )?;
+
     Ok(())
 }
