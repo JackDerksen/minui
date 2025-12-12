@@ -3,8 +3,8 @@
 //! This example showcases:
 //! - Container layouts (vertical, horizontal, fullscreen)
 //! - Panel widgets with headers and borders
-//! - Text widgets with different alignments
-//! - Auto-centering and padding
+//! - Text widgets with word wrapping
+//! - Auto-sizing and padding
 //! - Color styling
 
 use minui::prelude::*;
@@ -45,19 +45,25 @@ fn create_app_layout(_width: u16, _height: u16) -> Container {
         .with_header_border_color(Color::Blue)
         .with_body_border_color(Color::DarkGray);
 
-    // Two side-by-side panels demonstrating horizontal layout
-    let left_panel = Panel::new(30, 10)
+    // Two side-by-side panels demonstrating horizontal layout with TextBlock for word wrapping
+    let left_panel = Panel::new(38, 12)
         .with_header("Left Panel")
-        .with_body("This demonstrates how panels\ncan be arranged side-by-side\nusing containers.\n\nPanels support custom styling,\npadding, and alignment options.")
+        .with_body_block(
+            TextBlock::new(34, 8, "This demonstrates how panels can be arranged side-by-side using containers. Panels support custom styling, padding, and alignment options.")
+                .with_word_wrap()
+        )
         .with_header_style(BorderChars::single_line())
         .with_body_style(BorderChars::single_line())
         .with_header_color(Some(ColorPair::new(Color::Red, Color::Transparent)))
         .with_header_border_color(Color::Red)
         .with_padding(1);
 
-    let right_panel = Panel::new(30, 10)
+    let right_panel = Panel::new(38, 12)
         .with_header("Right Panel")
-        .with_body("This panel shows that multiple\nwidgets can coexist in a\ncontainer layout.\n\nEach panel automatically manages\nits own content and styling\nindependently.")
+        .with_body_block(
+            TextBlock::new(34, 8, "This panel shows that multiple widgets can coexist in a container layout. Each panel automatically manages its own content and styling independently.")
+                .with_word_wrap()
+        )
         .with_header_style(BorderChars::single_line())
         .with_body_style(BorderChars::single_line())
         .with_header_color(Some(ColorPair::new(Color::Green, Color::Transparent)))
