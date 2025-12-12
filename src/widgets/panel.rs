@@ -636,9 +636,15 @@ impl Panel {
             window.write_str(y, 0, &self.header_style.vertical.to_string())?;
         }
 
-        // Draw centered header text
+        // Draw centered header text, truncated to fit
         let inner_width = self.width.saturating_sub(2);
-        let text_len = self.header_text.len() as u16;
+        let truncated_text = if self.header_text.len() > inner_width as usize {
+            &self.header_text[..inner_width as usize]
+        } else {
+            &self.header_text
+        };
+
+        let text_len = truncated_text.len() as u16;
         let start_x = if text_len < inner_width {
             1 + (inner_width - text_len) / 2
         } else {
@@ -646,9 +652,9 @@ impl Panel {
         };
 
         if let Some(color) = self.header_color {
-            window.write_str_colored(y, start_x, &self.header_text, color)?;
+            window.write_str_colored(y, start_x, truncated_text, color)?;
         } else {
-            window.write_str(y, start_x, &self.header_text)?;
+            window.write_str(y, start_x, truncated_text)?;
         }
 
         // Draw right border
@@ -840,10 +846,17 @@ impl Panel {
         let visible_lines = lines.iter().skip(start_line).take(window_height as usize);
 
         for (i, line) in visible_lines.enumerate() {
+            // Truncate line to fit within the available width
+            let truncated_line = if line.len() > window_width as usize {
+                &line[..window_width as usize]
+            } else {
+                line
+            };
+
             let x_pos = match self.alignment {
                 Alignment::Left => 0,
                 Alignment::Center => {
-                    let line_len = line.len() as u16;
+                    let line_len = truncated_line.len() as u16;
                     if line_len < window_width {
                         (window_width - line_len) / 2
                     } else {
@@ -851,7 +864,7 @@ impl Panel {
                     }
                 }
                 Alignment::Right => {
-                    let line_len = line.len() as u16;
+                    let line_len = truncated_line.len() as u16;
                     if line_len < window_width {
                         window_width - line_len
                     } else {
@@ -861,9 +874,9 @@ impl Panel {
             };
 
             if let Some(color) = self.body_color {
-                window.write_str_colored(i as u16, x_pos, line, color)?;
+                window.write_str_colored(i as u16, x_pos, truncated_line, color)?;
             } else {
-                window.write_str(i as u16, x_pos, line)?;
+                window.write_str(i as u16, x_pos, truncated_line)?;
             }
         }
 
