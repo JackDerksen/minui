@@ -14,7 +14,7 @@ struct MovementState {
 }
 
 fn main() -> minui::Result<()> {
-    let initial_state = MovementState { x: 5, y: 0 };
+    let initial_state = MovementState { x: 2, y: 2 };
 
     let mut app = App::new(initial_state)?.with_tick_rate(Duration::from_millis(50));
 
