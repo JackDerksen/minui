@@ -1,6 +1,6 @@
 # MinUI 🌒
 
-MinUI is a lightweight terminal UI framework for building games and applications in Rust. It's designed to be simple to use while providing the essential tools you need for terminal-based interfaces.
+MinUI is a lightweight terminal UI framework for building terminal applications and games in Rust. It's designed to be simple to use while providing the essential tools you need for terminal-based interfaces.
 
 ## Why MinUI?
 
@@ -8,7 +8,7 @@ I wanted to build terminal games in Rust, but I found existing libraries either 
 
 ## Features
 
-- 🚀 **Fast**: Performance-focused with game development in mind
+- 🚀 **Fast**: Lightweight and performance-focused 
 - 🎮 **Game-friendly**: Supports both event-driven apps and fixed-rate game loops
 - 🎯 **Simple**: Clean, intuitive API that gets out of your way
 - ⌨️ **Input handling**: Very comprehensive keyboard and mouse event handling
@@ -55,15 +55,22 @@ use minui::prelude::*;
 fn main() -> minui::Result<()> {
     let mut app = App::new(())?;
 
+    // Built-in application handler for event loops and rendering updates
     app.run(
         |_state, event| {
-            // Return false to exit
+            // Closure for handling input and updates.
+            // Capture input here!
             !matches!(event, Event::Character('q'))
         },
         |_state, window| {
-            // Draw your UI here
+            // Closure for rendering the application state.
+            // Draw your UI here!
             let label = Label::new("Press 'q' to quit").with_alignment(Alignment::Center);
+        
+            // Draw the label to the window
             label.draw(window)?;
+        
+            // Drawing succeeded
             Ok(())
         }
     )?;
@@ -74,11 +81,11 @@ fn main() -> minui::Result<()> {
 
 Run the examples: `cargo run --example basic_usage`
 
-## Perfect for Games and TUIs
-
-**Games**: MinUI handles the timing, input, and rendering so you can focus on game logic. It supports both turn-based and real-time games with smooth frame rates.
+## Perfect for TUIs and Games
 
 **TUI Apps**: The widget system makes it easy to build traditional terminal interfaces with HTML-like div containers, as well as panels, forms, layouts, and more.
+
+**Games**: MinUI handles the timing, input, and rendering so you can focus on game logic. It supports both turn-based and real-time games with smooth frame rates.
 
 What makes MinUI different:
 - Minimal learning curve so you can start coding immediately
@@ -86,7 +93,7 @@ What makes MinUI different:
 - Lightweight with few dependencies
 - Cross-platform (Windows, macOS, Linux)
 
-## Games Built with MinUI
+## Applications Built with MinUI
 
 - _Coming Soon: [Tet.rs](https://github.com/JackDerksen/tet.rs)_
 
