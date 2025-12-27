@@ -78,8 +78,9 @@ impl FigletText {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn standard(text: impl Into<String>) -> Result<Self> {
-        let font = FIGfont::standard()
-            .map_err(|e| Error::widget_validation(format!("Failed to load standard font: {}", e)))?;
+        let font = FIGfont::standard().map_err(|e| {
+            Error::widget_validation(format!("Failed to load standard font: {}", e))
+        })?;
 
         Self::with_font(text, font)
     }
@@ -105,9 +106,9 @@ impl FigletText {
     pub fn with_font(text: impl Into<String>, font: FIGfont) -> Result<Self> {
         let text = text.into();
 
-        let figure = font.convert(&text).ok_or_else(|| {
-            Error::widget_validation(format!("Failed to render text: {}", text))
-        })?;
+        let figure = font
+            .convert(text.as_str())
+            .ok_or_else(|| Error::widget_validation(format!("Failed to render text: {}", text)))?;
 
         let rendered = figure.to_string();
 

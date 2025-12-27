@@ -155,8 +155,6 @@ pub mod prelude {
         Event,
 
         // Text widgets
-        FigletText,
-
         KeybindAction,
         KeyboardHandler,
         Label,
