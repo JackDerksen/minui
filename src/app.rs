@@ -79,21 +79,21 @@ impl<S> App<S> {
         loop {
             // --- Input Handling ---
             // Poll for any pending input events.
-            if let Some(event) = self.window.poll_input()? {
-                if !update(&mut self.state, event) {
-                    break; // Exit if the update closure returns false
-                }
+            if let Some(event) = self.window.poll_input()?
+                && !update(&mut self.state, event)
+            {
+                break; // Exit if the update closure returns false
             }
 
             // --- Game Tick Handling ---
             // If in game mode, check if it's time for a fixed update.
-            if let Some(tick_rate) = self.tick_rate {
-                if last_tick.elapsed() >= tick_rate {
-                    if !update(&mut self.state, Event::Tick) {
-                        break; // Exit if the tick update returns false
-                    }
-                    last_tick = Instant::now();
+            if let Some(tick_rate) = self.tick_rate
+                && last_tick.elapsed() >= tick_rate
+            {
+                if !update(&mut self.state, Event::Tick) {
+                    break; // Exit if the tick update returns false
                 }
+                last_tick = Instant::now();
             }
 
             // --- Drawing ---
