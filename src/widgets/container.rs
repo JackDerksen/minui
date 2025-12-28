@@ -102,6 +102,25 @@
 //!     .add_child(Text::new("And this container will size to fit"));
 //! ```
 //!
+//! ## Best Practices
+//!
+//! For deeply nested layouts, extract components into named variables or helper functions.
+//! This improves readability and reusability:
+//!
+//! ```rust
+//! use minui::{Container, Label, Text};
+//!
+//! let header = Container::vertical()
+//!     .add_child(Label::new("Title"));
+//!
+//! let body = Container::vertical()
+//!     .add_child(Text::new("Content"));
+//!
+//! let app = Container::vertical()
+//!     .add_child(header)
+//!     .add_child(body);
+//! ```
+//!
 //! Container widgets form the foundation of MinUI's layout system, enabling the creation
 //! of sophisticated terminal user interfaces with minimal code and maximum flexibility.
 
@@ -354,6 +373,18 @@ impl Container {
         if auto_size {
             self.calculate_size();
         }
+        self
+    }
+
+    /// Sets a fixed size for the container and disables auto-sizing
+    ///
+    /// # Arguments
+    /// * `width` - Fixed width of the container
+    /// * `height` - Fixed height of the container
+    pub fn with_fixed_size(mut self, width: u16, height: u16) -> Self {
+        self.width = width;
+        self.height = height;
+        self.auto_size = false;
         self
     }
 

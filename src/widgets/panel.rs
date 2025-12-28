@@ -189,6 +189,52 @@ impl Panel {
         Self::new(0, 0)
     }
 
+    /// Creates a simple panel with header and body text.
+    ///
+    /// This is a convenience constructor for the most common use case: a panel with
+    /// a header and plain text body, without scrolling or advanced features.
+    ///
+    /// # Arguments
+    ///
+    /// * `header` - The header text (always centered)
+    /// * `body` - The body content as plain text
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::Panel;
+    ///
+    /// let panel = Panel::simple("Title", "This is the content");
+    /// ```
+    pub fn simple(header: &str, body: &str) -> Self {
+        Self::new(0, 0).with_header(header).with_body(body)
+    }
+
+    /// Creates a scrollable panel with header and body text.
+    ///
+    /// This is a convenience constructor for a panel with scrolling enabled.
+    /// Use this when you have content that may exceed the visible area.
+    ///
+    /// # Arguments
+    ///
+    /// * `header` - The header text (always centered)
+    /// * `body` - The body content as plain text (scrollable if it exceeds the panel height)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::Panel;
+    ///
+    /// let panel = Panel::with_scroll("Documentation", "Long content here...");
+    /// ```
+    pub fn with_scroll(header: &str, body: &str) -> Self {
+        Self::new(0, 0)
+            .with_header(header)
+            .with_body(body)
+            .with_scrollable(true)
+            .with_scroll_indicators(true)
+    }
+
     /// Sets the panel's header text. Header text is always centered.
     pub fn with_header(mut self, text: impl Into<String>) -> Self {
         self.header_text = text.into();
