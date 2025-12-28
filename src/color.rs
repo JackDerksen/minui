@@ -80,6 +80,34 @@ impl Color {
         Color::AnsiValue(value)
     }
 
+    /// Create a ColorPair with this color as foreground and transparent background.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{Color, ColorPair};
+    ///
+    /// let red_text = Color::Red.fg();
+    /// assert_eq!(red_text, ColorPair::new(Color::Red, Color::Transparent));
+    /// ```
+    pub const fn fg(self) -> ColorPair {
+        ColorPair::new(self, Color::Transparent)
+    }
+
+    /// Create a ColorPair with this color as background and default foreground.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{Color, ColorPair};
+    ///
+    /// let white_bg = Color::White.bg();
+    /// assert_eq!(white_bg, ColorPair::new(Color::Reset, Color::White));
+    /// ```
+    pub const fn bg(self) -> ColorPair {
+        ColorPair::new(Color::Reset, self)
+    }
+
     /// Converts to crossterm color type (used internally).
     pub fn to_crossterm(self) -> CrosstermColor {
         match self {
