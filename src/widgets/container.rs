@@ -6,6 +6,12 @@
 //! It supports borders, titles, background fills, padding, and arranging child widgets in
 //! vertical or horizontal directions.
 //!
+//! ## Notes for future self:
+//!
+//! Some higher-level widgets (e.g. `ScrollBox`) may need to infer content sizing from a
+//! container’s children. For that reason, `Container` exposes a small amount of read-only
+//! layout metadata such as the computed content area and child list.
+//!
 //! ## Features
 //!
 //! - **Unified API**: One primary container for both layout and styling
@@ -465,6 +471,22 @@ impl Container {
         self
     }
 
+    /// Returns a read-only view of this container's children.
+    ///
+    /// This is primarily intended for higher-level widgets (e.g. `ScrollBox`) that need to
+    /// infer content sizing from child intrinsic sizes without taking ownership.
+    pub fn children(&self) -> &[Box<dyn Widget>] {
+        &self.children
+    }
+
+    /// Returns this container's layout direction.
+    ///
+    /// This is primarily intended for higher-level widgets (e.g. `ScrollBox`) that need to
+    /// infer content sizing from child intrinsic sizes.
+    pub fn layout_direction(&self) -> LayoutDirection {
+        self.layout_direction
+    }
+
     // Accessors
 
     /// Returns the current focus state
@@ -521,8 +543,14 @@ impl Container {
         }
     }
 
-    /// Gets the content area bounds
-    fn get_content_area(&self) -> (u16, u16, u16, u16) {
+    /// Gets the content area bounds as `(x, y, width, height)`.
+    ///
+    /// This is the rectangle inside borders and padding where child widgets are drawn.
+    /// The coordinates are relative to the parent window.
+    ///
+    /// This is exposed publicly to support higher-level widgets (e.g. `ScrollBox`) that need
+    /// to derive viewport/content sizing from the container layout.
+    pub fn content_area(&self) -> (u16, u16, u16, u16) {
         let x = self.x + self.border_left_width() + self.padding.left;
         let y = self.y + self.border_top_height() + self.padding.top;
         let width = self.width.saturating_sub(
@@ -538,6 +566,11 @@ impl Container {
                 + self.border_bottom_height(),
         );
         (x, y, width, height)
+    }
+
+    /// Internal helper retained for backwards compatibility inside this module.
+    fn get_content_area(&self) -> (u16, u16, u16, u16) {
+        self.content_area()
     }
 
     /// Recomputes this container's size if `auto_size` is enabled.

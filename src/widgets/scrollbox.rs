@@ -1,7 +1,10 @@
 //! # ScrollBox Widget
 //!
-//! A scrollable container widget that extends BoxWidget with viewport management,
+//! A scrollable container widget that extends the unified `Container` with viewport management,
 //! scrollbars, and scroll acceleration. Inspired by OpenTUI's ScrollBox component.
+//!
+//! This widget is now backed by a shared [`ScrollState`] so it can integrate cleanly with
+//! other scrolling components (e.g. `Viewport`, `ScrollBar`) without duplicating scroll math.
 //!
 //! ## Features
 //!
@@ -37,7 +40,10 @@
 
 use super::{BorderChars, Container, Widget};
 use crate::widgets::common::WindowView;
+use crate::widgets::scroll::{ScrollOrientation, ScrollSize, ScrollState};
 use crate::{ColorPair, Result, Window};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Edge for sticky scrolling behavior
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,22 +154,21 @@ impl ScrollAcceleration for MacOSScrollAccel {
 
 /// A scrollable box widget with viewport management
 pub struct ScrollBox {
-    /// Root box styling and configuration
+    /// Root container styling and configuration
     root: Container,
 
-    /// Internal viewport (where content is displayed)
+    /// Shared scroll model (content size, viewport size, and current offsets).
+    ///
+    /// This is the canonical source of scroll truth for this ScrollBox.
+    state: Rc<RefCell<ScrollState>>,
+
+    /// Cached viewport (where content is displayed), inferred from the root container size.
+    ///
+    /// These are absolute coordinates in the parent window (computed during `draw()`).
     viewport_x: u16,
     viewport_y: u16,
     viewport_width: u16,
     viewport_height: u16,
-
-    /// Content dimensions
-    content_width: u16,
-    content_height: u16,
-
-    /// Current scroll position
-    scroll_x: u16,
-    scroll_y: u16,
 
     /// Scroll enabled flags
     scroll_x_enabled: bool,
@@ -197,16 +202,18 @@ pub struct ScrollBox {
 impl ScrollBox {
     /// Creates a new scrollbox
     pub fn new() -> Self {
+        let state = Rc::new(RefCell::new(ScrollState::new(
+            ScrollSize::new(0, 0),
+            ScrollSize::new(0, 0),
+        )));
+
         Self {
             root: Container::new(),
+            state,
             viewport_x: 0,
             viewport_y: 0,
             viewport_width: 0,
             viewport_height: 0,
-            content_width: 0,
-            content_height: 0,
-            scroll_x: 0,
-            scroll_y: 0,
             scroll_x_enabled: false,
             scroll_y_enabled: true,
             scroll_accumulator_x: 0.0,
@@ -387,56 +394,83 @@ impl ScrollBox {
 
     /// Gets the vertical scroll position
     pub fn scroll_y(&self) -> u16 {
-        self.scroll_y
+        self.state.borrow().offset_for(ScrollOrientation::Vertical)
     }
 
     /// Sets the vertical scroll position
     pub fn set_scroll_y(&mut self, position: u16) {
-        self.scroll_y = position;
+        self.state
+            .borrow_mut()
+            .set_offset_for(ScrollOrientation::Vertical, position);
         self.mark_manual_scroll();
         self.update_sticky_state();
     }
 
     /// Gets the horizontal scroll position
     pub fn scroll_x(&self) -> u16 {
-        self.scroll_x
+        self.state
+            .borrow()
+            .offset_for(ScrollOrientation::Horizontal)
     }
 
     /// Sets the horizontal scroll position
     pub fn set_scroll_x(&mut self, position: u16) {
-        self.scroll_x = position;
+        self.state
+            .borrow_mut()
+            .set_offset_for(ScrollOrientation::Horizontal, position);
         self.mark_manual_scroll();
         self.update_sticky_state();
     }
 
     /// Gets the scrollable width
     pub fn scrollable_width(&self) -> u16 {
-        self.content_width.saturating_sub(self.viewport_width)
+        self.state
+            .borrow()
+            .max_offset_for(ScrollOrientation::Horizontal)
     }
 
     /// Gets the scrollable height
     pub fn scrollable_height(&self) -> u16 {
-        self.content_height.saturating_sub(self.viewport_height)
+        self.state
+            .borrow()
+            .max_offset_for(ScrollOrientation::Vertical)
     }
 
     // Scroll methods
 
     /// Scrolls by a delta
     pub fn scroll_by(&mut self, delta_x: i16, delta_y: i16) {
-        if delta_x != 0 {
-            let new_x = (self.scroll_x as i32 + delta_x as i32).max(0) as u16;
-            self.set_scroll_x(new_x.min(self.scrollable_width()));
+        if delta_x != 0 && self.scroll_x_enabled {
+            self.state
+                .borrow_mut()
+                .scroll_by(ScrollOrientation::Horizontal, delta_x);
+            self.mark_manual_scroll();
+            self.update_sticky_state();
         }
-        if delta_y != 0 {
-            let new_y = (self.scroll_y as i32 + delta_y as i32).max(0) as u16;
-            self.set_scroll_y(new_y.min(self.scrollable_height()));
+
+        if delta_y != 0 && self.scroll_y_enabled {
+            self.state
+                .borrow_mut()
+                .scroll_by(ScrollOrientation::Vertical, delta_y);
+            self.mark_manual_scroll();
+            self.update_sticky_state();
         }
     }
 
     /// Scrolls to a specific position
     pub fn scroll_to(&mut self, x: u16, y: u16) {
-        self.set_scroll_x(x.min(self.scrollable_width()));
-        self.set_scroll_y(y.min(self.scrollable_height()));
+        if self.scroll_x_enabled {
+            self.state
+                .borrow_mut()
+                .set_offset_for(ScrollOrientation::Horizontal, x);
+        }
+        if self.scroll_y_enabled {
+            self.state
+                .borrow_mut()
+                .set_offset_for(ScrollOrientation::Vertical, y);
+        }
+        self.mark_manual_scroll();
+        self.update_sticky_state();
     }
 
     /// Scrolls to top
@@ -560,8 +594,12 @@ impl ScrollBox {
 
         let relative_x = mouse_x - self.viewport_x;
 
+        let s = self.state.borrow();
+        let pos = s.offset_for(ScrollOrientation::Horizontal);
+        let max = s.max_offset_for(ScrollOrientation::Horizontal);
+
         if relative_x < self.auto_scroll_threshold {
-            return if self.scroll_x > 0 { -1 } else { 0 };
+            return if pos > 0 { -1 } else { 0 };
         }
 
         if relative_x
@@ -569,8 +607,7 @@ impl ScrollBox {
                 .viewport_width
                 .saturating_sub(self.auto_scroll_threshold)
         {
-            let max = self.scrollable_width();
-            return if self.scroll_x < max { 1 } else { 0 };
+            return if pos < max { 1 } else { 0 };
         }
 
         0
@@ -586,8 +623,12 @@ impl ScrollBox {
 
         let relative_y = mouse_y - self.viewport_y;
 
+        let s = self.state.borrow();
+        let pos = s.offset_for(ScrollOrientation::Vertical);
+        let max = s.max_offset_for(ScrollOrientation::Vertical);
+
         if relative_y < self.auto_scroll_threshold {
-            return if self.scroll_y > 0 { -1 } else { 0 };
+            return if pos > 0 { -1 } else { 0 };
         }
 
         if relative_y
@@ -595,8 +636,7 @@ impl ScrollBox {
                 .viewport_height
                 .saturating_sub(self.auto_scroll_threshold)
         {
-            let max = self.scrollable_height();
-            return if self.scroll_y < max { 1 } else { 0 };
+            return if pos < max { 1 } else { 0 };
         }
 
         0
@@ -633,7 +673,13 @@ impl ScrollBox {
 
     fn mark_manual_scroll(&mut self) {
         if !self.is_applying_sticky {
-            if !self.is_at_sticky_position() && self.scrollable_height() > 1 {
+            if !self.is_at_sticky_position()
+                && self
+                    .state
+                    .borrow()
+                    .max_offset_for(ScrollOrientation::Vertical)
+                    > 1
+            {
                 self.has_manual_scroll = true;
             }
         }
@@ -644,11 +690,19 @@ impl ScrollBox {
             return false;
         }
 
+        let s = self.state.borrow();
+
         match self.sticky_start {
-            Some(StickyEdge::Top) => self.scroll_y == 0,
-            Some(StickyEdge::Bottom) => self.scroll_y >= self.scrollable_height(),
-            Some(StickyEdge::Left) => self.scroll_x == 0,
-            Some(StickyEdge::Right) => self.scroll_x >= self.scrollable_width(),
+            Some(StickyEdge::Top) => s.offset_for(ScrollOrientation::Vertical) == 0,
+            Some(StickyEdge::Bottom) => {
+                s.offset_for(ScrollOrientation::Vertical)
+                    >= s.max_offset_for(ScrollOrientation::Vertical)
+            }
+            Some(StickyEdge::Left) => s.offset_for(ScrollOrientation::Horizontal) == 0,
+            Some(StickyEdge::Right) => {
+                s.offset_for(ScrollOrientation::Horizontal)
+                    >= s.max_offset_for(ScrollOrientation::Horizontal)
+            }
             None => false,
         }
     }
@@ -661,15 +715,18 @@ impl ScrollBox {
         let max_y = self.scrollable_height();
         let max_x = self.scrollable_width();
 
-        if self.scroll_y <= 0 {
+        let scroll_y = self.scroll_y();
+        let scroll_x = self.scroll_x();
+
+        if scroll_y == 0 {
             // At top
-        } else if self.scroll_y >= max_y {
+        } else if scroll_y >= max_y {
             // At bottom
         }
 
-        if self.scroll_x <= 0 {
+        if scroll_x == 0 {
             // At left
-        } else if self.scroll_x >= max_x {
+        } else if scroll_x >= max_x {
             // At right
         }
     }
@@ -677,10 +734,22 @@ impl ScrollBox {
     fn apply_sticky_start(&mut self, edge: StickyEdge) {
         self.is_applying_sticky = true;
         match edge {
-            StickyEdge::Top => self.set_scroll_y(0),
-            StickyEdge::Bottom => self.set_scroll_y(self.scrollable_height()),
-            StickyEdge::Left => self.set_scroll_x(0),
-            StickyEdge::Right => self.set_scroll_x(self.scrollable_width()),
+            StickyEdge::Top => self
+                .state
+                .borrow_mut()
+                .scroll_to_start(ScrollOrientation::Vertical),
+            StickyEdge::Bottom => self
+                .state
+                .borrow_mut()
+                .scroll_to_end(ScrollOrientation::Vertical),
+            StickyEdge::Left => self
+                .state
+                .borrow_mut()
+                .scroll_to_start(ScrollOrientation::Horizontal),
+            StickyEdge::Right => self
+                .state
+                .borrow_mut()
+                .scroll_to_end(ScrollOrientation::Horizontal),
         }
         self.is_applying_sticky = false;
     }
@@ -694,24 +763,81 @@ impl Default for ScrollBox {
 
 impl Widget for ScrollBox {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
-        // Get the position and size
+        // Infer viewport size from the root container size at draw time.
+        //
+        // NOTE: We do this here (instead of at construction) because container layout can be
+        // dynamic based on terminal size and child content.
         let (px, py) = self.root.get_position();
         let (pw, ph) = self.root.get_size();
 
-        // For now, draw the box and its children with scroll offset applied
-        // This is a simplified implementation - a full implementation would
-        // use proper clipping and viewport management
+        let viewport_size = ScrollSize::new(pw, ph);
 
-        // Create a window view for the viewport area and apply scroll offsets.
+        // Infer content size from the root container's children.
         //
-        // Note: scroll offsets shift the content origin; clipping is still enforced by
-        // the view's width/height.
+        // IMPORTANT: This uses intrinsic child sizes and the container's layout direction semantics
+        // (vertical stacks vs horizontal rows). It intentionally does not attempt to re-run the full
+        // container layout engine; it only approximates the scrollable content bounds.
+        //
+        // Percent gaps are treated as 1 cell (minimum), consistent with Container auto-size rules.
+        let mut content_required_w: u16 = 0;
+        let mut content_required_h: u16 = 0;
+
+        let children = self.root.children();
+        if children.is_empty() {
+            content_required_w = viewport_size.width;
+            content_required_h = viewport_size.height;
+        } else {
+            // Best-effort gap inference: since Container's gap fields are private, we assume 0 gap.
+            // If you need accurate gap inclusion for scrolling, we should expose resolved gap from
+            // Container or move ScrollBox content measurement into Container itself.
+            let gap_pixels: u16 = 0;
+
+            match self.root.layout_direction() {
+                super::container::LayoutDirection::Vertical => {
+                    for (idx, child) in children.iter().enumerate() {
+                        let (cw, ch) = child.get_size();
+                        content_required_w = content_required_w.max(cw);
+                        content_required_h = content_required_h.saturating_add(ch);
+                        if idx < children.len() - 1 {
+                            content_required_h = content_required_h.saturating_add(gap_pixels);
+                        }
+                    }
+                }
+                super::container::LayoutDirection::Horizontal => {
+                    for (idx, child) in children.iter().enumerate() {
+                        let (cw, ch) = child.get_size();
+                        content_required_w = content_required_w.saturating_add(cw);
+                        content_required_h = content_required_h.max(ch);
+                        if idx < children.len() - 1 {
+                            content_required_w = content_required_w.saturating_add(gap_pixels);
+                        }
+                    }
+                }
+            }
+
+            // Never allow content smaller than viewport; this avoids negative max offsets.
+            content_required_w = content_required_w.max(viewport_size.width);
+            content_required_h = content_required_h.max(viewport_size.height);
+        }
+
+        let content_size = ScrollSize::new(content_required_w, content_required_h);
+
+        // Sync sizes into shared scroll state (clamps offsets automatically).
+        {
+            let mut s = self.state.borrow_mut();
+            s.set_viewport_size(viewport_size);
+            s.set_content_size(content_size);
+        }
+
+        // Apply scroll offsets (content translation) via WindowView.
+        let offset = self.state.borrow().offset();
+
         let mut viewport = WindowView {
             window,
             x_offset: px,
             y_offset: py,
-            scroll_x: self.scroll_x,
-            scroll_y: self.scroll_y,
+            scroll_x: if self.scroll_x_enabled { offset.x } else { 0 },
+            scroll_y: if self.scroll_y_enabled { offset.y } else { 0 },
             width: pw,
             height: ph,
         };
