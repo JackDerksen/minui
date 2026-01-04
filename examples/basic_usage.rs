@@ -106,6 +106,9 @@ fn main() -> minui::Result<()> {
             // MinUI handles positioning, sizing, and rendering automatically
             label.draw(window)?;
 
+            // Flush buffered rendering (App no longer auto-flushes after draw)
+            window.flush()?;
+
             // Return Ok(()) to indicate drawing succeeded
             Ok(())
         },

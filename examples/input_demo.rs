@@ -44,6 +44,19 @@ fn main() -> minui::Result<()> {
                 Event::Character(c) => {
                     state.event_log.push_back(format!("Key: '{}'", c));
                 }
+                Event::Paste(text) => {
+                    // Keep the log readable for large pastes
+                    let preview: String = text.chars().take(60).collect();
+                    if text.chars().count() > 60 {
+                        state.event_log.push_back(format!(
+                            "Paste: \"{}…\" ({} chars)",
+                            preview,
+                            text.chars().count()
+                        ));
+                    } else {
+                        state.event_log.push_back(format!("Paste: \"{}\"", preview));
+                    }
+                }
                 Event::KeyUp => {
                     state.event_log.push_back("Key: ↑ Up".to_string());
                 }
@@ -206,6 +219,7 @@ fn main() -> minui::Result<()> {
                 ColorPair::new(Color::DarkGray, Color::Transparent),
             )?;
 
+            window.flush()?;
             Ok(())
         },
     )?;

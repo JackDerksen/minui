@@ -72,6 +72,7 @@ fn main() -> minui::Result<()> {
                 ColorPair::new(Color::Black, Color::Red),
             )?;
 
+            window.flush()?;
             Ok(())
         },
     )?;

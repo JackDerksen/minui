@@ -53,6 +53,7 @@ fn main() -> minui::Result<()> {
         |state, window| {
             window.write_str(state.y, state.x, "@")?;
             window.write_str(0, 0, "Press 'q' to quit")?;
+            window.flush()?;
             Ok(())
         },
     )?;

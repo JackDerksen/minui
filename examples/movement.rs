@@ -75,6 +75,7 @@ fn main() -> minui::Result<()> {
                 ),
             )?;
 
+            window.flush()?;
             Ok(())
         },
     )?;

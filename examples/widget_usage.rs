@@ -22,7 +22,9 @@ fn main() -> minui::Result<()> {
         |_state, event| !matches!(event, Event::Character('q')),
         |_state, window| {
             let (w, h) = window.get_size();
-            create_app_layout(w, h).draw(window)
+            create_app_layout(w, h).draw(window)?;
+            window.flush()?;
+            Ok(())
         },
     )?;
 
