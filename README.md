@@ -28,7 +28,7 @@ MinUI is actively developed with these features available:
   - [x] `ScrollBox` (scrollable container backed by `ScrollState`)
   - [x] `ScrollBar` + `Slider` controls (vertical/horizontal)
   - [ ] Table widget
-  - [ ] Input widget
+  - [x] Input widget
   - [ ] Predefined common widget layouts / presets
 - [x] Robust error handling
 - [x] Buffered drawing for smooth and efficient updates
@@ -46,7 +46,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.4.0"
+minui = "0.4.1"
 ```
 
 ### Basic Example
