@@ -62,6 +62,23 @@ impl<S> App<S> {
         })
     }
 
+    /// Returns an immutable reference to the underlying terminal window.
+    ///
+    /// This is useful for advanced configuration (e.g. querying capabilities).
+    pub fn window(&self) -> &TerminalWindow {
+        &self.window
+    }
+
+    /// Returns a mutable reference to the underlying terminal window.
+    ///
+    /// This enables advanced configuration prior to calling `run()`, for example:
+    /// - toggling mouse movement tracking
+    /// - adjusting keybind handlers
+    /// - overriding terminal capabilities (color fallback behavior)
+    pub fn window_mut(&mut self) -> &mut TerminalWindow {
+        &mut self.window
+    }
+
     /// Enables game mode with a fixed tick rate.
     ///
     /// Your update function will receive `Event::Tick` at regular intervals.
@@ -90,11 +107,20 @@ impl<S> App<S> {
 
         loop {
             // --- Input Handling ---
-            // Poll for any pending input events.
-            if let Some(event) = self.window.poll_input()?
-                && !update(&mut self.state, event)
-            {
-                break; // Exit if the update closure returns false
+            // Drain all pending input events before drawing a frame.
+            //
+            // This prevents input bursts (especially mouse events) from interleaving with rendering,
+            // which can cause flicker and unstable behavior.
+            const MAX_EVENTS_PER_FRAME: usize = 256;
+            for _ in 0..MAX_EVENTS_PER_FRAME {
+                match self.window.poll_input()? {
+                    Some(event) => {
+                        if !update(&mut self.state, event) {
+                            return Ok(()); // Exit if the update closure returns false
+                        }
+                    }
+                    None => break, // No more pending input
+                }
             }
 
             // --- Game Tick Handling ---

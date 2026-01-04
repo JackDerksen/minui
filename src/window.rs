@@ -12,6 +12,8 @@
 //! - Keyboard and mouse input handling
 //! - Automatic terminal state restoration
 //! - Best-effort terminal capability detection (color downgrades/fallbacks)
+//! - Uses a single, persistent stdout handle to avoid output interleaving/flicker
+//! - Deferred cursor requests to prevent cursor flicker across widgets
 //!
 //! ## Basic Usage
 //!
@@ -27,15 +29,10 @@
 //! let colors = ColorPair::new(Color::Yellow, Color::Blue);
 //! window.write_str_colored(1, 0, "Colored text!", colors)?;
 //!
-//! // Get terminal size
-//! let (width, height) = window.get_size();
+//! // Request cursor placement (applied at end of frame)
+//! window.request_cursor(crate::CursorSpec { x: 0, y: 0, visible: true });
 //!
-//! // Handle input
-//! if let Some(event) = window.poll_input()? {
-//!     // Process the event
-//! }
-//!
-//! // End-of-frame convenience (flush buffered rendering)
+//! // End-of-frame convenience (flush buffered rendering + apply cursor request)
 //! window.end_frame()?;
 //! # Ok::<(), minui::Error>(())
 //! ```
@@ -54,8 +51,22 @@ use crossterm::{
     style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
-use std::io::{Write, stdout};
+use std::io::{Stdout, Write, stdout};
 use std::time::Duration;
+
+/// A structured cursor request applied at the end of a frame.
+///
+/// Widgets should prefer requesting cursor state during draw, rather than moving/showing the
+/// terminal cursor immediately. This prevents cursor flicker when multiple widgets are drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CursorSpec {
+    /// Cursor x position in terminal columns (0-based).
+    pub x: u16,
+    /// Cursor y position in terminal rows (0-based).
+    pub y: u16,
+    /// Whether the cursor should be visible at the end of the frame.
+    pub visible: bool,
+}
 
 /// The core drawing interface for all UI components.
 ///
@@ -124,29 +135,39 @@ pub trait Window {
     /// Backends that render immediately may implement this as a no-op.
     fn flush(&mut self) -> Result<()>;
 
+    /// Requests a cursor state to be applied at the end of the frame.
+    ///
+    /// This is the preferred cursor API for widgets. It prevents cursor flicker when multiple
+    /// widgets are drawn in the same frame by deferring actual terminal cursor operations until
+    /// the end of the frame. Backends should treat the last request as the winner.
+    ///
+    /// Default implementation is a no-op so non-terminal backends can ignore it.
+    fn request_cursor(&mut self, _cursor: CursorSpec) {}
+
+    /// Clears any pending cursor request.
+    ///
+    /// Default implementation is a no-op.
+    fn clear_cursor_request(&mut self) {}
+
     /// Convenience method to finish a frame.
     ///
     /// This is a small ergonomics helper for the common pattern where applications
     /// draw into a buffered window and then flush once per frame.
     ///
-    /// By default, this calls [`Window::flush`]. Backends may override if they want
-    /// to perform additional end-of-frame behavior in the future.
+    /// Backends may override to perform additional end-of-frame behavior (like applying
+    /// deferred cursor requests).
     fn end_frame(&mut self) -> Result<()> {
         self.flush()
     }
 
-    /// Sets the terminal cursor position.
+    /// Sets the terminal cursor position immediately.
     ///
-    /// Coordinates are 0-based and expressed as (x, y).
-    ///
-    /// For editor-like applications, the typical pattern is:
-    /// - hide cursor
-    /// - draw + flush
-    /// - set cursor position
-    /// - show cursor
+    /// Prefer [`Window::request_cursor`] for widget code.
     fn set_cursor_position(&mut self, x: u16, y: u16) -> Result<()>;
 
-    /// Shows or hides the terminal cursor.
+    /// Shows or hides the terminal cursor immediately.
+    ///
+    /// Prefer [`Window::request_cursor`] for widget code.
     fn show_cursor(&mut self, show: bool) -> Result<()>;
 
     /// Returns the dimensions of the window as (width, height).
@@ -319,6 +340,15 @@ pub struct TerminalWindow {
 
     capabilities: TerminalCapabilities,
 
+    /// Deferred cursor request to apply at end-of-frame.
+    pending_cursor: Option<CursorSpec>,
+
+    /// Persistent stdout handle used for all terminal output.
+    ///
+    /// Keeping a single handle avoids interleaving/flicker caused by repeatedly creating
+    /// new stdout handles and issuing `execute!` calls on them.
+    out: Stdout,
+
     keyboard: KeyboardHandler,
     mouse: MouseHandler,
 }
@@ -354,8 +384,11 @@ impl TerminalWindow {
 
         let (cols, rows) = terminal::size()?;
 
+        // Create a single stdout handle and keep it for the lifetime of the window.
+        let mut out = stdout();
+
         execute!(
-            stdout(),
+            out,
             terminal::EnterAlternateScreen, // Use separate screen buffer
             terminal::Clear(terminal::ClearType::All),
             cursor::Hide,
@@ -371,6 +404,10 @@ impl TerminalWindow {
             auto_flush: true,
 
             capabilities: TerminalCapabilities::detect(),
+
+            pending_cursor: None,
+
+            out,
 
             keyboard: KeyboardHandler::new(),
             mouse: MouseHandler::new(),
@@ -400,7 +437,7 @@ impl TerminalWindow {
         // This is especially important on shrink where previous frames may have drawn
         // beyond the new visible area.
         let _ = execute!(
-            stdout(),
+            self.out,
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0)
         );
@@ -425,12 +462,13 @@ impl TerminalWindow {
     /// window.clear()?; // Screen cleared immediately
     /// # Ok::<(), minui::Error>(())
     /// ```
-    pub fn clear(&self) -> Result<()> {
+    pub fn clear(&mut self) -> Result<()> {
         execute!(
-            stdout(),
+            self.out,
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0)
         )?;
+        self.out.flush()?;
         Ok(())
     }
 
@@ -792,9 +830,13 @@ impl TerminalWindow {
         let changes = self.buffer.process_changes();
         let mut last_colors: Option<ColorPair> = None;
 
+        // Hide cursor while applying buffered changes so transient cursor movement during `MoveTo`
+        // calls isn't visible (prevents occasional flicker).
+        execute!(self.out, cursor::Hide)?;
+
         for change in changes {
             // Move the cursor to the correct position for the change
-            execute!(stdout(), cursor::MoveTo(change.x, change.y))?;
+            execute!(self.out, cursor::MoveTo(change.x, change.y))?;
 
             if change.colors != last_colors {
                 if let Some(colors) = change.colors {
@@ -803,7 +845,7 @@ impl TerminalWindow {
 
                     // Set the foreground and background colors
                     execute!(
-                        stdout(),
+                        self.out,
                         SetForegroundColor(colors.fg.to_crossterm()),
                         SetBackgroundColor(colors.bg.to_crossterm())
                     )?;
@@ -811,18 +853,33 @@ impl TerminalWindow {
                     last_colors = Some(colors);
                 } else {
                     // If there are no colors, reset to the default
-                    execute!(stdout(), style::ResetColor)?;
+                    execute!(self.out, style::ResetColor)?;
                     last_colors = None;
                 }
             }
 
             // Print the text for the change
-            execute!(stdout(), style::Print(&change.text))?;
+            execute!(self.out, style::Print(&change.text))?;
         }
 
         // Reset the color at the end of the flush
-        execute!(stdout(), style::ResetColor)?;
-        stdout().flush()?;
+        execute!(self.out, style::ResetColor)?;
+
+        // Apply deferred cursor request after rendering. This is the ONLY place we show the cursor.
+        match self.pending_cursor.take() {
+            Some(spec) if spec.visible => {
+                execute!(self.out, cursor::MoveTo(spec.x, spec.y), cursor::Show)?;
+            }
+            Some(_spec) => {
+                execute!(self.out, cursor::Hide)?;
+            }
+            None => {
+                // No request: keep cursor hidden for deterministic behavior and to prevent flicker.
+                execute!(self.out, cursor::Hide)?;
+            }
+        }
+
+        self.out.flush()?;
         Ok(())
     }
 }
@@ -840,7 +897,7 @@ impl Window for TerminalWindow {
         self.buffer.write_str(y, x, s, None)?;
 
         if self.auto_flush {
-            self.flush()?;
+            self.end_frame()?;
         }
         Ok(())
     }
@@ -857,7 +914,7 @@ impl Window for TerminalWindow {
         self.buffer.write_str(y, x, s, Some(colors))?;
 
         if self.auto_flush {
-            self.flush()?;
+            self.end_frame()?;
         }
         Ok(())
     }
@@ -866,18 +923,31 @@ impl Window for TerminalWindow {
         TerminalWindow::flush(self)
     }
 
+    fn request_cursor(&mut self, cursor: CursorSpec) {
+        self.pending_cursor = Some(cursor);
+    }
+
+    fn clear_cursor_request(&mut self) {
+        self.pending_cursor = None;
+    }
+
+    fn end_frame(&mut self) -> Result<()> {
+        // End of frame = flush buffered changes and apply deferred cursor request.
+        self.flush()
+    }
+
     fn set_cursor_position(&mut self, x: u16, y: u16) -> Result<()> {
-        // Note: this is an immediate terminal-side operation (not buffered).
-        execute!(stdout(), cursor::MoveTo(x, y))?;
+        // Immediate cursor movement (prefer request_cursor for widget code).
+        execute!(self.out, cursor::MoveTo(x, y))?;
         Ok(())
     }
 
     fn show_cursor(&mut self, show: bool) -> Result<()> {
-        // Note: this is an immediate terminal-side operation (not buffered).
+        // Immediate cursor visibility (prefer request_cursor for widget code).
         if show {
-            execute!(stdout(), cursor::Show)?;
+            execute!(self.out, cursor::Show)?;
         } else {
-            execute!(stdout(), cursor::Hide)?;
+            execute!(self.out, cursor::Hide)?;
         }
         Ok(())
     }
@@ -942,17 +1012,29 @@ impl Window for TerminalWindow {
 
 impl Drop for TerminalWindow {
     fn drop(&mut self) {
+        // Best-effort restore of terminal state.
         let _ = disable_raw_mode();
+
+        // IMPORTANT:
+        // `self.flush()` hides the cursor at the start of flush and will hide it again
+        // if no deferred cursor request exists. During drop we want to guarantee the
+        // user's terminal cursor is visible after we restore the normal screen.
+        //
+        // So: flush any pending buffered changes first (while we're still in the alt screen),
+        // then restore terminal modes, then explicitly show the cursor.
+        let _ = self.flush();
+
         let _ = execute!(
-            stdout(),
+            self.out,
             DisableBracketedPaste, // Restore terminal paste mode
             DisableMouseCapture,   // Disable mouse event capture
             style::ResetColor,
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0),
-            cursor::Show,
-            terminal::LeaveAlternateScreen
+            terminal::LeaveAlternateScreen,
+            cursor::Show
         );
-        let _ = self.flush();
+
+        let _ = self.out.flush();
     }
 }
