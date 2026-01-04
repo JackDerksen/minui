@@ -12,6 +12,7 @@
 //! - `InteractionCache`: per-frame registry of interactive areas keyed by an ID
 //! - hit testing with z-order (last registered wins)
 //! - basic focus tracking by ID
+//! - `IdAllocator`: a tiny utility for allocating `InteractionId`s (usize) in user apps
 //!
 //! # Intended usage (app-level routing)
 //!
@@ -27,7 +28,8 @@
 //! # Notes
 //! - This is not a retained widget tree or event bubbling system.
 //! - IDs are `usize` to stay flexible and cheap. Your app can generate them from an arena
-//!   index, stable hash, counter, etc.
+//!   index, stable hash, counter, etc. If you want a simple counter-based approach,
+//!   use [`IdAllocator`].
 //!
 //! # Future extensions (kept intentionally out of Phase 1)
 //! - keyboard "tab order"
@@ -39,6 +41,70 @@
 use std::collections::HashMap;
 
 use crate::widgets::WidgetArea;
+
+/// A simple monotonic ID allocator for [`InteractionId`].
+///
+/// This is intentionally tiny and deterministic. It is designed for applications that want
+/// "stable enough" IDs within a running process without introducing a full retained-mode UI tree.
+///
+/// Typical usage:
+/// - store one allocator in app state
+/// - allocate IDs for interactive widgets at creation time
+/// - reuse those IDs across frames when registering areas into [`InteractionCache`]
+///
+/// Notes:
+/// - IDs start at `1` by default (leaving `0` as a convenient "none"/sentinel if you want it).
+/// - Allocation is monotonic and does not reuse IDs.
+/// - If you need stable IDs across restarts, use your own hashing/registry instead.
+#[derive(Debug, Clone)]
+pub struct IdAllocator {
+    next: InteractionId,
+}
+
+impl Default for IdAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IdAllocator {
+    /// Create a new allocator starting at `1`.
+    pub const fn new() -> Self {
+        Self { next: 1 }
+    }
+
+    /// Create a new allocator starting at a custom value.
+    ///
+    /// This can be useful if you want to reserve ranges (e.g. 1..1000 for built-ins, etc.).
+    pub const fn with_start(start: InteractionId) -> Self {
+        Self { next: start }
+    }
+
+    /// Allocate the next unique [`InteractionId`].
+    ///
+    /// Panics on overflow (extremely unlikely in practice for TUIs).
+    pub fn alloc(&mut self) -> InteractionId {
+        let id = self.next;
+        self.next = self
+            .next
+            .checked_add(1)
+            .expect("InteractionId overflow in IdAllocator");
+        id
+    }
+
+    /// Returns the next ID that would be allocated (without allocating it).
+    pub fn peek(&self) -> InteractionId {
+        self.next
+    }
+
+    /// Reset the allocator to a specific starting value.
+    ///
+    /// This does not guarantee uniqueness relative to IDs previously allocated.
+    /// It is intended for tests or tightly controlled scenarios.
+    pub fn reset(&mut self, start: InteractionId) {
+        self.next = start;
+    }
+}
 
 /// The identifier for an interactive region.
 ///

@@ -29,6 +29,10 @@
 //! - [`Container`] - Layout management with padding, borders, and alignment
 //! - [`Panel`] - Bordered containers with titles and content areas
 //!
+//! ### Scroll Widgets
+//! - [`Viewport`] - Clipping + scroll offsets for content larger than its visible area
+//! - `widgets::scroll` - Shared scrolling primitives (`ScrollState`, sizes, offsets)
+//!
 //! ### Helper Functions
 //! Pre-built styled components for common UI patterns:
 //! - [`title_text`], [`subtitle_text`] - Hierarchical headings
@@ -130,6 +134,7 @@ mod container;
 mod figlet;
 mod input;
 mod layout;
+pub mod scroll;
 mod scrollbox;
 mod table;
 mod text;
@@ -141,6 +146,7 @@ pub use container::{
     Padding as ContainerPadding, TitleAlignment,
 };
 pub use figlet::FigletText;
+pub use scroll::state::{ScrollOffset, ScrollOrientation, ScrollSize, ScrollState};
 pub use scrollbox::{
     LinearScrollAccel, MacOSScrollAccel, ScrollAcceleration, ScrollBox, StickyEdge,
 };

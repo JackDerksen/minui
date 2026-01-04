@@ -7,9 +7,10 @@
 //!
 //! Currently provided:
 //! - `interaction`: draw-time interaction caching for hit testing + basic focus tracking.
+//! - `IdAllocator`: a tiny monotonic ID allocator for generating `InteractionId`s.
 
 pub mod interaction;
 
 pub use interaction::{
-    HitTestResult, InteractionCache, InteractionEntry, InteractionFlags, InteractionId,
+    HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags, InteractionId,
 };

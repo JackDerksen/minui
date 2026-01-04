@@ -88,6 +88,10 @@ pub use widgets::{
     MacOSScrollAccel,
     ScrollAcceleration,
     ScrollBox,
+    ScrollOffset,
+    ScrollOrientation,
+    ScrollSize,
+    ScrollState,
     StickyEdge,
     Text,
     TextBlock,
@@ -101,6 +105,12 @@ pub use widgets::{
     // Core widget trait and utilities
     Widget,
     WidgetArea,
+};
+
+// UI utilities (hit-testing, focus helpers, etc.)
+pub mod ui;
+pub use ui::{
+    HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags, InteractionId,
 };
 
 /// Common imports for MinUI applications.
@@ -138,6 +148,14 @@ pub mod prelude {
 
         // Text widgets
         Gap,
+        // UI utilities (hit-testing, focus helpers, etc.)
+        HitTestResult,
+        IdAllocator,
+        InteractionCache,
+        InteractionEntry,
+        InteractionFlags,
+        InteractionId,
+
         KeybindAction,
         KeyboardHandler,
         Label,
@@ -150,6 +168,10 @@ pub mod prelude {
         ScrollAcceleration,
         ScrollBox,
         ScrollDirection,
+        ScrollOffset,
+        ScrollOrientation,
+        ScrollSize,
+        ScrollState,
         Scroller,
         StickyEdge,
         TerminalWindow,
