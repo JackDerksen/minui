@@ -752,6 +752,7 @@ impl KeyboardHandler {
     fn convert_key_event(&self, key_code: KeyCode) -> Event {
         match key_code {
             KeyCode::Char(c) => Event::Character(c),
+            KeyCode::Tab => Event::Tab,
             KeyCode::Up => Event::KeyUp,
             KeyCode::Down => Event::KeyDown,
             KeyCode::Left => Event::KeyLeft,

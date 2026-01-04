@@ -68,6 +68,8 @@ pub enum Event {
     Delete,
     /// Backspace key was pressed
     Backspace,
+    /// Tab key was pressed
+    Tab,
     /// Enter/Return key was pressed
     Enter,
     /// Escape key was pressed
