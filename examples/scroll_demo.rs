@@ -390,6 +390,7 @@ fn main() -> minui::Result<()> {
                 }
             }
 
+            window.end_frame()?;
             Ok(())
         },
     )?;
