@@ -33,6 +33,9 @@
 //! if let Some(event) = window.poll_input()? {
 //!     // Process the event
 //! }
+//!
+//! // End-of-frame convenience (flush buffered rendering)
+//! window.end_frame()?;
 //! # Ok::<(), minui::Error>(())
 //! ```
 
@@ -118,6 +121,17 @@ pub trait Window {
     /// For buffered backends (like `TerminalWindow`), this commits the diff to the terminal.
     /// Backends that render immediately may implement this as a no-op.
     fn flush(&mut self) -> Result<()>;
+
+    /// Convenience method to finish a frame.
+    ///
+    /// This is a small ergonomics helper for the common pattern where applications
+    /// draw into a buffered window and then flush once per frame.
+    ///
+    /// By default, this calls [`Window::flush`]. Backends may override if they want
+    /// to perform additional end-of-frame behavior in the future.
+    fn end_frame(&mut self) -> Result<()> {
+        self.flush()
+    }
 
     /// Sets the terminal cursor position.
     ///
