@@ -155,6 +155,7 @@ pub use controls::{
     SliderOrientation,
 };
 pub use figlet::FigletText;
+pub use input::{TextInput, TextInputState};
 pub use scroll::state::{ScrollOffset, ScrollOrientation, ScrollSize, ScrollState};
 pub use scrollbox::{
     LinearScrollAccel, MacOSScrollAccel, ScrollAcceleration, ScrollBox, StickyEdge,
