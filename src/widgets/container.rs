@@ -657,6 +657,28 @@ impl Container {
         self.height = outer_h;
     }
 
+    /// Returns the "auto-size gap pixels" used by `recalculate_size()` for the current layout
+    /// direction.
+    ///
+    /// This is intentionally *not* the fully resolved percent gap (which depends on available
+    /// space). During auto-size (and in best-effort content measurement), percent gaps are treated
+    /// as 1 cell to avoid circular dependencies.
+    ///
+    /// This is exposed publicly to support higher-level widgets (e.g. `ScrollBox`) that need to
+    /// infer content sizing from child intrinsic sizes without re-running the full layout engine.
+    pub fn autosize_gap_pixels(&self) -> u16 {
+        let gap = match self.layout_direction {
+            LayoutDirection::Vertical => self.row_gap.or(self.gap),
+            LayoutDirection::Horizontal => self.column_gap.or(self.gap),
+        };
+
+        match gap {
+            Some(Gap::Pixels(n)) => n,
+            Some(Gap::Percent(_)) => 1,
+            None => 0,
+        }
+    }
+
     /// Resolves the gap for the current layout direction
     fn resolve_gap(&self, available_space: u16) -> u16 {
         let gap = match self.layout_direction {

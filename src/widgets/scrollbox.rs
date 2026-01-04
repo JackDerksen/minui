@@ -787,10 +787,11 @@ impl Widget for ScrollBox {
             content_required_w = viewport_size.width;
             content_required_h = viewport_size.height;
         } else {
-            // Best-effort gap inference: since Container's gap fields are private, we assume 0 gap.
-            // If you need accurate gap inclusion for scrolling, we should expose resolved gap from
-            // Container or move ScrollBox content measurement into Container itself.
-            let gap_pixels: u16 = 0;
+            // Include gaps between children when inferring content size.
+            //
+            // NOTE: Percent gaps are treated as 1 cell (minimum), consistent with Container
+            // auto-size rules (`Container::autosize_gap_pixels()`).
+            let gap_pixels: u16 = self.root.autosize_gap_pixels();
 
             match self.root.layout_direction() {
                 super::container::LayoutDirection::Vertical => {
