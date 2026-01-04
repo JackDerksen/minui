@@ -1,5 +1,5 @@
 /target
 
 # Local design notes / scratchpads (kept out of git)
-docs/FUTURE_CONSIDERATIONS.md
+docs/
 /examples/sandbox.rs
