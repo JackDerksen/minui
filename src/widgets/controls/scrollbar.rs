@@ -12,6 +12,13 @@
 //! This implementation is inspired by OpenTUI's ScrollBar/Slider composition, but adapted to
 //! MinUI's current draw-only widget trait.
 //!
+//! ## Pre-draw sync (recommended)
+//! `Widget::draw` takes `&self`, so this type cannot update its internal slider/arrows during
+//! drawing. To avoid rebuilding a render-only slider every frame, call
+//! `ScrollBar::sync_from_state_and_resize_parts()` from your app's update or draw code *before*
+//! drawing the scrollbar. When the scrollbar is "synced", it will render using its internal
+//! `slider`/arrow widgets, preserving drag state.
+//!
 //! Notes / limitations:
 //! - Arrow buttons are supported for mouse clicks (and basic keyboard keys if routed).
 //! - Continuous press-repeat (hold-to-scroll) is intentionally out of scope for Phase 1.
@@ -68,6 +75,13 @@ impl ArrowButton {
     pub fn with_color(mut self, color: ColorPair) -> Self {
         self.color = color;
         self
+    }
+
+    /// Mutably set the arrow color without consuming the button.
+    ///
+    /// This is used by `ScrollBar` mutating setters to avoid moving `ArrowButton`.
+    pub fn set_color(&mut self, color: ColorPair) {
+        self.color = color;
     }
 
     pub fn glyph(&self) -> &'static str {
@@ -136,9 +150,15 @@ pub struct ScrollBar {
     opts: ScrollBarOptions,
     state: Rc<RefCell<ScrollState>>,
 
+    // Internal render parts (kept in sync via `sync_from_state_and_resize_parts`).
     slider: Slider,
     start_arrow: ArrowButton,
     end_arrow: ArrowButton,
+
+    /// Whether internal render parts are currently in sync with `state` and size/options.
+    ///
+    /// Call `sync_from_state_and_resize_parts()` before drawing to keep this true.
+    synced: bool,
 }
 
 impl ScrollBar {
@@ -188,6 +208,7 @@ impl ScrollBar {
             slider,
             start_arrow: ArrowButton::new(start_dir).with_color(opts.arrow_color),
             end_arrow: ArrowButton::new(end_dir).with_color(opts.arrow_color),
+            synced: false,
         };
 
         this.sync_from_state_and_resize_parts();
@@ -228,29 +249,74 @@ impl ScrollBar {
         self
     }
 
+    /// Mutably set size without recreating the scrollbar (preserves drag state).
+    ///
+    /// Call this from your draw/layout code when terminal size changes.
+    pub fn set_size(&mut self, width: u16, height: u16) {
+        self.width = width;
+        self.height = height;
+        self.sync_from_state_and_resize_parts();
+    }
+
     pub fn with_show_arrows(mut self, show: bool) -> Self {
         self.opts.show_arrows = show;
         self.sync_from_state_and_resize_parts();
         self
     }
 
+    /// Mutably set whether arrows are shown (preserves drag state).
+    pub fn set_show_arrows(&mut self, show: bool) {
+        self.opts.show_arrows = show;
+        self.sync_from_state_and_resize_parts();
+    }
+
     pub fn with_colors(mut self, track: ColorPair, thumb: ColorPair) -> Self {
         self.opts.track_color = track;
         self.opts.thumb_color = thumb;
-        self.slider = self.slider.with_colors(track, thumb);
+        // Avoid moving the slider; keep drag state stable for retained instances.
+        self.slider.set_colors(track, thumb);
+        self.synced = false;
         self
+    }
+
+    /// Mutably set track/thumb colors (preserves drag state).
+    pub fn set_colors(&mut self, track: ColorPair, thumb: ColorPair) {
+        self.opts.track_color = track;
+        self.opts.thumb_color = thumb;
+        self.slider.set_colors(track, thumb);
+        self.synced = false;
     }
 
     pub fn with_arrow_color(mut self, color: ColorPair) -> Self {
         self.opts.arrow_color = color;
-        self.start_arrow = self.start_arrow.with_color(color);
-        self.end_arrow = self.end_arrow.with_color(color);
+        // Avoid moving arrow buttons; keep internal parts stable for retained instances.
+        self.start_arrow.set_color(color);
+        self.end_arrow.set_color(color);
+        self.synced = false;
         self
+    }
+
+    /// Mutably set arrow color (preserves drag state).
+    pub fn set_arrow_color(&mut self, color: ColorPair) {
+        self.opts.arrow_color = color;
+        self.start_arrow.set_color(color);
+        self.end_arrow.set_color(color);
+        self.synced = false;
     }
 
     pub fn with_scroll_step(mut self, step: Option<u16>) -> Self {
         self.opts.scroll_step = step;
+        self.synced = false;
         self
+    }
+
+    /// Mutably set the scroll step (in cells) without recreating the scrollbar.
+    ///
+    /// Note: call `sync_from_state_and_resize_parts()` before drawing if you need the
+    /// scrollbar to render using its internal slider/arrows (preserving drag state).
+    pub fn set_scroll_step(&mut self, step: Option<u16>) {
+        self.opts.scroll_step = step;
+        self.synced = false;
     }
 
     /// Access the bound state.
@@ -318,7 +384,10 @@ impl ScrollBar {
     }
 
     /// Synchronize slider range/value/viewport from ScrollState and resize internal components.
-    fn sync_from_state_and_resize_parts(&mut self) {
+    ///
+    /// This is intended to be called from app code *before* drawing, so the scrollbar can render
+    /// using its internal slider/arrows without rebuilding a render-only slider each frame.
+    pub fn sync_from_state_and_resize_parts(&mut self) {
         // Configure arrow sizes (always 1 cell along main axis, stretch on cross axis).
         match self.opts.orientation {
             ScrollOrientation::Vertical => {
@@ -343,7 +412,8 @@ impl ScrollBar {
                 slider_w = self.width.max(1);
                 slider_h = self
                     .height
-                    .saturating_sub(if self.opts.show_arrows { 2 } else { 0 });
+                    .saturating_sub(if self.opts.show_arrows { 2 } else { 0 })
+                    .max(1);
             }
             ScrollOrientation::Horizontal => {
                 slider_w = self
@@ -367,20 +437,13 @@ impl ScrollBar {
         };
         let offset = s.offset_for(self.opts.orientation);
 
-        // Slider maps [0..max_offset].
-        let mut slider_opts = SliderOptions::default();
-        slider_opts.orientation = match self.opts.orientation {
-            ScrollOrientation::Vertical => SliderOrientation::Vertical,
-            ScrollOrientation::Horizontal => SliderOrientation::Horizontal,
-        };
-        slider_opts.min = 0.0;
-        slider_opts.max = max_offset as f32;
-        slider_opts.value = offset as f32;
-        slider_opts.viewport_size = viewport_size.max(1) as f32;
-        slider_opts.track_color = self.opts.track_color;
-        slider_opts.thumb_color = self.opts.thumb_color;
+        // Update slider in-place to preserve drag state.
+        self.slider.set_size(slider_w, slider_h);
+        self.slider.set_range(0.0, max_offset as f32);
+        self.slider.set_viewport_size(viewport_size.max(1) as f32);
+        self.slider.set_value(offset as f32);
 
-        self.slider = Slider::new(slider_w, slider_h, slider_opts);
+        self.synced = true;
     }
 
     /// Apply slider's current value to the scroll state.
@@ -431,7 +494,10 @@ impl ScrollBar {
     ///
     /// Returns `true` if the scroll offset changed or internal drag state changed.
     pub fn handle_event(&mut self, event: &Event, area: WidgetArea) -> bool {
-        // Keep internal slider configured from latest scroll state. This is cheap.
+        // Keep internal slider configured from latest scroll state.
+        //
+        // This is important for dragging: we want to preserve the internal slider's drag state
+        // while still updating its range/value/size from shared scroll state.
         self.sync_from_state_and_resize_parts();
 
         // Arrow buttons (mouse click)
@@ -627,7 +693,110 @@ impl ScrollBar {
 
 impl Widget for ScrollBar {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
-        // Ensure the slider reflects latest scroll state (in case other widgets modified it).
+        // If the app has called `sync_from_state_and_resize_parts()` this frame, render using the
+        // internal slider/arrows so drag state is preserved.
+        //
+        // Otherwise, fall back to the previous "render-only rebuild" path for correctness.
+        if self.synced {
+            match self.opts.orientation {
+                ScrollOrientation::Vertical => {
+                    if self.opts.show_arrows {
+                        {
+                            let mut view = WindowView {
+                                window,
+                                x_offset: 0,
+                                y_offset: 0,
+                                scroll_x: 0,
+                                scroll_y: 0,
+                                width: self.width.max(1),
+                                height: 1,
+                            };
+                            self.start_arrow.draw(&mut view)?;
+                        }
+                        {
+                            let y = self.height.saturating_sub(1);
+                            let mut view = WindowView {
+                                window,
+                                x_offset: 0,
+                                y_offset: y,
+                                scroll_x: 0,
+                                scroll_y: 0,
+                                width: self.width.max(1),
+                                height: 1,
+                            };
+                            self.end_arrow.draw(&mut view)?;
+                        }
+                    }
+
+                    let top = if self.opts.show_arrows { 1 } else { 0 };
+                    let h = self
+                        .height
+                        .saturating_sub(if self.opts.show_arrows { 2 } else { 0 })
+                        .max(1);
+
+                    let mut view = WindowView {
+                        window,
+                        x_offset: 0,
+                        y_offset: top,
+                        scroll_x: 0,
+                        scroll_y: 0,
+                        width: self.width.max(1),
+                        height: h,
+                    };
+                    self.slider.draw(&mut view)?;
+                }
+                ScrollOrientation::Horizontal => {
+                    if self.opts.show_arrows {
+                        {
+                            let mut view = WindowView {
+                                window,
+                                x_offset: 0,
+                                y_offset: 0,
+                                scroll_x: 0,
+                                scroll_y: 0,
+                                width: 1,
+                                height: self.height.max(1),
+                            };
+                            self.start_arrow.draw(&mut view)?;
+                        }
+                        {
+                            let x = self.width.saturating_sub(1);
+                            let mut view = WindowView {
+                                window,
+                                x_offset: x,
+                                y_offset: 0,
+                                scroll_x: 0,
+                                scroll_y: 0,
+                                width: 1,
+                                height: self.height.max(1),
+                            };
+                            self.end_arrow.draw(&mut view)?;
+                        }
+                    }
+
+                    let left = if self.opts.show_arrows { 1 } else { 0 };
+                    let w = self
+                        .width
+                        .saturating_sub(if self.opts.show_arrows { 2 } else { 0 })
+                        .max(1);
+
+                    let mut view = WindowView {
+                        window,
+                        x_offset: left,
+                        y_offset: 0,
+                        scroll_x: 0,
+                        scroll_y: 0,
+                        width: w,
+                        height: self.height.max(1),
+                    };
+                    self.slider.draw(&mut view)?;
+                }
+            }
+
+            return Ok(());
+        }
+
+        // Fallback: ensure the slider reflects latest scroll state (in case other widgets modified it).
         // We can't mutate here (Widget::draw takes &self), so we do a lightweight render-only sync:
         // build a local slider configured from state and draw that.
         let s = *self.state.borrow();

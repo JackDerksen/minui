@@ -258,17 +258,12 @@ fn main() -> minui::Result<()> {
                 return Ok(());
             }
 
-            state.vbar = ScrollBar::new(
-                1,
-                vbar_h,
-                Rc::clone(&state.scroll),
-                ScrollBarOptions {
-                    orientation: ScrollOrientation::Vertical,
-                    show_arrows: true,
-                    scroll_step: Some(1),
-                    ..ScrollBarOptions::default()
-                },
-            );
+            // Resize + sync existing scrollbar instead of recreating it every frame.
+            // Recreating would reset drag state, making thumb dragging feel broken.
+            state.vbar.set_size(1, vbar_h);
+            state.vbar.set_show_arrows(true);
+            state.vbar.set_scroll_step(Some(1));
+            state.vbar.sync_from_state_and_resize_parts();
 
             let v_area = WidgetArea::new(vbar_x, vbar_y, 1, vbar_h);
             state.ui.register_draggable(ID_VSCROLL, v_area);
@@ -298,17 +293,12 @@ fn main() -> minui::Result<()> {
                 return Ok(());
             }
 
-            state.hbar = ScrollBar::new(
-                hbar_w,
-                1,
-                Rc::clone(&state.scroll),
-                ScrollBarOptions {
-                    orientation: ScrollOrientation::Horizontal,
-                    show_arrows: true,
-                    scroll_step: Some(2),
-                    ..ScrollBarOptions::default()
-                },
-            );
+            // Resize + sync existing scrollbar instead of recreating it every frame.
+            // Recreating would reset drag state, making thumb dragging feel broken.
+            state.hbar.set_size(hbar_w, 1);
+            state.hbar.set_show_arrows(true);
+            state.hbar.set_scroll_step(Some(2));
+            state.hbar.sync_from_state_and_resize_parts();
 
             let h_area = WidgetArea::new(hbar_x, hbar_y, hbar_w, 1);
             state.ui.register_draggable(ID_HSCROLL, h_area);

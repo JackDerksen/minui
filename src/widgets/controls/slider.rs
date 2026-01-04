@@ -126,11 +126,23 @@ impl Slider {
         self
     }
 
+    /// Mutably set size without consuming the slider (preserves drag state).
+    pub fn set_size(&mut self, width: u16, height: u16) {
+        self.width = width;
+        self.height = height;
+    }
+
     /// Set colors.
     pub fn with_colors(mut self, track: ColorPair, thumb: ColorPair) -> Self {
         self.opts.track_color = track;
         self.opts.thumb_color = thumb;
         self
+    }
+
+    /// Mutably set colors without consuming the slider (preserves drag state).
+    pub fn set_colors(&mut self, track: ColorPair, thumb: ColorPair) {
+        self.opts.track_color = track;
+        self.opts.thumb_color = thumb;
     }
 
     /// Set value range.
@@ -139,6 +151,13 @@ impl Slider {
         self.opts.max = max;
         self.set_value(self.opts.value);
         self
+    }
+
+    /// Mutably set min/max range without consuming the slider (preserves drag state).
+    pub fn set_range(&mut self, min: f32, max: f32) {
+        self.opts.min = min;
+        self.opts.max = max;
+        self.set_value(self.opts.value);
     }
 
     /// Set viewport size (affects thumb size).
@@ -169,12 +188,8 @@ impl Slider {
         self.opts.max
     }
 
-    /// Set min/max.
-    pub fn set_range(&mut self, min: f32, max: f32) {
-        self.opts.min = min;
-        self.opts.max = max;
-        self.set_value(self.opts.value);
-    }
+    // Note: `set_range` is implemented earlier in this impl block.
+    // Keeping a single definition avoids duplicate-method compilation errors.
 
     /// Set viewport size (clamped).
     pub fn set_viewport_size(&mut self, viewport_size: f32) {
