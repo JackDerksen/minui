@@ -1,5 +1,6 @@
 //! Demonstrates the RGB color capabilities with beautiful gradients and color transitions.
 
+use minui::Window;
 use minui::define_colors;
 use minui::prelude::*;
 
