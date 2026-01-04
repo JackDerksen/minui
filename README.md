@@ -13,7 +13,7 @@ I wanted to build terminal games in Rust, but I found existing libraries either 
 - 🎯 **Simple**: Clean, intuitive API that gets out of your way
 - ⌨️ **Input handling**: Very comprehensive keyboard and mouse event handling
 - 🎨 **Full color support**: RGB, ANSI, and named colors
-- 🧰 **Safe**: Proper error handling and automatic cleanup
+- 🧰 **Safe**: Proper error handling and automatic cleanup (with clipping for terminal-edge drawing)
 
 ## Current Status
 
@@ -21,19 +21,21 @@ MinUI is actively developed with these features available:
 
 - [x] Full color support
 - [x] Simple and customizable widget system
-  - [x] Container widget
+  - [x] `Container` (unified layout + styling)
   - [x] Label widget
   - [x] Text block widget
-  - [x] Panel widget
   - [x] FIGlet text widget for rendering ASCII text labels
+  - [x] `ScrollBox` (scrollable container backed by `ScrollState`)
+  - [x] `ScrollBar` + `Slider` controls (vertical/horizontal)
   - [ ] Table widget
   - [ ] Input widget
-  - [ ] Predefined common widget layouts
+  - [ ] Predefined common widget layouts / presets
 - [x] Robust error handling
 - [x] Buffered drawing for smooth and efficient updates
 - [x] Built-in game/app loop utilities
 - [x] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
-- [x] Content scrolling support
+- [x] Unified content scrolling support (`ScrollState` + `WindowView` scroll offsets)
+- [x] Phase 1 interaction routing utilities (`InteractionCache`, `IdAllocator`, `AutoHide`)
 - [ ] Simplified character/sprite and map management utilities
 - [ ] Easy character/sprite movement support with common Unicode characters built-in
 - [ ] Cell management with collision detection options
@@ -44,7 +46,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.3.2"
+minui = "0.4.0"
 ```
 
 ### Basic Example
@@ -83,7 +85,7 @@ Run the examples: `cargo run --example basic_usage`
 
 ## Perfect for TUIs and Games
 
-**TUI Apps**: The widget system makes it easy to build traditional terminal interfaces with HTML-like div containers, as well as panels, forms, layouts, and more.
+**TUI Apps**: The widget system makes it easy to build traditional terminal interfaces with `Container`-based layout + styling (borders/titles/padding/background), along with scrollable content (`ScrollBox` / `Viewport`) and interactive scroll controls (`ScrollBar`, `Slider`).
 
 **Games**: MinUI handles the timing, input, and rendering so you can focus on game logic. It supports both turn-based and real-time games with smooth frame rates.
 
@@ -95,6 +97,7 @@ What makes MinUI different:
 
 ## Applications Built with MinUI
 
+- _Coming Soon: [Redox](https://github.com/JackDerksen/redox)_
 - _Coming Soon: [Tet.rs](https://github.com/JackDerksen/tet.rs)_
 
 ## Acknowledgments
