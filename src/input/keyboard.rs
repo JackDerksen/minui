@@ -54,6 +54,7 @@ use std::time::Duration;
 /// ## Custom Keybinds
 ///
 /// ```rust
+/// use minui::{Event};
 /// use minui::input::{KeyboardHandler, KeybindAction};
 ///
 /// let mut keyboard = KeyboardHandler::new();
@@ -61,7 +62,7 @@ use std::time::Duration;
 /// // Add custom keybinds
 /// keyboard.add_keybind("ctrl+c", KeybindAction::Quit)?;
 /// keyboard.add_keybind("ctrl+s", KeybindAction::Save)?;
-/// keyboard.add_keybind("alt+enter", KeybindAction::Custom("fullscreen"))?;
+/// keyboard.add_keybind("alt+enter", KeybindAction::Custom("fullscreen".to_string()))?;
 ///
 /// // Handle input with keybind support
 /// if let Some(event) = keyboard.poll_with_keybinds()? {
@@ -205,8 +206,8 @@ impl KeyboardHandler {
     /// keyboard.add_keybind("ctrl-s", KeybindAction::Save)?;
     ///
     /// // Custom keybinds
-    /// keyboard.add_keybind("f5", KeybindAction::Custom("refresh"))?;
-    /// keyboard.add_keybind("ctrl-shift-n", KeybindAction::Custom("new_window"))?;
+    /// keyboard.add_keybind("f5", KeybindAction::Custom("refresh".to_string()))?;
+    /// keyboard.add_keybind("ctrl-shift-n", KeybindAction::Custom("new_window".to_string()))?;
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn add_keybind(&mut self, key_combination: &str, action: KeybindAction) -> Result<()> {

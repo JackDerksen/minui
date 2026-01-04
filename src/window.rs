@@ -369,6 +369,35 @@ impl TerminalWindow {
         })
     }
 
+    /// Updates cached dimensions and recreates the backing buffer.
+    ///
+    /// This is intentionally a "hard reset" of the buffer. It's simple and reliable,
+    /// and avoids edge artifacts caused by stale cells after terminal resizes.
+    ///
+    /// IMPORTANT:
+    /// When the terminal shrinks, there may be stale content outside the new logical bounds
+    /// that our new buffer will never overwrite. To prevent "ghost" borders/text at the edges,
+    /// we force a full terminal clear on resize.
+    pub(crate) fn handle_resize(&mut self, width: u16, height: u16) {
+        // Avoid work if nothing changed.
+        if self.width == width && self.height == height {
+            return;
+        }
+
+        self.width = width;
+        self.height = height;
+        self.buffer = Buffer::new(width, height);
+
+        // Force a real terminal clear so content outside the new buffer bounds is removed.
+        // This is especially important on shrink where previous frames may have drawn
+        // beyond the new visible area.
+        let _ = execute!(
+            stdout(),
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0)
+        );
+    }
+
     /// Immediately clears the entire terminal screen.
     ///
     /// This method bypasses the internal buffer and directly clears the terminal.
@@ -462,10 +491,16 @@ impl TerminalWindow {
                     Ok(self.mouse.process_mouse_event(mouse_event))
                 }
                 CrosstermEvent::Paste(text) => Ok(Event::Paste(text)),
-                CrosstermEvent::Resize(cols, rows) => Ok(Event::Resize {
-                    width: cols,
-                    height: rows,
-                }),
+                CrosstermEvent::Resize(cols, rows) => {
+                    // Keep our internal buffer dimensions in sync with the terminal.
+                    // If we don't do this, drawing after a resize can clip incorrectly and/or
+                    // leave stale content at the edges.
+                    self.handle_resize(cols, rows);
+                    Ok(Event::Resize {
+                        width: cols,
+                        height: rows,
+                    })
+                }
                 _ => Ok(Event::Unknown),
             }
         } else {
@@ -508,6 +543,8 @@ impl TerminalWindow {
                     return Ok(Event::Paste(text));
                 }
                 CrosstermEvent::Resize(cols, rows) => {
+                    // Keep our internal buffer dimensions in sync with the terminal.
+                    self.handle_resize(cols, rows);
                     return Ok(Event::Resize {
                         width: cols,
                         height: rows,
@@ -556,10 +593,14 @@ impl TerminalWindow {
                     Ok(Some(self.mouse.process_mouse_event(mouse_event)))
                 }
                 CrosstermEvent::Paste(text) => Ok(Some(Event::Paste(text))),
-                CrosstermEvent::Resize(cols, rows) => Ok(Some(Event::Resize {
-                    width: cols,
-                    height: rows,
-                })),
+                CrosstermEvent::Resize(cols, rows) => {
+                    // Keep our internal buffer dimensions in sync with the terminal.
+                    self.handle_resize(cols, rows);
+                    Ok(Some(Event::Resize {
+                        width: cols,
+                        height: rows,
+                    }))
+                }
                 _ => Ok(None),
             }
         } else {

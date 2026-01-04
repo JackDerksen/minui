@@ -11,7 +11,10 @@
 //!
 //! ## Example
 //!
-//! ```rust
+//! Note: This example is marked as `ignore` because it requires a real TTY / terminal.
+//! In many CI and test environments, initializing a full-screen terminal will fail.
+//!
+//! ```rust,ignore
 //! use minui::prelude::*;
 //!
 //! struct MyState { counter: i32 }
@@ -26,6 +29,7 @@
 //!     },
 //!     |state, window| {
 //!         window.write_str(0, 0, &format!("Count: {}", state.counter))?;
+//!         window.end_frame()?;
 //!         Ok(())
 //!     }
 //! )?;
@@ -33,6 +37,7 @@
 //! ```
 
 use crate::{Event, Result, TerminalWindow, Window};
+use crossterm::terminal;
 use std::time::{Duration, Instant};
 
 /// Application runner that manages the main loop.
@@ -109,6 +114,16 @@ impl<S> App<S> {
             // Important: we intentionally do NOT flush here.
             // The draw closure should flush once per frame, and can optionally place the cursor
             // after flushing (editor-style).
+            //
+            // Resizes: terminal resize events can be missed when the app is idle (common when the
+            // user resizes the terminal using the window manager, not by interacting inside the
+            // terminal). To prevent edge artifacts and "ghost" UI, sync the cached size every
+            // frame before drawing.
+            if let Ok((cols, rows)) = terminal::size() {
+                // This method is crate-visible on `TerminalWindow` and performs a safe buffer reset.
+                self.window.handle_resize(cols, rows);
+            }
+
             self.window.clear_screen()?;
             draw(&mut self.state, &mut self.window)?;
 

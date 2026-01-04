@@ -823,14 +823,17 @@ impl Container {
         chars: BorderChars,
         color: ColorPair,
     ) -> Result<()> {
+        // Clip the title by terminal *cell width*, not byte length, to avoid corrupting the border
+        // when the terminal is narrow or when the title contains multi-byte characters.
+        //
+        // This also avoids slicing `&str` at non-UTF8 boundaries.
         let title_max_width = available_width.saturating_sub(2); // Space before and after
-        let display_title = if title.len() as u16 > title_max_width {
-            &title[..(title_max_width as usize)]
-        } else {
-            title
-        };
+        let display_title_owned =
+            crate::text::clip_to_cells(title, title_max_width, crate::text::TabPolicy::SingleCell);
+        let display_title = display_title_owned.as_str();
 
-        let title_width = display_title.len() as u16;
+        let title_width =
+            crate::text::cell_width(display_title, crate::text::TabPolicy::SingleCell);
 
         // Calculate position based on alignment
         let left_padding = match self.title_alignment {

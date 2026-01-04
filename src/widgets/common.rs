@@ -332,8 +332,15 @@ impl<'a> Window for WindowView<'a> {
         };
 
         if local_y < self.height && local_x < self.width {
+            // IMPORTANT: Clip the string to the view's remaining width.
+            // Without this, writes can spill outside the view and corrupt neighboring UI
+            // (especially visible after resizes).
+            let max_cells = self.width.saturating_sub(local_x);
+            let clipped =
+                crate::text::clip_to_cells(s, max_cells, crate::text::TabPolicy::SingleCell);
+
             self.window
-                .write_str(local_y + self.y_offset, local_x + self.x_offset, s)
+                .write_str(local_y + self.y_offset, local_x + self.x_offset, &clipped)
         } else {
             Ok(())
         }
@@ -354,10 +361,15 @@ impl<'a> Window for WindowView<'a> {
         };
 
         if local_y < self.height && local_x < self.width {
+            // IMPORTANT: Clip the string to the view's remaining width.
+            let max_cells = self.width.saturating_sub(local_x);
+            let clipped =
+                crate::text::clip_to_cells(s, max_cells, crate::text::TabPolicy::SingleCell);
+
             self.window.write_str_colored(
                 local_y + self.y_offset,
                 local_x + self.x_offset,
-                s,
+                &clipped,
                 colors,
             )
         } else {
