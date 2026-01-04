@@ -7,7 +7,10 @@
 //!
 //! Handle events in your main loop:
 //!
-//! ```rust
+//! Note: This example is marked as `ignore` because it requires a real TTY / terminal.
+//! In many CI and test environments, initializing a full-screen terminal will fail.
+//!
+//! ```rust,ignore
 //! use minui::{Event, App};
 //! use minui::input::KeybindAction;
 //!
@@ -24,7 +27,11 @@
 //!             _ => true,
 //!         }
 //!     },
-//!     |state, window| { /* draw */ Ok(()) }
+//!     |state, window| {
+//!         // draw...
+//!         window.end_frame()?;
+//!         Ok(())
+//!     }
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```

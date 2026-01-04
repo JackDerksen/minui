@@ -14,7 +14,11 @@
 //! ## Quick Examples
 //!
 //! **Turn-based game** (chess, roguelike):
-//! ```rust
+//!
+//! Note: This example is marked as `ignore` because it requires a real TTY / terminal.
+//! In many CI and test environments, initializing a full-screen terminal will fail.
+//!
+//! ```rust,ignore
 //! use minui::prelude::*;
 //!
 //! struct Player { x: u16, y: u16 }
@@ -29,6 +33,7 @@
 //!     },
 //!     |player, window| {
 //!         window.write_str(player.y, player.x, "@")?;
+//!         window.end_frame()?;
 //!         Ok(())
 //!     }
 //! )?;
@@ -36,7 +41,11 @@
 //! ```
 //!
 //! **Real-time game** (action, arcade):
-//! ```rust
+//!
+//! Note: This example is marked as `ignore` because it requires a real TTY / terminal.
+//! In many CI and test environments, initializing a full-screen terminal will fail.
+//!
+//! ```rust,ignore
 //! use minui::prelude::*;
 //! use std::time::Duration;
 //!
@@ -58,6 +67,7 @@
 //!     },
 //!     |game, window| {
 //!         window.write_str(game.y as u16, game.x as u16, "●")?;
+//!         window.end_frame()?;
 //!         Ok(())
 //!     }
 //! )?;
