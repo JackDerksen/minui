@@ -11,6 +11,7 @@
 //! - Full color support (RGB, ANSI, named colors)
 //! - Keyboard and mouse input handling
 //! - Automatic terminal state restoration
+//! - Best-effort terminal capability detection (color downgrades/fallbacks)
 //!
 //! ## Basic Usage
 //!
@@ -41,6 +42,7 @@
 
 use crate::input::{KeyboardHandler, MouseHandler};
 use crate::render::buffer::Buffer;
+use crate::term::TerminalCapabilities;
 use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
     cursor,
@@ -314,6 +316,9 @@ pub struct TerminalWindow {
     height: u16,
     buffer: Buffer,
     auto_flush: bool,
+
+    capabilities: TerminalCapabilities,
+
     keyboard: KeyboardHandler,
     mouse: MouseHandler,
 }
@@ -364,6 +369,9 @@ impl TerminalWindow {
             height: rows,
             buffer: Buffer::new(cols, rows),
             auto_flush: true,
+
+            capabilities: TerminalCapabilities::detect(),
+
             keyboard: KeyboardHandler::new(),
             mouse: MouseHandler::new(),
         })
@@ -736,6 +744,22 @@ impl TerminalWindow {
         self.auto_flush = enabled;
     }
 
+    /// Returns the terminal capabilities MinUI is currently using for rendering decisions.
+    ///
+    /// This is useful for applications (including editors) that want to adjust UI choices
+    /// based on expected terminal support (e.g. color fidelity).
+    pub fn capabilities(&self) -> TerminalCapabilities {
+        self.capabilities
+    }
+
+    /// Overrides the terminal capabilities used by MinUI.
+    ///
+    /// This allows applications to force specific behavior (e.g. downgrade to 256 colors
+    /// for testing, or to match a known remote terminal limitation).
+    pub fn set_capabilities(&mut self, capabilities: TerminalCapabilities) {
+        self.capabilities = capabilities;
+    }
+
     /// Manually flushes all buffered drawing operations to the terminal.
     ///
     /// This method processes all pending changes in the internal buffer and
@@ -766,7 +790,7 @@ impl TerminalWindow {
     /// ```
     pub fn flush(&mut self) -> Result<()> {
         let changes = self.buffer.process_changes();
-        let mut last_colors = None;
+        let mut last_colors: Option<ColorPair> = None;
 
         for change in changes {
             // Move the cursor to the correct position for the change
@@ -774,17 +798,22 @@ impl TerminalWindow {
 
             if change.colors != last_colors {
                 if let Some(colors) = change.colors {
+                    // Downgrade requested colors based on terminal capabilities.
+                    let colors = self.capabilities.downgrade_pair(colors);
+
                     // Set the foreground and background colors
                     execute!(
                         stdout(),
                         SetForegroundColor(colors.fg.to_crossterm()),
                         SetBackgroundColor(colors.bg.to_crossterm())
                     )?;
+
+                    last_colors = Some(colors);
                 } else {
                     // If there are no colors, reset to the default
                     execute!(stdout(), style::ResetColor)?;
+                    last_colors = None;
                 }
-                last_colors = change.colors;
             }
 
             // Print the text for the change

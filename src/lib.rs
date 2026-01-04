@@ -54,6 +54,7 @@ pub mod game;
 pub mod input;
 pub mod macros;
 pub mod render;
+pub mod term;
 pub mod text;
 pub mod widgets;
 pub mod window;
@@ -63,6 +64,7 @@ pub use app::App;
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
 pub use event::{Event, MouseButton};
+pub use term::{ColorSupport, TerminalCapabilities};
 pub use text::{
     TabPolicy, cell_width, cell_width_char, clip_to_cells, clip_to_cells_ellipsis, fit_to_cells,
 };
@@ -159,6 +161,8 @@ pub mod prelude {
         Color,
         ColorPair,
 
+        // Terminal capability utilities
+        ColorSupport,
         // Input handling
         CombinedInputHandler,
 
@@ -200,8 +204,11 @@ pub mod prelude {
         SliderOrientation,
 
         StickyEdge,
+
         // Text utilities (cell-width + clipping)
         TabPolicy,
+        TerminalCapabilities,
+
         TerminalWindow,
 
         Text,
