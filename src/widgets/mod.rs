@@ -33,6 +33,10 @@
 //! - [`Viewport`] - Clipping + scroll offsets for content larger than its visible area
 //! - `widgets::scroll` - Shared scrolling primitives (`ScrollState`, sizes, offsets)
 //!
+//! ### Controls Widgets
+//! - [`Slider`] - Draggable value control (horizontal/vertical)
+//! - [`ScrollBar`] - Scrollbar bound to a shared [`ScrollState`]
+//!
 //! ### Helper Functions
 //! Pre-built styled components for common UI patterns:
 //! - [`title_text`], [`subtitle_text`] - Hierarchical headings
@@ -131,6 +135,7 @@
 
 mod common;
 mod container;
+pub mod controls;
 mod figlet;
 mod input;
 mod layout;
@@ -144,6 +149,10 @@ pub use common::{BorderChars, WindowView};
 pub use container::{
     BorderSide, Container, ContentAlignment as ContainerContentAlignment, Gap, LayoutDirection,
     Padding as ContainerPadding, TitleAlignment,
+};
+pub use controls::{
+    ArrowButton, ArrowDirection, ScrollBar, ScrollBarOptions, ScrollUnit, Slider, SliderOptions,
+    SliderOrientation,
 };
 pub use figlet::FigletText;
 pub use scroll::state::{ScrollOffset, ScrollOrientation, ScrollSize, ScrollState};

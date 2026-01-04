@@ -72,6 +72,9 @@ pub use input::{
 // Widget system
 pub use widgets::{
     Alignment,
+    // Controls widgets
+    ArrowButton,
+    ArrowDirection,
     // Utilities
     BorderChars,
     // Box widget (OpenTUI-inspired)
@@ -87,11 +90,18 @@ pub use widgets::{
     LinearScrollAccel,
     MacOSScrollAccel,
     ScrollAcceleration,
+    ScrollBar,
+    ScrollBarOptions,
     ScrollBox,
     ScrollOffset,
     ScrollOrientation,
     ScrollSize,
     ScrollState,
+    ScrollUnit,
+    Slider,
+    SliderOptions,
+    SliderOrientation,
+
     StickyEdge,
     Text,
     TextBlock,
@@ -131,6 +141,9 @@ pub mod prelude {
         Alignment,
         // Core types
         App,
+        // Controls widgets
+        ArrowButton,
+        ArrowDirection,
         // Utilities
         BorderChars,
         // Layout system
@@ -166,13 +179,20 @@ pub mod prelude {
 
         Result,
         ScrollAcceleration,
+        ScrollBar,
+        ScrollBarOptions,
         ScrollBox,
         ScrollDirection,
         ScrollOffset,
         ScrollOrientation,
         ScrollSize,
         ScrollState,
+        ScrollUnit,
         Scroller,
+        Slider,
+        SliderOptions,
+        SliderOrientation,
+
         StickyEdge,
         TerminalWindow,
         Text,
