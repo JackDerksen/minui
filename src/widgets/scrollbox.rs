@@ -766,6 +766,13 @@ impl ScrollBox {
         }
     }
 
+    /// Applies the configured sticky edge as the current scroll position.
+    ///
+    /// Note: currently unused, but intentionally kept as a future hook for:
+    /// - “chat mode” behavior (stick to bottom unless user manually scrolls up)
+    /// - content append workflows where the scrollbox should preserve a sticky edge
+    /// - future integration where `ScrollBox` becomes more self-driven (e.g. internal event handling)
+    #[allow(dead_code)]
     fn apply_sticky_start(&mut self, edge: StickyEdge) {
         self.is_applying_sticky = true;
         match edge {

@@ -259,6 +259,12 @@ impl ScrollBar {
     }
 
     /// Returns the scrollbar's main-axis usable track length in cells, accounting for arrow buttons.
+    ///
+    /// Note: currently unused, but kept as a future hook for:
+    /// - click-on-track “page” scrolling behavior (jump by viewport)
+    /// - hover/cursor proximity logic for auto-hide/show
+    /// - thumb geometry debugging
+    #[allow(dead_code)]
     fn track_len_cells(&self) -> u16 {
         let axis = match self.opts.orientation {
             ScrollOrientation::Vertical => self.height,
@@ -495,6 +501,14 @@ impl ScrollBar {
         false
     }
 
+    /// Draw a vertical scrollbar using the stored internal `slider` and arrows.
+    ///
+    /// Note: currently unused because `Widget::draw` rebuilds a render-only slider each frame to
+    /// avoid mutating `self` from an `&self` method. Kept as a future hook if/when:
+    /// - `Widget::draw` becomes `&mut self`, or
+    /// - scrollbars move to a retained-mode UI tree, or
+    /// - we add a separate pre-draw sync pass that updates the internal slider.
+    #[allow(dead_code)]
     fn draw_vertical(&self, window: &mut dyn Window) -> Result<()> {
         // Layout: optional arrows at top/bottom, slider track in middle.
         if self.opts.show_arrows {
@@ -551,6 +565,10 @@ impl ScrollBar {
         Ok(())
     }
 
+    /// Draw a horizontal scrollbar using the stored internal `slider` and arrows.
+    ///
+    /// Note: currently unused for the same reason as `draw_vertical` (see that comment).
+    #[allow(dead_code)]
     fn draw_horizontal(&self, window: &mut dyn Window) -> Result<()> {
         if self.opts.show_arrows {
             // Left arrow

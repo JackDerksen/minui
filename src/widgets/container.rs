@@ -109,6 +109,11 @@ pub struct BorderConfig {
 
 impl BorderConfig {
     /// Creates a new border configuration with all sides enabled
+    ///
+    /// Note: currently unused in the codebase, but kept as a convenience constructor for
+    /// future higher-level presets/helpers and user code that wants an explicit “all sides”
+    /// config without calling `with_border()`.
+    #[allow(dead_code)]
     pub fn all_sides(chars: BorderChars, color: ColorPair) -> Self {
         let mut sides = HashSet::new();
         sides.insert(BorderSide::Top);

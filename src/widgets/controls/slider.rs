@@ -313,6 +313,12 @@ impl Slider {
     }
 
     /// Thumb rect in *cells* in local widget coords.
+    ///
+    /// Note: currently unused, but intentionally kept for future work:
+    /// - hit-testing (e.g. detecting whether a mouse-down landed inside the thumb vs track)
+    /// - hover/cursor proximity effects (highlight thumb on hover)
+    /// - debug overlays / visualizing thumb geometry during layout tuning
+    #[allow(dead_code)]
     fn thumb_rect_local(&self) -> (u16, u16, u16, u16) {
         let thumb_size_v = self.thumb_size_virtual();
         let thumb_start_v = self.thumb_start_virtual();
