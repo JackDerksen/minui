@@ -72,6 +72,9 @@ fn main() -> minui::Result<()> {
             // Draw the label to the window
             label.draw(window)?;
         
+            // Manually flush window (flush buffered rendering system)
+            window.flush()?;
+        
             // Drawing succeeded
             Ok(())
         }
