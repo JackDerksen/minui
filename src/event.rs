@@ -37,6 +37,18 @@ pub enum Event {
     // Keyboard events
     /// A regular character was typed (letters, numbers, symbols, etc.)
     Character(char),
+
+    /// Bracketed paste input.
+    ///
+    /// When bracketed paste mode is enabled, terminals wrap paste content in
+    /// special escape sequences. This event allows applications (especially
+    /// text editors) to treat paste as a distinct operation (e.g. single undo step,
+    /// disable autoindent heuristics during paste, avoid triggering key mappings).
+    ///
+    /// Note: Whether this event is emitted depends on the input backend enabling
+    /// and decoding bracketed paste.
+    Paste(String),
+
     /// Up arrow key was pressed
     KeyUp,
     /// Down arrow key was pressed
