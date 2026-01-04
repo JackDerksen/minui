@@ -505,6 +505,26 @@ impl Container {
         self.children.len()
     }
 
+    /// Draws only the container "frame" (background fill + borders/title).
+    ///
+    /// This does **not** draw child widgets. This is useful for widgets like `ScrollBox`
+    /// that want a static border while scrolling only the inner content.
+    pub fn draw_frame(&self, window: &mut dyn Window) -> Result<()> {
+        self.draw_background(window)?;
+        self.draw_borders(window)?;
+        Ok(())
+    }
+
+    /// Draws only the container contents (child widgets) into the provided window.
+    ///
+    /// This does **not** draw background fill or borders/title.
+    /// This is useful for widgets like `ScrollBox` that want to clip/scroll content while
+    /// keeping the container border static.
+    pub fn draw_contents(&self, window: &mut dyn Window) -> Result<()> {
+        self.draw_children(window)?;
+        Ok(())
+    }
+
     // Helper methods
 
     /// Gets the width of the left border if present
@@ -698,6 +718,14 @@ impl Container {
 
     /// Draws the borders
     fn draw_borders(&self, window: &mut dyn Window) -> Result<()> {
+        // If the container has no drawable area, skip borders entirely.
+        //
+        // Borders assume at least 1 cell of width/height for corners/lines; if size is 0
+        // (or extremely small), border math can produce invalid coordinates.
+        if self.width == 0 || self.height == 0 {
+            return Ok(());
+        }
+
         if !self.border.has_border() {
             return Ok(());
         }
@@ -852,6 +880,11 @@ impl Container {
         chars: BorderChars,
         color: ColorPair,
     ) -> Result<()> {
+        // Need at least 1 row to draw the bottom border.
+        if self.height == 0 {
+            return Ok(());
+        }
+
         let y = self.y + self.height - 1;
         let has_left = self.border.sides.contains(&BorderSide::Left);
         let has_right = self.border.sides.contains(&BorderSide::Right);
@@ -918,6 +951,11 @@ impl Container {
         chars: BorderChars,
         color: ColorPair,
     ) -> Result<()> {
+        // Need at least 1 column to draw the right border.
+        if self.width == 0 {
+            return Ok(());
+        }
+
         let x = self.x + self.width - 1;
         let start_y = self.y
             + if self.border.sides.contains(&BorderSide::Top) {

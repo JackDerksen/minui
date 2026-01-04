@@ -3,8 +3,17 @@
 //! A scrollable container widget that extends the unified `Container` with viewport management,
 //! scrollbars, and scroll acceleration. Inspired by OpenTUI's ScrollBox component.
 //!
-//! This widget is now backed by a shared [`ScrollState`] so it can integrate cleanly with
+//! This widget is backed by a shared [`ScrollState`] so it can integrate cleanly with
 //! other scrolling components (e.g. `Viewport`, `ScrollBar`) without duplicating scroll math.
+//!
+//! ## Rendering model
+//!
+//! `ScrollBox` renders in two passes:
+//! 1) Draw a **static frame** (background + border/title) at a fixed position.
+//! 2) Draw **scrolling content** inside the container's content area, applying scroll offsets
+//!    and clipping to that viewport.
+//!
+//! This ensures the border/frame never scrolls away — only the inner content moves.
 //!
 //! ## Features
 //!
@@ -231,6 +240,32 @@ impl ScrollBox {
             auto_scroll_threshold: 3,
             viewport_culling: true,
         }
+    }
+
+    /// Returns the shared scroll model backing this `ScrollBox`.
+    ///
+    /// This allows external widgets (e.g. `ScrollBar`) to bind to the exact same scroll state
+    /// so dragging/clicking scrollbars updates the scrollbox and vice-versa.
+    pub fn state(&self) -> Rc<RefCell<ScrollState>> {
+        Rc::clone(&self.state)
+    }
+
+    /// Replaces the internal scroll state with an externally managed one.
+    ///
+    /// This is useful if you want multiple widgets (e.g. `ScrollBox` + `ScrollBar`) to share
+    /// scroll offsets and sizes.
+    pub fn with_state(mut self, state: Rc<RefCell<ScrollState>>) -> Self {
+        self.state = state;
+        self
+    }
+
+    /// Sets the position and size of the scrollbox viewport by forwarding to the root container.
+    ///
+    /// The scrollbox infers viewport size from the root container at draw time, so this is the
+    /// primary way to control viewport bounds in examples.
+    pub fn with_position_and_size(mut self, x: u16, y: u16, width: u16, height: u16) -> Self {
+        self.root = self.root.with_position_and_size(x, y, width, height);
+        self
     }
 
     /// Creates a vertical scrollbox
@@ -763,14 +798,20 @@ impl Default for ScrollBox {
 
 impl Widget for ScrollBox {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
-        // Infer viewport size from the root container size at draw time.
+        // The ScrollBox renders in two passes:
+        // 1) static frame (background + border/title)
+        // 2) scrolling content inside the frame's content area
         //
-        // NOTE: We do this here (instead of at construction) because container layout can be
-        // dynamic based on terminal size and child content.
+        // This keeps borders static while content scrolls within the viewport.
         let (px, py) = self.root.get_position();
         let (pw, ph) = self.root.get_size();
 
-        let viewport_size = ScrollSize::new(pw, ph);
+        // Draw the static frame at the fixed position.
+        self.root.draw_frame(window)?;
+
+        // Viewport is the container's *content area* (inside border + padding).
+        let (_cx_abs, _cy_abs, cw, ch) = self.root.content_area();
+        let viewport_size = ScrollSize::new(cw, ch);
 
         // Infer content size from the root container's children.
         //
@@ -778,7 +819,8 @@ impl Widget for ScrollBox {
         // (vertical stacks vs horizontal rows). It intentionally does not attempt to re-run the full
         // container layout engine; it only approximates the scrollable content bounds.
         //
-        // Percent gaps are treated as 1 cell (minimum), consistent with Container auto-size rules.
+        // If you need exact gap inclusion for scrolling, this should be extended to incorporate
+        // container gap configuration (or moved into Container's layout engine).
         let mut content_required_w: u16 = 0;
         let mut content_required_h: u16 = 0;
 
@@ -789,8 +831,7 @@ impl Widget for ScrollBox {
         } else {
             // Include gaps between children when inferring content size.
             //
-            // NOTE: Percent gaps are treated as 1 cell (minimum), consistent with Container
-            // auto-size rules (`Container::autosize_gap_pixels()`).
+            // Percent gaps are treated as 1 cell (minimum), consistent with Container auto-size rules.
             let gap_pixels: u16 = self.root.autosize_gap_pixels();
 
             match self.root.layout_direction() {
@@ -830,20 +871,26 @@ impl Widget for ScrollBox {
             s.set_content_size(content_size);
         }
 
-        // Apply scroll offsets (content translation) via WindowView.
+        // Draw the scrolling content into a clipped view aligned to the content area.
         let offset = self.state.borrow().offset();
+        let (content_x, content_y, content_w, content_h) = self.root.content_area();
 
-        let mut viewport = WindowView {
+        let mut content_view = WindowView {
             window,
-            x_offset: px,
-            y_offset: py,
+            x_offset: content_x,
+            y_offset: content_y,
             scroll_x: if self.scroll_x_enabled { offset.x } else { 0 },
             scroll_y: if self.scroll_y_enabled { offset.y } else { 0 },
-            width: pw,
-            height: ph,
+            width: content_w,
+            height: content_h,
         };
 
-        self.root.draw(&mut viewport)?;
+        self.root.draw_contents(&mut content_view)?;
+
+        // NOTE: `px/py/pw/ph` are kept in scope for clarity; the frame draw used them implicitly
+        // via the container's stored position/size.
+        let _ = (px, py, pw, ph);
+
         Ok(())
     }
 

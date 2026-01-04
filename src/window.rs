@@ -716,13 +716,12 @@ impl TerminalWindow {
 
 impl Window for TerminalWindow {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
+        // Clip out-of-bounds writes instead of erroring.
+        //
+        // Many widgets draw borders/frames using computed coordinates; a minor off-by-one
+        // should not crash the UI. This matches `WindowView` behavior (silent clipping).
         if y >= self.height || x >= self.width {
-            return Err(Error::OutOfBoundsError {
-                x,
-                y,
-                width: self.width,
-                height: self.height,
-            });
+            return Ok(());
         }
 
         self.buffer.write_str(y, x, s, None)?;
@@ -734,13 +733,12 @@ impl Window for TerminalWindow {
     }
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
+        // Clip out-of-bounds writes instead of erroring.
+        //
+        // This prevents "messy" runtime errors when widgets attempt to draw at the
+        // terminal edge due to layout rounding or resize races.
         if y >= self.height || x >= self.width {
-            return Err(Error::OutOfBoundsError {
-                x,
-                y,
-                width: self.width,
-                height: self.height,
-            });
+            return Ok(());
         }
 
         self.buffer.write_str(y, x, s, Some(colors))?;
