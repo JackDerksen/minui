@@ -294,10 +294,20 @@ impl BorderChars {
 pub struct WindowView<'a> {
     /// Reference to the underlying window
     pub window: &'a mut dyn Window,
-    /// Horizontal offset from the parent window's origin
+
+    /// Horizontal offset from the parent window's origin (in parent window coordinates)
     pub x_offset: u16,
-    /// Vertical offset from the parent window's origin
+    /// Vertical offset from the parent window's origin (in parent window coordinates)
     pub y_offset: u16,
+
+    /// Horizontal scroll offset applied to coordinates within this view.
+    ///
+    /// A scroll offset shifts the *content* left/up, which means drawing at (0,0) in the view
+    /// targets the parent window at (x_offset - scroll_x, y_offset - scroll_y), with clipping.
+    pub scroll_x: u16,
+    /// Vertical scroll offset applied to coordinates within this view.
+    pub scroll_y: u16,
+
     /// Width of the constrained drawing area
     pub width: u16,
     /// Height of the constrained drawing area
@@ -306,20 +316,52 @@ pub struct WindowView<'a> {
 
 impl<'a> Window for WindowView<'a> {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
-        if y < self.height && x < self.width {
+        if y >= self.height || x >= self.width {
+            return Ok(()); // Silently skip out-of-bounds writes
+        }
+
+        // Apply scroll by shifting the content origin.
+        // If the caller draws into scrolled-off space, skip safely.
+        let local_x = match x.checked_sub(self.scroll_x) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+        let local_y = match y.checked_sub(self.scroll_y) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        if local_y < self.height && local_x < self.width {
             self.window
-                .write_str(y + self.y_offset, x + self.x_offset, s)
+                .write_str(local_y + self.y_offset, local_x + self.x_offset, s)
         } else {
-            Ok(()) // Silently skip out-of-bounds writes
+            Ok(())
         }
     }
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
-        if y < self.height && x < self.width {
-            self.window
-                .write_str_colored(y + self.y_offset, x + self.x_offset, s, colors)
+        if y >= self.height || x >= self.width {
+            return Ok(()); // Silently skip out-of-bounds writes
+        }
+
+        let local_x = match x.checked_sub(self.scroll_x) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+        let local_y = match y.checked_sub(self.scroll_y) {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        if local_y < self.height && local_x < self.width {
+            self.window.write_str_colored(
+                local_y + self.y_offset,
+                local_x + self.x_offset,
+                s,
+                colors,
+            )
         } else {
-            Ok(()) // Silently skip out-of-bounds writes
+            Ok(())
         }
     }
 
@@ -329,7 +371,12 @@ impl<'a> Window for WindowView<'a> {
     }
 
     fn clear_screen(&mut self) -> Result<()> {
-        // Clear the entire view area by translating to window coordinates
+        // Clear the entire view area by translating to window coordinates.
+        // Guard against zero-sized views to avoid u16 underflow.
+        if self.width == 0 || self.height == 0 {
+            return Ok(());
+        }
+
         self.window.clear_area(
             self.y_offset,
             self.x_offset,
@@ -339,6 +386,11 @@ impl<'a> Window for WindowView<'a> {
     }
 
     fn clear_line(&mut self, y: u16) -> Result<()> {
+        // Guard against zero-sized views to avoid u16 underflow.
+        if self.width == 0 || self.height == 0 {
+            return Ok(());
+        }
+
         if y < self.height {
             // Clear the specified line by translating to window coordinates
             self.window.clear_area(
@@ -353,6 +405,11 @@ impl<'a> Window for WindowView<'a> {
     }
 
     fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()> {
+        // Guard against zero-sized views to avoid u16 underflow.
+        if self.width == 0 || self.height == 0 {
+            return Ok(());
+        }
+
         // Check if entirely out of bounds
         if x1 >= self.width || x2 >= self.width || y1 >= self.height || y2 >= self.height {
             return Ok(()); // Silently skip out-of-bounds clears

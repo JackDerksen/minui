@@ -702,11 +702,16 @@ impl Widget for ScrollBox {
         // This is a simplified implementation - a full implementation would
         // use proper clipping and viewport management
 
-        // Create a window view for the viewport area
+        // Create a window view for the viewport area and apply scroll offsets.
+        //
+        // Note: scroll offsets shift the content origin; clipping is still enforced by
+        // the view's width/height.
         let mut viewport = WindowView {
             window,
             x_offset: px,
             y_offset: py,
+            scroll_x: self.scroll_x,
+            scroll_y: self.scroll_y,
             width: pw,
             height: ph,
         };

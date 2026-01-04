@@ -929,6 +929,8 @@ impl Container {
                 window,
                 x_offset: current_x,
                 y_offset: current_y,
+                scroll_x: 0,
+                scroll_y: 0,
                 width: child_width.min(remaining_width),
                 height: child_height.min(remaining_height),
             };

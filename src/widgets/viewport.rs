@@ -11,6 +11,7 @@
 //! - **Mouse Wheel Support**: Automatic scroll event handling
 //! - **Bounds Checking**: Automatic clamping to valid scroll ranges
 //! - **Flexible Sizing**: Auto-sizing or fixed dimensions
+//! - **Shared scroll model**: Can be driven by a shared [`ScrollState`] for scrollbar sync
 //!
 //! ## Basic Usage
 //!
@@ -32,15 +33,28 @@
 //! viewport.draw(window)?;
 //! # Ok::<(), minui::Error>(())
 //! ```
+//!
+//! ## Shared ScrollState
+//!
+//! For more complex UIs (e.g. separate scrollbars), you can drive the viewport from a shared
+//! [`ScrollState`]. In that mode, the viewport reads/writes sizes and offsets from the shared
+//! state so multiple widgets stay in sync.
 
 use super::{Widget, WindowView};
+use crate::widgets::scroll::ScrollState;
 use crate::{Color, ColorPair, Result, Window};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// A scrollable viewport widget that displays content larger than its visible area.
 ///
 /// The viewport acts as a "window" into a larger content area, allowing users to
 /// scroll through content that doesn't fit on screen. It automatically handles
 /// clipping, coordinate translation, and scroll bounds.
+///
+/// ## Shared scroll state
+/// If `scroll_state` is set, the viewport is driven by the shared [`ScrollState`]
+/// (content size, viewport size, and offsets are read/written there).
 pub struct Viewport {
     /// Width of the visible viewport area
     width: u16,
@@ -54,6 +68,8 @@ pub struct Viewport {
     scroll_x: u16,
     /// Current vertical scroll offset (0 = topmost)
     scroll_y: u16,
+    /// Optional shared scroll model for syncing viewports and scrollbars
+    scroll_state: Option<Rc<RefCell<ScrollState>>>,
     /// Whether to show scroll indicators on edges
     show_indicators: bool,
     /// Color for scroll indicators
@@ -73,6 +89,7 @@ impl Viewport {
             content_height: height,
             scroll_x: 0,
             scroll_y: 0,
+            scroll_state: None,
             show_indicators: false,
             indicator_color: Some(ColorPair::new(Color::DarkGray, Color::Transparent)),
         }
@@ -82,12 +99,44 @@ impl Viewport {
     pub fn with_content_size(mut self, width: u16, height: u16) -> Self {
         self.content_width = width;
         self.content_height = height;
+
+        if let Some(state) = &self.scroll_state {
+            let mut s = state.borrow_mut();
+            s.set_content_size(crate::widgets::scroll::ScrollSize::new(width, height));
+        }
+
         self
     }
 
     /// Sets whether scroll indicators should be displayed.
     pub fn with_scroll_indicators(mut self, show: bool) -> Self {
         self.show_indicators = show;
+        self
+    }
+
+    /// Drive this viewport from a shared [`ScrollState`].
+    ///
+    /// When set, the viewport will:
+    /// - write its viewport size into the shared state
+    /// - write its content size into the shared state (if configured via `with_content_size`)
+    /// - read scroll offsets from the shared state when creating `WindowView`s
+    pub fn with_scroll_state(mut self, state: Rc<RefCell<ScrollState>>) -> Self {
+        {
+            let mut s = state.borrow_mut();
+            s.set_viewport_size(crate::widgets::scroll::ScrollSize::new(
+                self.width,
+                self.height,
+            ));
+            s.set_content_size(crate::widgets::scroll::ScrollSize::new(
+                self.content_width,
+                self.content_height,
+            ));
+            // Keep local cached offsets aligned with shared state (for any direct callers).
+            let o = s.offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+        }
+        self.scroll_state = Some(state);
         self
     }
 
@@ -102,6 +151,16 @@ impl Viewport {
     /// Positive values scroll down, negative values scroll up.
     /// Automatically clamps to valid scroll range.
     pub fn scroll_vertical(&mut self, delta: i16) {
+        if let Some(state) = &self.scroll_state {
+            state
+                .borrow_mut()
+                .scroll_by(crate::widgets::scroll::ScrollOrientation::Vertical, delta);
+            let o = state.borrow().offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         if delta < 0 {
             self.scroll_y = self.scroll_y.saturating_sub((-delta) as u16);
         } else {
@@ -115,6 +174,16 @@ impl Viewport {
     /// Positive values scroll right, negative values scroll left.
     /// Automatically clamps to valid scroll range.
     pub fn scroll_horizontal(&mut self, delta: i16) {
+        if let Some(state) = &self.scroll_state {
+            state
+                .borrow_mut()
+                .scroll_by(crate::widgets::scroll::ScrollOrientation::Horizontal, delta);
+            let o = state.borrow().offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         if delta < 0 {
             self.scroll_x = self.scroll_x.saturating_sub((-delta) as u16);
         } else {
@@ -127,77 +196,171 @@ impl Viewport {
     ///
     /// Automatically clamps to valid scroll range.
     pub fn scroll_to(&mut self, x: u16, y: u16) {
+        if let Some(state) = &self.scroll_state {
+            let mut s = state.borrow_mut();
+            s.set_offset(crate::widgets::scroll::ScrollOffset::new(x, y));
+            let o = s.offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         self.scroll_x = x.min(self.max_scroll_x());
         self.scroll_y = y.min(self.max_scroll_y());
     }
 
     /// Scrolls to the top of the content.
     pub fn scroll_to_top(&mut self) {
+        if let Some(state) = &self.scroll_state {
+            state
+                .borrow_mut()
+                .scroll_to_start(crate::widgets::scroll::ScrollOrientation::Vertical);
+            let o = state.borrow().offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         self.scroll_y = 0;
     }
 
     /// Scrolls to the bottom of the content.
     pub fn scroll_to_bottom(&mut self) {
+        if let Some(state) = &self.scroll_state {
+            state
+                .borrow_mut()
+                .scroll_to_end(crate::widgets::scroll::ScrollOrientation::Vertical);
+            let o = state.borrow().offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         self.scroll_y = self.max_scroll_y();
     }
 
     /// Scrolls to the left edge of the content.
     pub fn scroll_to_left(&mut self) {
+        if let Some(state) = &self.scroll_state {
+            state
+                .borrow_mut()
+                .scroll_to_start(crate::widgets::scroll::ScrollOrientation::Horizontal);
+            let o = state.borrow().offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         self.scroll_x = 0;
     }
 
     /// Scrolls to the right edge of the content.
     pub fn scroll_to_right(&mut self) {
+        if let Some(state) = &self.scroll_state {
+            state
+                .borrow_mut()
+                .scroll_to_end(crate::widgets::scroll::ScrollOrientation::Horizontal);
+            let o = state.borrow().offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         self.scroll_x = self.max_scroll_x();
     }
 
     /// Returns the current scroll position as (x, y).
     pub fn scroll_position(&self) -> (u16, u16) {
+        if let Some(state) = &self.scroll_state {
+            let o = state.borrow().offset();
+            return (o.x, o.y);
+        }
         (self.scroll_x, self.scroll_y)
     }
 
     /// Returns the maximum horizontal scroll offset.
     pub fn max_scroll_x(&self) -> u16 {
+        if let Some(state) = &self.scroll_state {
+            return state
+                .borrow()
+                .max_offset_for(crate::widgets::scroll::ScrollOrientation::Horizontal);
+        }
         self.content_width.saturating_sub(self.width)
     }
 
     /// Returns the maximum vertical scroll offset.
     pub fn max_scroll_y(&self) -> u16 {
+        if let Some(state) = &self.scroll_state {
+            return state
+                .borrow()
+                .max_offset_for(crate::widgets::scroll::ScrollOrientation::Vertical);
+        }
         self.content_height.saturating_sub(self.height)
     }
 
     /// Returns whether the content can be scrolled vertically.
     pub fn can_scroll_vertical(&self) -> bool {
+        if let Some(state) = &self.scroll_state {
+            return state.borrow().can_scroll_vertical();
+        }
         self.content_height > self.height
     }
 
     /// Returns whether the content can be scrolled horizontally.
     pub fn can_scroll_horizontal(&self) -> bool {
+        if let Some(state) = &self.scroll_state {
+            return state.borrow().can_scroll_horizontal();
+        }
         self.content_width > self.width
     }
 
     /// Returns whether there is more content above the current view.
     pub fn can_scroll_up(&self) -> bool {
+        if let Some(state) = &self.scroll_state {
+            return state
+                .borrow()
+                .offset_for(crate::widgets::scroll::ScrollOrientation::Vertical)
+                > 0;
+        }
         self.scroll_y > 0
     }
 
     /// Returns whether there is more content below the current view.
     pub fn can_scroll_down(&self) -> bool {
+        if let Some(state) = &self.scroll_state {
+            let s = state.borrow();
+            return s.offset_for(crate::widgets::scroll::ScrollOrientation::Vertical)
+                < s.max_offset_for(crate::widgets::scroll::ScrollOrientation::Vertical);
+        }
         self.scroll_y < self.max_scroll_y()
     }
 
     /// Returns whether there is more content to the left of the current view.
     pub fn can_scroll_left(&self) -> bool {
+        if let Some(state) = &self.scroll_state {
+            return state
+                .borrow()
+                .offset_for(crate::widgets::scroll::ScrollOrientation::Horizontal)
+                > 0;
+        }
         self.scroll_x > 0
     }
 
     /// Returns whether there is more content to the right of the current view.
     pub fn can_scroll_right(&self) -> bool {
+        if let Some(state) = &self.scroll_state {
+            let s = state.borrow();
+            return s.offset_for(crate::widgets::scroll::ScrollOrientation::Horizontal)
+                < s.max_offset_for(crate::widgets::scroll::ScrollOrientation::Horizontal);
+        }
         self.scroll_x < self.max_scroll_x()
     }
 
     /// Returns the visible content range as (start_x, start_y, end_x, end_y).
     pub fn visible_range(&self) -> (u16, u16, u16, u16) {
+        if let Some(state) = &self.scroll_state {
+            return state.borrow().visible_range();
+        }
         let start_x = self.scroll_x;
         let start_y = self.scroll_y;
         let end_x = (self.scroll_x + self.width).min(self.content_width);
@@ -219,6 +382,16 @@ impl Viewport {
     pub fn set_viewport_size(&mut self, width: u16, height: u16) {
         self.width = width;
         self.height = height;
+
+        if let Some(state) = &self.scroll_state {
+            let mut s = state.borrow_mut();
+            s.set_viewport_size(crate::widgets::scroll::ScrollSize::new(width, height));
+            let o = s.offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         // Clamp scroll position to new bounds
         self.scroll_x = self.scroll_x.min(self.max_scroll_x());
         self.scroll_y = self.scroll_y.min(self.max_scroll_y());
@@ -228,6 +401,16 @@ impl Viewport {
     pub fn set_content_size(&mut self, width: u16, height: u16) {
         self.content_width = width;
         self.content_height = height;
+
+        if let Some(state) = &self.scroll_state {
+            let mut s = state.borrow_mut();
+            s.set_content_size(crate::widgets::scroll::ScrollSize::new(width, height));
+            let o = s.offset();
+            self.scroll_x = o.x;
+            self.scroll_y = o.y;
+            return;
+        }
+
         // Clamp scroll position to new bounds
         self.scroll_x = self.scroll_x.min(self.max_scroll_x());
         self.scroll_y = self.scroll_y.min(self.max_scroll_y());
@@ -238,10 +421,19 @@ impl Viewport {
     /// This is the primary method for drawing scrollable content. Draw operations
     /// within the returned WindowView are automatically scrolled and clipped.
     pub fn create_view<'a>(&self, window: &'a mut dyn Window) -> WindowView<'a> {
+        let (sx, sy) = if let Some(state) = &self.scroll_state {
+            let o = state.borrow().offset();
+            (o.x, o.y)
+        } else {
+            (self.scroll_x, self.scroll_y)
+        };
+
         WindowView {
             window,
             x_offset: 0,
             y_offset: 0,
+            scroll_x: sx,
+            scroll_y: sy,
             width: self.width,
             height: self.height,
         }
@@ -255,13 +447,23 @@ impl Viewport {
     where
         F: Fn(&mut WindowView) -> Result<()>,
     {
+        let (sx, sy) = if let Some(state) = &self.scroll_state {
+            let o = state.borrow().offset();
+            (o.x, o.y)
+        } else {
+            (self.scroll_x, self.scroll_y)
+        };
+
         let mut view = WindowView {
             window,
             x_offset: 0,
             y_offset: 0,
+            scroll_x: sx,
+            scroll_y: sy,
             width: self.width,
             height: self.height,
         };
+
         drawer(&mut view)
     }
 
