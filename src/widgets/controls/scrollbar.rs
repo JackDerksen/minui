@@ -215,6 +215,13 @@ impl ScrollBar {
         this
     }
 
+    /// Returns whether the scrollbar thumb is currently being dragged.
+    ///
+    /// This is primarily intended for app-level policies like auto-hide/show behavior.
+    pub fn is_dragging(&self) -> bool {
+        self.slider.is_dragging()
+    }
+
     /// Convenience: vertical scrollbar.
     pub fn vertical(height: u16, state: Rc<RefCell<ScrollState>>) -> Self {
         Self::new(

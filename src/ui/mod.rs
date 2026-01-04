@@ -8,9 +8,11 @@
 //! Currently provided:
 //! - `interaction`: draw-time interaction caching for hit testing + basic focus tracking.
 //! - `IdAllocator`: a tiny monotonic ID allocator for generating `InteractionId`s.
+//! - `AutoHide`: helper for auto-hide UX (e.g. scrollbars that reveal on scroll/proximity).
 
 pub mod interaction;
 
 pub use interaction::{
-    HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags, InteractionId,
+    AutoHide, HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags,
+    InteractionId,
 };

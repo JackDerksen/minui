@@ -13,6 +13,7 @@
 //! - hit testing with z-order (last registered wins)
 //! - basic focus tracking by ID
 //! - `IdAllocator`: a tiny utility for allocating `InteractionId`s (usize) in user apps
+//! - lightweight visibility helpers for "auto-hide" UX (e.g. scrollbars)
 //!
 //! # Intended usage (app-level routing)
 //!
@@ -39,7 +40,9 @@
 //! - typed widget IDs
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
+use crate::Event;
 use crate::widgets::WidgetArea;
 
 /// A simple monotonic ID allocator for [`InteractionId`].
@@ -191,6 +194,113 @@ pub struct HitTestResult {
     pub z_index: i16,
 }
 
+/// A tiny helper for "auto-hide" UI elements (e.g. scrollbars).
+///
+/// This is intended to be used by app code in Phase 1:
+/// - Update it in your `update` loop when scroll events occur.
+/// - Feed it the latest mouse position (if you track mouse movement).
+/// - Decide whether to draw/register the scrollbars this frame.
+///
+/// This does not perform any drawing or event routing by itself.
+#[derive(Debug, Clone)]
+pub struct AutoHide {
+    /// How long after scrolling an element should remain visible.
+    reveal_for: Duration,
+    /// How close (in cells) the mouse must be to the element to reveal it.
+    proximity_margin: u16,
+    /// Timestamp of last "activity" (scrolling).
+    last_activity: Option<Instant>,
+}
+
+impl Default for AutoHide {
+    fn default() -> Self {
+        Self::new(Duration::from_millis(900), 2)
+    }
+}
+
+impl AutoHide {
+    /// Create a new auto-hide helper.
+    ///
+    /// - `reveal_for`: how long to keep the element visible after scrolling/activity.
+    /// - `proximity_margin`: how many cells around the element count as "near".
+    pub fn new(reveal_for: Duration, proximity_margin: u16) -> Self {
+        Self {
+            reveal_for,
+            proximity_margin,
+            last_activity: None,
+        }
+    }
+
+    /// Record "activity" (e.g. mouse wheel scroll) to keep elements visible for a bit.
+    pub fn mark_activity(&mut self) {
+        self.last_activity = Some(Instant::now());
+    }
+
+    /// Convenience: mark activity if an event is a scroll event.
+    ///
+    /// Returns `true` if it matched a scroll event.
+    pub fn mark_activity_from_event(&mut self, event: &Event) -> bool {
+        match event {
+            Event::MouseScroll { .. } | Event::MouseScrollHorizontal { .. } => {
+                self.mark_activity();
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Returns whether we are still within the "recent activity" window.
+    pub fn is_recently_active(&self) -> bool {
+        match self.last_activity {
+            None => false,
+            Some(t) => t.elapsed() <= self.reveal_for,
+        }
+    }
+
+    /// Set the reveal duration.
+    pub fn set_reveal_for(&mut self, reveal_for: Duration) {
+        self.reveal_for = reveal_for;
+    }
+
+    /// Set the proximity margin in cells.
+    pub fn set_proximity_margin(&mut self, proximity_margin: u16) {
+        self.proximity_margin = proximity_margin;
+    }
+
+    /// Returns whether a point is "near" an area, using `proximity_margin`.
+    ///
+    /// This is useful for "show when cursor approaches the scrollbar".
+    pub fn is_point_near_area(&self, x: u16, y: u16, area: WidgetArea) -> bool {
+        let expanded = expand_area(area, self.proximity_margin);
+        expanded.contains_point(x, y)
+    }
+
+    /// Decide whether an element should be visible based on:
+    /// - recent scroll activity
+    /// - mouse proximity to its area
+    /// - optional dragging state (callers can pass `true` while dragging)
+    pub fn should_show(
+        &self,
+        area: WidgetArea,
+        mouse_pos: Option<(u16, u16)>,
+        is_dragging: bool,
+    ) -> bool {
+        if is_dragging {
+            return true;
+        }
+
+        if self.is_recently_active() {
+            return true;
+        }
+
+        if let Some((mx, my)) = mouse_pos {
+            return self.is_point_near_area(mx, my, area);
+        }
+
+        false
+    }
+}
+
 /// Per-frame cache for interactive areas.
 ///
 /// This is meant to be stored in application state and updated each draw.
@@ -209,6 +319,10 @@ pub struct InteractionCache {
 
     // Hover tracking (computed via `hit_test`, can be cached by the app if desired)
     last_hovered: Option<InteractionId>,
+
+    // Last known mouse position (optional). This is populated by `observe_event` when it sees
+    // `Event::MouseMove`. Apps can also ignore this and store mouse position themselves.
+    last_mouse_pos: Option<(u16, u16)>,
 }
 
 impl InteractionCache {
@@ -224,6 +338,24 @@ impl InteractionCache {
         self.entries.clear();
         self.latest_by_id.clear();
         self.last_hovered = None;
+        // Keep last_mouse_pos across frames; it is useful for proximity-based visibility.
+    }
+
+    /// Observe an event and update cached interaction state.
+    ///
+    /// This is optional convenience for app-level routing. Today it only records mouse position.
+    /// You can call this at the top of your update loop:
+    ///
+    /// - `cache.observe_event(&event);`
+    pub fn observe_event(&mut self, event: &Event) {
+        if let Event::MouseMove { x, y } = *event {
+            self.last_mouse_pos = Some((x, y));
+        }
+    }
+
+    /// Returns the last observed mouse position (if any).
+    pub fn last_mouse_pos(&self) -> Option<(u16, u16)> {
+        self.last_mouse_pos
     }
 
     /// Register an interactive area with default z-index and no flags.
@@ -343,6 +475,20 @@ impl InteractionCache {
             None
         }
     }
+}
+
+/// Expand a `WidgetArea` by a uniform margin, using saturating arithmetic.
+///
+/// This is useful for proximity-based reveal (e.g. show scrollbars when the mouse is near).
+pub fn expand_area(area: WidgetArea, margin: u16) -> WidgetArea {
+    let x = area.x.saturating_sub(margin);
+    let y = area.y.saturating_sub(margin);
+
+    // Avoid overflow by saturating add; callers typically compare against window bounds anyway.
+    let width = area.width.saturating_add(margin.saturating_mul(2));
+    let height = area.height.saturating_add(margin.saturating_mul(2));
+
+    WidgetArea::new(x, y, width, height)
 }
 
 #[cfg(test)]

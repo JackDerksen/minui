@@ -95,11 +95,11 @@
 //!
 //! // In game loop
 //! monitor.frame_start();
-//! 
+//!
 //! // Game logic here
 //! update_game();
 //! render_game();
-//! 
+//!
 //! monitor.frame_end();
 //!
 //! // Check performance

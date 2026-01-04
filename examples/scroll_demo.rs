@@ -4,6 +4,7 @@
 //! - `ScrollBox` provides a scrollable viewport backed by a shared `ScrollState`
 //! - `ScrollBar` binds to the same `ScrollState` for thumb dragging + arrow buttons
 //! - Phase 1 interaction routing via `InteractionCache` + `WidgetArea`
+//! - Scrollbar auto-hide UX via `AutoHide`
 //!
 //! Controls:
 //! - Mouse wheel: vertical scroll
@@ -16,17 +17,20 @@
 //! Notes:
 //! - `ScrollBox` is sized each frame based on terminal size.
 //! - Content is built each frame (no cloning required).
-//! - This example expects `ScrollBox::with_state(...)` and `ScrollBox::with_position_and_size(...)`
-//!   to exist (added in the scroll refactor work).
+//! - Scrollbars are auto-hidden unless:
+//!   - you recently scrolled, or
+//!   - the mouse is near the scrollbar area, or
+//!   - you are actively dragging the thumb.
 
 use minui::prelude::*;
-use minui::ui::InteractionCache;
+use minui::ui::{AutoHide, InteractionCache};
 use minui::widgets::controls::scrollbar::{ScrollBar, ScrollBarOptions, ScrollUnit};
 use minui::widgets::scroll::{ScrollOrientation, ScrollSize, ScrollState};
 use minui::widgets::{WidgetArea, WindowView};
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 
 const ID_SCROLLBOX: usize = 1;
 const ID_VSCROLL: usize = 2;
@@ -37,6 +41,10 @@ struct ScrollDemoState {
     scroll: Rc<RefCell<ScrollState>>,
     vbar: ScrollBar,
     hbar: ScrollBar,
+
+    // Auto-hide behavior for scrollbars.
+    // NOTE: This is app-level policy (Phase 1), not owned by the widgets.
+    autohide: AutoHide,
 }
 
 fn main() -> minui::Result<()> {
@@ -77,6 +85,7 @@ fn main() -> minui::Result<()> {
         scroll,
         vbar,
         hbar,
+        autohide: AutoHide::new(Duration::from_millis(900), 2),
     };
 
     let mut app = App::new(initial)?;
@@ -86,14 +95,20 @@ fn main() -> minui::Result<()> {
         // Update: route events
         // ============================
         |state, event| {
+            // Observe mouse position for proximity-based scrollbar reveal.
+            state.ui.observe_event(&event);
+
             // Quit
             if matches!(event, Event::Character('q')) {
                 return false;
             }
 
             // Mouse wheel scrolling -> update shared ScrollState directly.
+            // Also mark "activity" so scrollbars reveal for a short time.
             match event {
                 Event::MouseScroll { delta } => {
+                    state.autohide.mark_activity();
+
                     // Convention: delta > 0 scrolls up, delta < 0 scrolls down.
                     // We invert to translate "scroll down" into positive offset movement.
                     let dy: i16 = -(delta as i16);
@@ -103,6 +118,8 @@ fn main() -> minui::Result<()> {
                         .scroll_by(ScrollOrientation::Vertical, dy);
                 }
                 Event::MouseScrollHorizontal { delta } => {
+                    state.autohide.mark_activity();
+
                     let dx: i16 = -(delta as i16);
                     state
                         .scroll
@@ -130,6 +147,7 @@ fn main() -> minui::Result<()> {
             }
 
             // Route pointer events into scrollbars (click/drag/arrows).
+            // IMPORTANT: only route if the scrollbar was registered this frame (i.e. visible).
             // Areas come from the most recent draw frame.
             if let Some(entry) = state.ui.get(ID_VSCROLL) {
                 let _ = state.vbar.handle_event(&event, entry.area);
@@ -266,19 +284,47 @@ fn main() -> minui::Result<()> {
             state.vbar.sync_from_state_and_resize_parts();
 
             let v_area = WidgetArea::new(vbar_x, vbar_y, 1, vbar_h);
-            state.ui.register_draggable(ID_VSCROLL, v_area);
 
-            {
-                let mut view = WindowView {
-                    window,
-                    x_offset: vbar_x,
-                    y_offset: vbar_y,
-                    scroll_x: 0,
-                    scroll_y: 0,
-                    width: 1,
-                    height: vbar_h,
-                };
-                state.vbar.draw(&mut view)?;
+            // Auto-hide policy: show if recently scrolled, mouse is near, or currently dragging.
+            // Reveal policy:
+            // - show when recently scrolled
+            // - show when mouse is near the scrollbar area
+            // - show when mouse is near the scrollbox RIGHT edge strip (even if the bar itself is hidden)
+            // - show while dragging
+            let mouse_pos = state.ui.last_mouse_pos();
+
+            // Only consider proximity to a thin strip along the scrollbox's right edge.
+            // This prevents the scrollbars from staying visible just because the cursor is somewhere
+            // inside/near the scrollbox.
+            let near_scrollbox_right_edge = if let Some((mx, my)) = mouse_pos {
+                // A 1-column strip at the right edge of the scrollbox.
+                let edge_x = outer_x + outer_w.saturating_sub(1);
+                let edge_strip = WidgetArea::new(edge_x, outer_y, 1, outer_h);
+                state.autohide.is_point_near_area(mx, my, edge_strip)
+            } else {
+                false
+            };
+
+            let show_vbar = state
+                .autohide
+                .should_show(v_area, mouse_pos, state.vbar.is_dragging())
+                || near_scrollbox_right_edge;
+
+            if show_vbar {
+                state.ui.register_draggable(ID_VSCROLL, v_area);
+
+                {
+                    let mut view = WindowView {
+                        window,
+                        x_offset: vbar_x,
+                        y_offset: vbar_y,
+                        scroll_x: 0,
+                        scroll_y: 0,
+                        width: 1,
+                        height: vbar_h,
+                    };
+                    state.vbar.draw(&mut view)?;
+                }
             }
 
             // Horizontal scrollbar area (bottom)
@@ -301,19 +347,47 @@ fn main() -> minui::Result<()> {
             state.hbar.sync_from_state_and_resize_parts();
 
             let h_area = WidgetArea::new(hbar_x, hbar_y, hbar_w, 1);
-            state.ui.register_draggable(ID_HSCROLL, h_area);
 
-            {
-                let mut view = WindowView {
-                    window,
-                    x_offset: hbar_x,
-                    y_offset: hbar_y,
-                    scroll_x: 0,
-                    scroll_y: 0,
-                    width: hbar_w,
-                    height: 1,
-                };
-                state.hbar.draw(&mut view)?;
+            // Auto-hide policy: show if recently scrolled, mouse is near, or currently dragging.
+            // Reveal policy:
+            // - show when recently scrolled
+            // - show when mouse is near the scrollbar area
+            // - show when mouse is near the scrollbox BOTTOM edge strip (even if the bar itself is hidden)
+            // - show while dragging
+            let mouse_pos = state.ui.last_mouse_pos();
+
+            // Only consider proximity to a thin strip along the scrollbox's bottom edge.
+            // This prevents the scrollbars from staying visible just because the cursor is somewhere
+            // inside/near the scrollbox.
+            let near_scrollbox_bottom_edge = if let Some((mx, my)) = mouse_pos {
+                // A 1-row strip at the bottom edge of the scrollbox.
+                let edge_y = outer_y + outer_h.saturating_sub(1);
+                let edge_strip = WidgetArea::new(outer_x, edge_y, outer_w, 1);
+                state.autohide.is_point_near_area(mx, my, edge_strip)
+            } else {
+                false
+            };
+
+            let show_hbar = state
+                .autohide
+                .should_show(h_area, mouse_pos, state.hbar.is_dragging())
+                || near_scrollbox_bottom_edge;
+
+            if show_hbar {
+                state.ui.register_draggable(ID_HSCROLL, h_area);
+
+                {
+                    let mut view = WindowView {
+                        window,
+                        x_offset: hbar_x,
+                        y_offset: hbar_y,
+                        scroll_x: 0,
+                        scroll_y: 0,
+                        width: hbar_w,
+                        height: 1,
+                    };
+                    state.hbar.draw(&mut view)?;
+                }
             }
 
             Ok(())

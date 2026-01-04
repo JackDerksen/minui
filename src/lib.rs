@@ -120,7 +120,8 @@ pub use widgets::{
 // UI utilities (hit-testing, focus helpers, etc.)
 pub mod ui;
 pub use ui::{
-    HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags, InteractionId,
+    AutoHide, HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags,
+    InteractionId,
 };
 
 /// Common imports for MinUI applications.
@@ -144,6 +145,8 @@ pub mod prelude {
         // Controls widgets
         ArrowButton,
         ArrowDirection,
+        // UI utilities (hit-testing, focus helpers, etc.)
+        AutoHide,
         // Utilities
         BorderChars,
         // Layout system
@@ -161,7 +164,6 @@ pub mod prelude {
 
         // Text widgets
         Gap,
-        // UI utilities (hit-testing, focus helpers, etc.)
         HitTestResult,
         IdAllocator,
         InteractionCache,
