@@ -8,6 +8,9 @@ use minui::prelude::*;
 use std::collections::VecDeque;
 use std::time::Duration;
 
+// NOTE: `TextBlock` currently doesn't treat `\n` as hard line breaks in its wrapping logic
+// (it wraps based on whitespace). For the input demo, we want one event per line.
+// Until `TextBlock` becomes newline-aware, render the log as a vertical `Container` of `Label`s.
 const MAX_EVENTS: usize = 12;
 
 struct InputDemoState {
@@ -146,30 +149,39 @@ fn main() -> minui::Result<()> {
         |state, window| {
             let (term_width, term_height) = window.get_size();
 
-            // Build the event log display text
-            let log_text = if state.event_log.is_empty() {
-                "No events yet...".to_string()
-            } else {
-                state
-                    .event_log
-                    .iter()
-                    .rev()
-                    .take(MAX_EVENTS)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
+            // Create a container to display the events.
+            //
+            // Panel has been absorbed into Container: use borders + title + padding, and put
+            // content widgets inside as children.
+            // NOTE: `ContainerPadding` is the name exported by the prelude for Container's padding type.
+            // (The underlying type in `container.rs` is `Padding`.)
+            use minui::widgets::ContainerPadding;
 
-            // Create a panel to display the events
-            let panel = Panel::new(term_width.saturating_sub(4), term_height.saturating_sub(4))
-                .with_header("MinUI Input Demo")
-                .with_body(&log_text)
-                .with_header_style(BorderChars::double_line())
-                .with_body_style(BorderChars::single_line())
-                .with_header_color(Some(ColorPair::new(Color::Yellow, Color::Transparent)))
-                .with_header_border_color(Color::Cyan)
-                .with_body_border_color(Color::Blue)
-                .with_padding(1);
+            let panel_x: u16 = 2u16;
+            let panel_y: u16 = 1u16;
+            let panel_w: u16 = term_width.saturating_sub(4u16);
+            let panel_h: u16 = term_height.saturating_sub(4u16);
+
+            // Render the log as stacked labels so each event appears on its own line.
+            // We display the newest entries at the top (reverse chronological).
+            let mut log_container = Container::vertical().with_row_gap(Gap::Pixels(0u16));
+            if state.event_log.is_empty() {
+                log_container = log_container.add_child(Label::new("No events yet..."));
+            } else {
+                for line in state.event_log.iter().rev().take(MAX_EVENTS) {
+                    log_container = log_container.add_child(Label::new(line.clone()));
+                }
+            }
+
+            let panel = Container::new()
+                .with_position_and_size(panel_x, panel_y, panel_w, panel_h)
+                .with_border()
+                .with_border_chars(BorderChars::double_line())
+                .with_border_color(ColorPair::new(Color::Cyan, Color::Black))
+                .with_title("MinUI Input Demo")
+                .with_title_alignment(TitleAlignment::Center)
+                .with_padding(ContainerPadding::uniform(1u16))
+                .add_child(log_container);
 
             panel.draw(window)?;
 
