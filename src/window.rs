@@ -41,7 +41,10 @@ use crate::render::buffer::Buffer;
 use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
     cursor,
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event as CrosstermEvent},
+    event::{
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event as CrosstermEvent,
+    },
     execute,
     style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
@@ -109,6 +112,26 @@ pub trait Window {
     /// # Ok::<(), minui::Error>(())
     /// ```
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()>;
+
+    /// Flushes any pending buffered rendering to the underlying terminal/output.
+    ///
+    /// For buffered backends (like `TerminalWindow`), this commits the diff to the terminal.
+    /// Backends that render immediately may implement this as a no-op.
+    fn flush(&mut self) -> Result<()>;
+
+    /// Sets the terminal cursor position.
+    ///
+    /// Coordinates are 0-based and expressed as (x, y).
+    ///
+    /// For editor-like applications, the typical pattern is:
+    /// - hide cursor
+    /// - draw + flush
+    /// - set cursor position
+    /// - show cursor
+    fn set_cursor_position(&mut self, x: u16, y: u16) -> Result<()>;
+
+    /// Shows or hides the terminal cursor.
+    fn show_cursor(&mut self, show: bool) -> Result<()>;
 
     /// Returns the dimensions of the window as (width, height).
     ///
@@ -318,7 +341,8 @@ impl TerminalWindow {
             terminal::Clear(terminal::ClearType::All),
             cursor::Hide,
             cursor::MoveTo(0, 0),
-            EnableMouseCapture // Enable mouse event capture
+            EnableMouseCapture,   // Enable mouse event capture
+            EnableBracketedPaste  // Enable paste as a distinct input mode (editor-friendly)
         )?;
 
         Ok(Self {
@@ -423,6 +447,7 @@ impl TerminalWindow {
                 CrosstermEvent::Mouse(mouse_event) => {
                     Ok(self.mouse.process_mouse_event(mouse_event))
                 }
+                CrosstermEvent::Paste(text) => Ok(Event::Paste(text)),
                 CrosstermEvent::Resize(cols, rows) => Ok(Event::Resize {
                     width: cols,
                     height: rows,
@@ -464,6 +489,9 @@ impl TerminalWindow {
                 }
                 CrosstermEvent::Mouse(mouse_event) => {
                     return Ok(self.mouse.process_mouse_event(mouse_event));
+                }
+                CrosstermEvent::Paste(text) => {
+                    return Ok(Event::Paste(text));
                 }
                 CrosstermEvent::Resize(cols, rows) => {
                     return Ok(Event::Resize {
@@ -513,6 +541,7 @@ impl TerminalWindow {
                 CrosstermEvent::Mouse(mouse_event) => {
                     Ok(Some(self.mouse.process_mouse_event(mouse_event)))
                 }
+                CrosstermEvent::Paste(text) => Ok(Some(Event::Paste(text))),
                 CrosstermEvent::Resize(cols, rows) => Ok(Some(Event::Resize {
                     width: cols,
                     height: rows,
@@ -749,6 +778,26 @@ impl Window for TerminalWindow {
         Ok(())
     }
 
+    fn flush(&mut self) -> Result<()> {
+        TerminalWindow::flush(self)
+    }
+
+    fn set_cursor_position(&mut self, x: u16, y: u16) -> Result<()> {
+        // Note: this is an immediate terminal-side operation (not buffered).
+        execute!(stdout(), cursor::MoveTo(x, y))?;
+        Ok(())
+    }
+
+    fn show_cursor(&mut self, show: bool) -> Result<()> {
+        // Note: this is an immediate terminal-side operation (not buffered).
+        if show {
+            execute!(stdout(), cursor::Show)?;
+        } else {
+            execute!(stdout(), cursor::Hide)?;
+        }
+        Ok(())
+    }
+
     fn get_size(&self) -> (u16, u16) {
         (self.width, self.height)
     }
@@ -812,7 +861,8 @@ impl Drop for TerminalWindow {
         let _ = disable_raw_mode();
         let _ = execute!(
             stdout(),
-            DisableMouseCapture, // Disable mouse event capture
+            DisableBracketedPaste, // Restore terminal paste mode
+            DisableMouseCapture,   // Disable mouse event capture
             style::ResetColor,
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0),

@@ -365,14 +365,23 @@ impl<'a> Window for WindowView<'a> {
         }
     }
 
-    /// Returns the size of the view's bounds.
+    fn flush(&mut self) -> Result<()> {
+        self.window.flush()
+    }
+
+    fn set_cursor_position(&mut self, x: u16, y: u16) -> Result<()> {
+        self.window.set_cursor_position(x, y)
+    }
+
+    fn show_cursor(&mut self, show: bool) -> Result<()> {
+        self.window.show_cursor(show)
+    }
+
     fn get_size(&self) -> (u16, u16) {
         (self.width, self.height)
     }
 
     fn clear_screen(&mut self) -> Result<()> {
-        // Clear the entire view area by translating to window coordinates.
-        // Guard against zero-sized views to avoid u16 underflow.
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
@@ -386,13 +395,11 @@ impl<'a> Window for WindowView<'a> {
     }
 
     fn clear_line(&mut self, y: u16) -> Result<()> {
-        // Guard against zero-sized views to avoid u16 underflow.
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
 
         if y < self.height {
-            // Clear the specified line by translating to window coordinates
             self.window.clear_area(
                 self.y_offset + y,
                 self.x_offset,
@@ -400,22 +407,19 @@ impl<'a> Window for WindowView<'a> {
                 self.x_offset + self.width - 1,
             )
         } else {
-            Ok(()) // Silently skip out-of-bounds clears
+            Ok(())
         }
     }
 
     fn clear_area(&mut self, y1: u16, x1: u16, y2: u16, x2: u16) -> Result<()> {
-        // Guard against zero-sized views to avoid u16 underflow.
         if self.width == 0 || self.height == 0 {
             return Ok(());
         }
 
-        // Check if entirely out of bounds
         if x1 >= self.width || x2 >= self.width || y1 >= self.height || y2 >= self.height {
-            return Ok(()); // Silently skip out-of-bounds clears
+            return Ok(());
         }
 
-        // Translate to window coordinates while clamping to view bounds
         let parent_x1 = self.x_offset + x1;
         let parent_x2 = self.x_offset + x2.min(self.width - 1);
         let parent_y1 = self.y_offset + y1;

@@ -72,6 +72,13 @@ impl<S> App<S> {
     pub fn run<U, D>(&mut self, mut update: U, mut draw: D) -> Result<()>
     where
         U: FnMut(&mut S, Event) -> bool, // Return bool to control running
+        // Note: draw is responsible for flushing and cursor placement if desired.
+        // This enables editor-style rendering where you:
+        // 1) hide cursor
+        // 2) draw buffered content
+        // 3) flush
+        // 4) set cursor position
+        // 5) show cursor
         D: FnMut(&mut S, &mut dyn Window) -> Result<()>,
     {
         let mut last_tick = Instant::now();
@@ -98,9 +105,12 @@ impl<S> App<S> {
 
             // --- Drawing ---
             // Always draw the current state of the application.
+            //
+            // Important: we intentionally do NOT flush here.
+            // The draw closure should flush once per frame, and can optionally place the cursor
+            // after flushing (editor-style).
             self.window.clear_screen()?;
             draw(&mut self.state, &mut self.window)?;
-            self.window.flush()?;
 
             // Yield CPU time to avoid spinning, especially in game mode.
             std::thread::sleep(Duration::from_millis(1));
