@@ -128,24 +128,22 @@
 mod common;
 mod container;
 mod figlet;
-mod helpers;
 mod input;
 mod layout;
-mod panel;
+mod scrollbox;
 mod table;
 mod text;
 mod viewport;
 
 pub use common::{BorderChars, WindowView};
-pub use container::{BorderStyle, Container, ContentAlignment, LayoutDirection, Padding};
-pub use figlet::FigletText;
-pub use helpers::{
-    code_block, error_panel, error_text, footer_section, header_section, help_text,
-    highlighted_panel, info_card, info_panel, main_content_area, metric_card, minimal_panel,
-    progress_bar, sidebar, status_bar, subtitle_text, success_panel, success_text, title_text,
-    warning_panel,
+pub use container::{
+    BorderSide, Container, ContentAlignment as ContainerContentAlignment, Gap, LayoutDirection,
+    Padding as ContainerPadding, TitleAlignment,
 };
-pub use panel::Panel;
+pub use figlet::FigletText;
+pub use scrollbox::{
+    LinearScrollAccel, MacOSScrollAccel, ScrollAcceleration, ScrollBox, StickyEdge,
+};
 pub use text::{Alignment, Label, Text, TextBlock, TextWrapMode, VerticalAlignment};
 pub use viewport::Viewport;
 

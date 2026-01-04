@@ -1,167 +1,168 @@
 //! # Container Widget
 //!
-//! A powerful layout management widget that automatically arranges and positions child
-//! widgets within structured containers. The container system forms the backbone of
-//! MinUI's layout capabilities, providing flexible arrangements with automatic sizing,
-//! borders, padding, and alignment options.
+//! A unified layout-managed container widget inspired by OpenTUI's "box" component.
+//!
+//! This widget is intended to be the primary building block for layout and styling in MinUI.
+//! It supports borders, titles, background fills, padding, and arranging child widgets in
+//! vertical or horizontal directions.
 //!
 //! ## Features
 //!
-//! - **Automatic layout**: Intelligent child widget positioning and sizing
-//! - **Dual layout modes**: Vertical stacking and horizontal arrangement
-//! - **Flexible borders**: Optional visible borders with customizable styles
-//! - **Advanced padding**: Per-side padding control with uniform options
-//! - **Auto-sizing**: Containers adapt to content or fixed dimensions
-//! - **Content alignment**: Normal positioning or automatic centering
-//! - **Nested containers**: Support for complex hierarchical layouts
-//!
-//! ## Layout System
-//!
-//! Containers use a CSS Flexbox-inspired layout model:
-//!
-//! ```text
-//! Vertical Layout:           Horizontal Layout:
-//! ┌─────────────────┐       ┌─────┬─────┬─────┐
-//! │    Widget 1     │       │ W1  │ W2  │ W3  │
-//! ├─────────────────┤       │     │     │     │
-//! │    Widget 2     │       │     │     │     │
-//! ├─────────────────┤       └─────┴─────┴─────┘
-//! │    Widget 3     │
-//! └─────────────────┘
-//! ```
+//! - **Unified API**: One primary container for both layout and styling
+//! - **Fine-grained borders**: Draw selective sides (top, bottom, left, right)
+//! - **Built-in titles**: First-class title support with alignment options
+//! - **Modern gaps**: Row and column spacing between children
+//! - **Flexible styling**: Colors, custom border characters, background colors
+//! - **Layout management**: Horizontal and vertical arrangements with auto-sizing
+//! - **Focus states**: Separate border colors for normal and focused states
 //!
 //! ## Basic Usage
 //!
 //! ```rust
-//! use minui::{Container, Label, Text, LayoutDirection};
+//! use minui::prelude::*;
 //!
-//! // Create a vertical layout
-//! let vertical_container = Container::vertical()
-//!     .add_child(Label::new("Title"))
-//!     .add_child(Text::new("Content goes here"))
-//!     .add_child(Text::new("More content"));
-//!
-//! // Create a horizontal layout
-//! let horizontal_container = Container::horizontal()
-//!     .add_child(Text::new("Left"))
-//!     .add_child(Text::new("Center"))
-//!     .add_child(Text::new("Right"));
+//! // Simple vertical container with title
+//! let container = Container::vertical()
+//!     .with_title("Welcome")
+//!     .with_title_alignment(TitleAlignment::Center)
+//!     .add_child(Label::new("Hello, World!"));
 //! ```
 //!
-//! ## Styled Containers
+//! ## Selective Borders
 //!
 //! ```rust
-//! use minui::{Container, BorderChars, Color, ColorPair, Padding};
+//! use minui::prelude::*;
 //!
-//! let styled_container = Container::new(LayoutDirection::Vertical)
-//!     .with_border(BorderChars::double_line())
-//!     .with_border_color(Some(ColorPair::new(Color::Blue, Color::Black)))
-//!     .with_background_color(Some(ColorPair::new(Color::White, Color::Gray)))
-//!     .with_padding(Padding::uniform(2))
-//!     .with_content_alignment(ContentAlignment::AutoCenter);
+//! // Only draw top and bottom borders
+//! let divider = Container::new()
+//!     .with_border_sides(vec![BorderSide::Top, BorderSide::Bottom])
+//!     .with_title("Section");
 //! ```
 //!
-//! ## Advanced Layouts
+//! ## Modern Gaps
 //!
 //! ```rust
-//! use minui::{Container, Panel, TextBlock, LayoutDirection, Padding};
+//! use minui::prelude::*;
 //!
-//! // Create a complex dashboard layout
-//! let dashboard = Container::vertical()
-//!     .with_padding(Padding::uniform(1))
-//!     .add_child(
-//!         Panel::new(60, 3)
-//!             .with_header("System Dashboard")
-//!             .with_body("Welcome to the monitoring interface")
-//!     )
-//!     .add_child(
-//!         Container::horizontal()
-//!             .add_child(
-//!                 Panel::new(30, 10)
-//!                     .with_header("CPU Usage")
-//!                     .with_body("45% utilization")
-//!             )
-//!             .add_child(
-//!                 Panel::new(30, 10)
-//!                     .with_header("Memory")
-//!                     .with_body("2.1GB / 8GB used")
-//!             )
-//!     );
+//! let form = Container::vertical()
+//!     .with_row_gap(Gap::Pixels(1))
+//!     .add_child(Label::new("Name:"))
+//!     .add_child(TextInput::new(20));
 //! ```
-//!
-//! ## Responsive Design
-//!
-//! ```rust
-//! use minui::{Container, Text, LayoutDirection, ContentAlignment};
-//!
-//! // Container that adapts to available space
-//! let responsive_layout = Container::new(LayoutDirection::Vertical)
-//!     .with_auto_size(true)
-//!     .with_content_alignment(ContentAlignment::AutoCenter)
-//!     .add_child(Text::new("This content will be centered"))
-//!     .add_child(Text::new("And this container will size to fit"));
-//! ```
-//!
-//! ## Best Practices
-//!
-//! For deeply nested layouts, extract components into named variables or helper functions.
-//! This improves readability and reusability:
-//!
-//! ```rust
-//! use minui::{Container, Label, Text};
-//!
-//! let header = Container::vertical()
-//!     .add_child(Label::new("Title"));
-//!
-//! let body = Container::vertical()
-//!     .add_child(Text::new("Content"));
-//!
-//! let app = Container::vertical()
-//!     .add_child(header)
-//!     .add_child(body);
-//! ```
-//!
-//! Container widgets form the foundation of MinUI's layout system, enabling the creation
-//! of sophisticated terminal user interfaces with minimal code and maximum flexibility.
 
 use super::{BorderChars, Widget};
 use crate::widgets::common::WindowView;
 use crate::{Color, ColorPair, Result, Window};
+use std::collections::HashSet;
 
-/// Layout direction for container children
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Border side for selective border rendering
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BorderSide {
+    /// Top border
+    Top,
+    /// Right border
+    Right,
+    /// Bottom border
+    Bottom,
+    /// Left border
+    Left,
+}
+
+/// Title alignment within the box
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TitleAlignment {
+    /// Align title to the left
+    Left,
+    /// Center the title
+    Center,
+    /// Align title to the right
+    Right,
+}
+
+/// Gap size between children
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gap {
+    /// Fixed pixel gap
+    Pixels(u16),
+    /// Percentage-based gap (0-100)
+    Percent(u8),
+}
+
+/// Border configuration for the box
+#[derive(Debug, Clone)]
+pub struct BorderConfig {
+    /// Which sides to draw
+    pub sides: HashSet<BorderSide>,
+    /// Border character style
+    pub chars: BorderChars,
+    /// Normal border color
+    pub color: ColorPair,
+    /// Border color when focused
+    pub focused_color: Option<ColorPair>,
+}
+
+impl BorderConfig {
+    /// Creates a new border configuration with all sides enabled
+    pub fn all_sides(chars: BorderChars, color: ColorPair) -> Self {
+        let mut sides = HashSet::new();
+        sides.insert(BorderSide::Top);
+        sides.insert(BorderSide::Right);
+        sides.insert(BorderSide::Bottom);
+        sides.insert(BorderSide::Left);
+
+        Self {
+            sides,
+            chars,
+            color,
+            focused_color: None,
+        }
+    }
+
+    /// Creates a new border configuration with no sides
+    pub fn no_sides(chars: BorderChars, color: ColorPair) -> Self {
+        Self {
+            sides: HashSet::new(),
+            chars,
+            color,
+            focused_color: None,
+        }
+    }
+
+    /// Checks if any border sides are enabled
+    pub fn has_border(&self) -> bool {
+        !self.sides.is_empty()
+    }
+}
+
+/// Layout direction for arranging children
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutDirection {
-    /// Stack children vertically (like CSS flex-direction: column)
+    /// Stack children vertically
     Vertical,
-    /// Arrange children horizontally (like CSS flex-direction: row)
+    /// Arrange children horizontally
     Horizontal,
 }
 
-/// Border visibility and styling options
-#[derive(Debug, Clone)]
-pub enum BorderStyle {
-    /// No border - invisible container
-    None,
-    /// Visible border with specified character set
-    Visible(BorderChars),
-}
-
-/// Padding configuration for containers
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Padding {
-    pub top: u16,
-    pub right: u16,
-    pub bottom: u16,
-    pub left: u16,
-}
-
-/// Content alignment within a container
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Content alignment within the box
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentAlignment {
-    /// Content positioned normally within the container
+    /// Content positioned normally
     Normal,
-    /// Content automatically centered within the container's full width
+    /// Content automatically centered
     AutoCenter,
+}
+
+/// Padding configuration for the box
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Padding {
+    /// Top padding
+    pub top: u16,
+    /// Right padding
+    pub right: u16,
+    /// Bottom padding
+    pub bottom: u16,
+    /// Left padding
+    pub left: u16,
 }
 
 impl Padding {
@@ -195,12 +196,12 @@ impl Padding {
         }
     }
 
-    /// Total horizontal padding (left + right)
+    /// Total horizontal padding
     pub fn horizontal_total(&self) -> u16 {
         self.left + self.right
     }
 
-    /// Total vertical padding (top + bottom)
+    /// Total vertical padding
     pub fn vertical_total(&self) -> u16 {
         self.top + self.bottom
     }
@@ -212,442 +213,739 @@ impl Default for Padding {
     }
 }
 
-/// A layout-managed container widget that can hold multiple child widgets
+/// A unified layout-managed container widget
 pub struct Container {
-    /// X-coordinate of the container position
+    /// X-coordinate position
     x: u16,
-    /// Y-coordinate of the container position
+    /// Y-coordinate position
     y: u16,
-    /// Width of the container (including borders)
+    /// Width (including borders)
     width: u16,
-    /// Height of the container (including borders)
+    /// Height (including borders)
     height: u16,
-    /// Border styling
-    border_style: BorderStyle,
-    /// Optional border color
-    border_color: Option<ColorPair>,
-    /// Child widgets managed by this container
-    children: Vec<Box<dyn Widget>>,
-    /// Layout direction for children
+
+    /// Layout direction
     layout_direction: LayoutDirection,
     /// Internal padding
     padding: Padding,
-    /// Spacing between child widgets
-    child_spacing: u16,
-    /// Whether to automatically size based on content
-    auto_size: bool,
-    /// Whether to take up full terminal window size
-    fullscreen: bool,
-    /// Content alignment within the container
+    /// Gap between children (applies to both directions if not overridden)
+    gap: Option<Gap>,
+    /// Row-specific gap
+    row_gap: Option<Gap>,
+    /// Column-specific gap
+    column_gap: Option<Gap>,
+    /// Content alignment
     content_alignment: ContentAlignment,
+    /// Auto-sizing enabled
+    auto_size: bool,
+    /// Fullscreen mode
+    fullscreen: bool,
+
+    /// Border configuration
+    border: BorderConfig,
+    /// Background color
+    background_color: Option<ColorPair>,
+    /// Whether to fill background
+    should_fill: bool,
+
+    /// Title text
+    title: Option<String>,
+    /// Title alignment
+    title_alignment: TitleAlignment,
+
+    /// Focus state
+    focused: bool,
+
+    /// Child widgets
+    children: Vec<Box<dyn Widget>>,
 }
 
 impl Container {
-    /// Creates a new container at the specified position
+    /// Creates a new container with default settings
     ///
-    /// # Arguments
-    /// * `x` - X-coordinate position
-    /// * `y` - Y-coordinate position
-    /// * `width` - Container width (0 for auto-sizing)
-    /// * `height` - Container height (0 for auto-sizing)
-    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-            border_style: BorderStyle::Visible(BorderChars::single_line()),
-            border_color: None,
-            children: Vec::new(),
-            layout_direction: LayoutDirection::Vertical,
-            padding: Padding::uniform(1),
-            child_spacing: 0,
-            auto_size: width == 0 || height == 0,
-            fullscreen: false,
-            content_alignment: ContentAlignment::Normal,
-        }
-    }
-
-    /// Creates a fullscreen container that takes up the entire terminal
-    pub fn fullscreen() -> Self {
-        Self {
+    /// Defaults are intentionally "layout-first":
+    /// - no borders
+    /// - no background fill
+    /// - zero padding
+    /// - auto-sizing enabled
+    pub fn new() -> Self {
+        let mut this = Self {
             x: 0,
             y: 0,
-            width: 0, // Will be set by update_fullscreen_size
+            width: 0,
             height: 0,
-            border_style: BorderStyle::None,
-            border_color: None,
-            children: Vec::new(),
             layout_direction: LayoutDirection::Vertical,
             padding: Padding::uniform(0),
-            child_spacing: 0,
-            auto_size: false,
-            fullscreen: true,
+            gap: None,
+            row_gap: None,
+            column_gap: None,
             content_alignment: ContentAlignment::Normal,
-        }
+            auto_size: true,
+            fullscreen: false,
+            border: BorderConfig::no_sides(
+                BorderChars::single_line(),
+                ColorPair::new(Color::White, Color::Black),
+            ),
+            background_color: None,
+            should_fill: false,
+            title: None,
+            title_alignment: TitleAlignment::Left,
+            focused: false,
+            children: Vec::new(),
+        };
+
+        this.recalculate_size();
+        this
     }
 
-    /// Creates a fullscreen container with the given terminal dimensions
-    pub fn fullscreen_with_size(width: u16, height: u16) -> Self {
-        let mut container = Self::fullscreen();
-        container.update_fullscreen_size(width, height);
-        container
-    }
-
-    /// Creates a vertical layout container (VBox equivalent)
+    /// Creates a vertical container
     pub fn vertical() -> Self {
-        Self::new(0, 0, 0, 0).with_layout_direction(LayoutDirection::Vertical)
+        Self::new().with_layout_direction(LayoutDirection::Vertical)
     }
 
-    /// Creates a horizontal layout container (HBox equivalent)
+    /// Creates a horizontal container
     pub fn horizontal() -> Self {
-        Self::new(0, 0, 0, 0).with_layout_direction(LayoutDirection::Horizontal)
+        Self::new().with_layout_direction(LayoutDirection::Horizontal)
     }
 
-    /// Sets the border style for the container
-    pub fn with_border_style(mut self, style: BorderStyle) -> Self {
-        self.border_style = style;
-        self
-    }
-
-    /// Sets visible border with specified character set
-    pub fn with_border(mut self, chars: BorderChars) -> Self {
-        self.border_style = BorderStyle::Visible(chars);
-        self
-    }
-
-    /// Removes the border (invisible container)
-    pub fn without_border(mut self) -> Self {
-        self.border_style = BorderStyle::None;
-        self
-    }
-
-    /// Sets the border color
-    pub fn with_border_color(mut self, color: Color) -> Self {
-        self.border_color = Some(ColorPair::new(color, Color::Transparent));
-        self
-    }
-
-    /// Sets the layout direction for children
-    pub fn with_layout_direction(mut self, direction: LayoutDirection) -> Self {
-        self.layout_direction = direction;
-        self
-    }
-
-    /// Sets uniform padding on all sides
-    pub fn with_padding(mut self, padding: u16) -> Self {
-        self.padding = Padding::uniform(padding);
-        if self.auto_size {
-            self.calculate_size();
+    /// Creates a fullscreen container
+    pub fn fullscreen() -> Self {
+        Self {
+            fullscreen: true,
+            auto_size: false,
+            padding: Padding::uniform(0),
+            ..Self::new()
         }
-        self
     }
 
-    /// Sets custom padding configuration
-    pub fn with_padding_config(mut self, padding: Padding) -> Self {
-        self.padding = padding;
-        if self.auto_size {
-            self.calculate_size();
-        }
-        self
-    }
+    // Builder methods
 
-    /// Sets content to auto-center within the container
-    pub fn with_auto_center(mut self) -> Self {
-        self.content_alignment = ContentAlignment::AutoCenter;
-        self
-    }
-
-    /// Sets spacing between child widgets
-    pub fn with_child_spacing(mut self, spacing: u16) -> Self {
-        self.child_spacing = spacing;
-        if self.auto_size {
-            self.calculate_size();
-        }
-        self
-    }
-
-    /// Enables or disables automatic sizing
-    pub fn with_auto_size(mut self, auto_size: bool) -> Self {
-        self.auto_size = auto_size;
-        if auto_size {
-            self.calculate_size();
-        }
-        self
-    }
-
-    /// Sets a fixed size for the container and disables auto-sizing
-    ///
-    /// # Arguments
-    /// * `width` - Fixed width of the container
-    /// * `height` - Fixed height of the container
-    pub fn with_fixed_size(mut self, width: u16, height: u16) -> Self {
+    /// Sets the position and size
+    pub fn with_position_and_size(mut self, x: u16, y: u16, width: u16, height: u16) -> Self {
+        self.x = x;
+        self.y = y;
         self.width = width;
         self.height = height;
         self.auto_size = false;
         self
     }
 
-    /// Adds a child widget to the container
-    pub fn add_child(mut self, widget: impl Widget + 'static) -> Self {
-        self.children.push(Box::new(widget));
-        if self.auto_size {
-            self.calculate_size();
-        }
+    /// Sets the layout direction
+    pub fn with_layout_direction(mut self, direction: LayoutDirection) -> Self {
+        self.layout_direction = direction;
+        self.recalculate_size();
         self
     }
 
-    /// Adds multiple child widgets at once
-    pub fn add_children(mut self, widgets: Vec<Box<dyn Widget>>) -> Self {
-        self.children.extend(widgets);
-        if self.auto_size {
-            self.calculate_size();
-        }
+    /// Sets padding on all sides
+    pub fn with_padding(mut self, padding: Padding) -> Self {
+        self.padding = padding;
+        self.recalculate_size();
         self
     }
 
-    /// Returns the content area size (width, height) available for child widgets
-    ///
-    /// This accounts for borders and padding, giving you the exact dimensions
-    /// you should use when sizing child widgets for proper viewport constraint.
-    ///
-    /// # Example
-    /// ```ignore
-    /// let container = Container::new(0, 0, 60, 18);
-    /// let (content_width, content_height) = container.get_content_size();
-    /// let text_block = TextBlock::new(content_width, content_height, "...");
-    /// ```
-    pub fn get_content_size(&self) -> (u16, u16) {
-        let border_thickness = self.border_thickness();
-        let content_width = self
-            .width
-            .saturating_sub(border_thickness * 2)
-            .saturating_sub(self.padding.horizontal_total());
-        let content_height = self
-            .height
-            .saturating_sub(border_thickness * 2)
-            .saturating_sub(self.padding.vertical_total());
-
-        (content_width, content_height)
+    /// Sets gap between all children
+    pub fn with_gap(mut self, gap: Gap) -> Self {
+        self.gap = Some(gap);
+        self.recalculate_size();
+        self
     }
 
-    /// Returns the border thickness (0 for invisible borders)
-    fn border_thickness(&self) -> u16 {
-        match self.border_style {
-            BorderStyle::None => 0,
-            BorderStyle::Visible(_) => 1,
+    /// Sets gap between rows (vertical layout)
+    pub fn with_row_gap(mut self, gap: Gap) -> Self {
+        self.row_gap = Some(gap);
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets gap between columns (horizontal layout)
+    pub fn with_column_gap(mut self, gap: Gap) -> Self {
+        self.column_gap = Some(gap);
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets content alignment
+    pub fn with_content_alignment(mut self, alignment: ContentAlignment) -> Self {
+        self.content_alignment = alignment;
+        self
+    }
+
+    /// Sets border sides to display
+    pub fn with_border_sides(mut self, sides: Vec<BorderSide>) -> Self {
+        self.border.sides = sides.into_iter().collect();
+        self.recalculate_size();
+        self
+    }
+
+    /// Enables all border sides
+    pub fn with_border(mut self) -> Self {
+        let mut sides = HashSet::new();
+        sides.insert(BorderSide::Top);
+        sides.insert(BorderSide::Right);
+        sides.insert(BorderSide::Bottom);
+        sides.insert(BorderSide::Left);
+        self.border.sides = sides;
+        self.recalculate_size();
+        self
+    }
+
+    /// Disables all borders
+    pub fn without_border(mut self) -> Self {
+        self.border.sides.clear();
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets border characters
+    pub fn with_border_chars(mut self, chars: BorderChars) -> Self {
+        self.border.chars = chars;
+        // Smart initialization: enable all sides if we're setting chars
+        if self.border.sides.is_empty() {
+            self = self.with_border();
+        }
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets border color
+    pub fn with_border_color(mut self, color: ColorPair) -> Self {
+        self.border.color = color;
+        // Smart initialization: enable all sides if we're setting color
+        if self.border.sides.is_empty() {
+            self = self.with_border();
+        }
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets focused border color
+    pub fn with_focused_border_color(mut self, color: ColorPair) -> Self {
+        self.border.focused_color = Some(color);
+        // Smart initialization: enable all sides if we're setting color
+        if self.border.sides.is_empty() {
+            self = self.with_border();
+        }
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets title text
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        // Smart initialization: enable top border for title
+        self.border.sides.insert(BorderSide::Top);
+        self.recalculate_size();
+        self
+    }
+
+    /// Sets title alignment
+    pub fn with_title_alignment(mut self, alignment: TitleAlignment) -> Self {
+        self.title_alignment = alignment;
+        self
+    }
+
+    /// Sets background color
+    pub fn with_background_color(mut self, color: ColorPair) -> Self {
+        self.background_color = Some(color);
+        self.should_fill = true;
+        self
+    }
+
+    /// Sets whether to fill the background
+    pub fn with_fill(mut self, fill: bool) -> Self {
+        self.should_fill = fill;
+        self
+    }
+
+    /// Adds a child widget
+    pub fn add_child(mut self, child: impl Widget + 'static) -> Self {
+        self.children.push(Box::new(child));
+        self.recalculate_size();
+        self
+    }
+
+    // Accessors
+
+    /// Returns the current focus state
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    /// Sets the focus state
+    pub fn set_focused(mut self, focused: bool) -> Self {
+        self.focused = focused;
+        self
+    }
+
+    /// Returns the number of children
+    pub fn child_count(&self) -> usize {
+        self.children.len()
+    }
+
+    // Helper methods
+
+    /// Gets the width of the left border if present
+    fn border_left_width(&self) -> u16 {
+        if self.border.sides.contains(&BorderSide::Left) {
+            1
+        } else {
+            0
         }
     }
 
-    /// Updates fullscreen container size to match terminal dimensions
-    pub fn update_fullscreen_size(&mut self, terminal_width: u16, terminal_height: u16) {
-        if self.fullscreen {
-            self.width = terminal_width;
-            self.height = terminal_height;
+    /// Gets the width of the right border if present
+    fn border_right_width(&self) -> u16 {
+        if self.border.sides.contains(&BorderSide::Right) {
+            1
+        } else {
+            0
         }
     }
 
-    /// Calculates the content area dimensions (excluding borders and padding)
+    /// Gets the height of the top border if present
+    fn border_top_height(&self) -> u16 {
+        if self.border.sides.contains(&BorderSide::Top) {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// Gets the height of the bottom border if present
+    fn border_bottom_height(&self) -> u16 {
+        if self.border.sides.contains(&BorderSide::Bottom) {
+            1
+        } else {
+            0
+        }
+    }
+
+    /// Gets the content area bounds
     fn get_content_area(&self) -> (u16, u16, u16, u16) {
-        let border_thickness = self.border_thickness();
-        let content_x = self.x + border_thickness + self.padding.left;
-        let content_y = self.y + border_thickness + self.padding.top;
-
-        let content_width = self
-            .width
-            .saturating_sub(border_thickness * 2)
-            .saturating_sub(self.padding.horizontal_total());
-        let content_height = self
-            .height
-            .saturating_sub(border_thickness * 2)
-            .saturating_sub(self.padding.vertical_total());
-
-        (content_x, content_y, content_width, content_height)
+        let x = self.x + self.border_left_width() + self.padding.left;
+        let y = self.y + self.border_top_height() + self.padding.top;
+        let width = self.width.saturating_sub(
+            self.border_left_width()
+                + self.padding.left
+                + self.padding.right
+                + self.border_right_width(),
+        );
+        let height = self.height.saturating_sub(
+            self.border_top_height()
+                + self.padding.top
+                + self.padding.bottom
+                + self.border_bottom_height(),
+        );
+        (x, y, width, height)
     }
 
-    /// Automatically calculates container size based on children
-    fn calculate_size(&mut self) {
-        if self.children.is_empty() {
-            let border_thickness = self.border_thickness();
-            self.width = border_thickness * 2 + self.padding.horizontal_total();
-            self.height = border_thickness * 2 + self.padding.vertical_total();
+    /// Recomputes this container's size if `auto_size` is enabled.
+    ///
+    /// This uses children intrinsic sizes and converts them into an "outer" size by adding
+    /// padding and border thickness. Percent gaps are treated as 1 cell (minimum) during
+    /// auto-size to avoid circular "size depends on gap depends on size" behavior.
+    fn recalculate_size(&mut self) {
+        if !self.auto_size || self.fullscreen {
             return;
         }
 
-        let border_thickness = self.border_thickness();
-        let mut required_width = 0u16;
-        let mut required_height = 0u16;
+        if self.children.is_empty() {
+            // Still account for border + padding so empty containers can render a frame/title.
+            let outer_w = self
+                .border_left_width()
+                .saturating_add(self.padding.left)
+                .saturating_add(self.padding.right)
+                .saturating_add(self.border_right_width());
+            let outer_h = self
+                .border_top_height()
+                .saturating_add(self.padding.top)
+                .saturating_add(self.padding.bottom)
+                .saturating_add(self.border_bottom_height());
+
+            self.width = outer_w;
+            self.height = outer_h;
+            return;
+        }
+
+        let mut content_required_w: u16 = 0;
+        let mut content_required_h: u16 = 0;
+
+        // Percent gaps can't be resolved during auto-size. Treat them as 1 cell to keep spacing
+        // stable and avoid circular dependency.
+        let gap_pixels: u16 = match self.layout_direction {
+            LayoutDirection::Vertical => self.row_gap.or(self.gap),
+            LayoutDirection::Horizontal => self.column_gap.or(self.gap),
+        }
+        .map(|g| match g {
+            Gap::Pixels(n) => n,
+            Gap::Percent(_) => 1,
+        })
+        .unwrap_or(0);
 
         match self.layout_direction {
             LayoutDirection::Vertical => {
-                // Width: maximum child width
-                // Height: sum of all child heights + spacing
-                for (i, child) in self.children.iter().enumerate() {
-                    let (child_width, child_height) = child.get_size();
-                    required_width = required_width.max(child_width);
-                    required_height += child_height;
+                for (idx, child) in self.children.iter().enumerate() {
+                    let (cw, ch) = child.get_size();
+                    content_required_w = content_required_w.max(cw);
+                    content_required_h = content_required_h.saturating_add(ch);
 
-                    if i < self.children.len() - 1 {
-                        required_height += self.child_spacing;
+                    if idx < self.children.len() - 1 {
+                        content_required_h = content_required_h.saturating_add(gap_pixels);
                     }
                 }
             }
             LayoutDirection::Horizontal => {
-                // Width: sum of all child widths + spacing
-                // Height: maximum child height
-                for (i, child) in self.children.iter().enumerate() {
-                    let (child_width, child_height) = child.get_size();
-                    required_width += child_width;
-                    required_height = required_height.max(child_height);
+                for (idx, child) in self.children.iter().enumerate() {
+                    let (cw, ch) = child.get_size();
+                    content_required_w = content_required_w.saturating_add(cw);
+                    content_required_h = content_required_h.max(ch);
 
-                    if i < self.children.len() - 1 {
-                        required_width += self.child_spacing;
+                    if idx < self.children.len() - 1 {
+                        content_required_w = content_required_w.saturating_add(gap_pixels);
                     }
                 }
             }
         }
 
-        self.width = required_width + (border_thickness * 2) + self.padding.horizontal_total();
-        self.height = required_height + (border_thickness * 2) + self.padding.vertical_total();
+        let outer_w = content_required_w
+            .saturating_add(self.border_left_width())
+            .saturating_add(self.padding.left)
+            .saturating_add(self.padding.right)
+            .saturating_add(self.border_right_width());
+
+        let outer_h = content_required_h
+            .saturating_add(self.border_top_height())
+            .saturating_add(self.padding.top)
+            .saturating_add(self.padding.bottom)
+            .saturating_add(self.border_bottom_height());
+
+        self.width = outer_w;
+        self.height = outer_h;
     }
 
-    /// Draws the border if it's visible
-    fn draw_border(&self, window: &mut dyn Window) -> Result<()> {
-        if let BorderStyle::Visible(border_chars) = &self.border_style {
-            let mut draw_colored = |y: u16, x: u16, ch: char| -> Result<()> {
-                if let Some(color) = self.border_color {
-                    window.write_str_colored(y, x, &ch.to_string(), color)
-                } else {
-                    window.write_str(y, x, &ch.to_string())
-                }
-            };
+    /// Resolves the gap for the current layout direction
+    fn resolve_gap(&self, available_space: u16) -> u16 {
+        let gap = match self.layout_direction {
+            LayoutDirection::Vertical => self.row_gap.or(self.gap),
+            LayoutDirection::Horizontal => self.column_gap.or(self.gap),
+        };
 
-            // Draw corners
-            draw_colored(self.y, self.x, border_chars.top_left)?;
-            draw_colored(self.y, self.x + self.width - 1, border_chars.top_right)?;
-            draw_colored(self.y + self.height - 1, self.x, border_chars.bottom_left)?;
-            draw_colored(
-                self.y + self.height - 1,
-                self.x + self.width - 1,
-                border_chars.bottom_right,
-            )?;
-
-            // Draw horizontal borders
-            for x in 1..self.width - 1 {
-                draw_colored(self.y, self.x + x, border_chars.horizontal)?;
-                draw_colored(
-                    self.y + self.height - 1,
-                    self.x + x,
-                    border_chars.horizontal,
-                )?;
+        match gap {
+            Some(Gap::Pixels(n)) => n,
+            Some(Gap::Percent(pct)) => {
+                let percent = (pct as u16).min(100);
+                (available_space * percent / 100).max(1)
             }
-
-            // Draw vertical borders
-            for y in 1..self.height - 1 {
-                draw_colored(self.y + y, self.x, border_chars.vertical)?;
-                draw_colored(self.y + y, self.x + self.width - 1, border_chars.vertical)?;
-            }
+            None => 0,
         }
+    }
+
+    /// Draws the borders
+    fn draw_borders(&self, window: &mut dyn Window) -> Result<()> {
+        if !self.border.has_border() {
+            return Ok(());
+        }
+
+        let color = if self.focused {
+            self.border.focused_color.unwrap_or(self.border.color)
+        } else {
+            self.border.color
+        };
+
+        let chars = self.border.chars;
+
+        // Top border
+        if self.border.sides.contains(&BorderSide::Top) {
+            self.draw_top_border(window, chars, color)?;
+        }
+
+        // Bottom border
+        if self.border.sides.contains(&BorderSide::Bottom) {
+            self.draw_bottom_border(window, chars, color)?;
+        }
+
+        // Left border
+        if self.border.sides.contains(&BorderSide::Left) {
+            self.draw_left_border(window, chars, color)?;
+        }
+
+        // Right border
+        if self.border.sides.contains(&BorderSide::Right) {
+            self.draw_right_border(window, chars, color)?;
+        }
+
         Ok(())
     }
 
-    /// Layouts and draws all child widgets
+    /// Draws the top border with optional title
+    fn draw_top_border(
+        &self,
+        window: &mut dyn Window,
+        chars: BorderChars,
+        color: ColorPair,
+    ) -> Result<()> {
+        let has_left = self.border.sides.contains(&BorderSide::Left);
+        let has_right = self.border.sides.contains(&BorderSide::Right);
+
+        let mut x = self.x;
+
+        // Draw left corner if present
+        if has_left {
+            window.write_str_colored(self.y, x, &chars.top_left.to_string(), color)?;
+            x += 1;
+        }
+
+        // Calculate available space for title or line
+        let available_width = self
+            .width
+            .saturating_sub(if has_left { 1 } else { 0 })
+            .saturating_sub(if has_right { 1 } else { 0 });
+
+        if let Some(title) = &self.title {
+            self.draw_title_in_border(window, title, x, available_width, chars, color)?;
+        } else {
+            // Just draw a horizontal line
+            for _ in 0..available_width {
+                window.write_str_colored(self.y, x, &chars.horizontal.to_string(), color)?;
+                x += 1;
+            }
+        }
+
+        // Draw right corner if present
+        if has_right {
+            window.write_str_colored(
+                self.y,
+                self.x + self.width - 1,
+                &chars.top_right.to_string(),
+                color,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Draws the title within the top border
+    fn draw_title_in_border(
+        &self,
+        window: &mut dyn Window,
+        title: &str,
+        start_x: u16,
+        available_width: u16,
+        chars: BorderChars,
+        color: ColorPair,
+    ) -> Result<()> {
+        let title_max_width = available_width.saturating_sub(2); // Space before and after
+        let display_title = if title.len() as u16 > title_max_width {
+            &title[..(title_max_width as usize)]
+        } else {
+            title
+        };
+
+        let title_width = display_title.len() as u16;
+
+        // Calculate position based on alignment
+        let left_padding = match self.title_alignment {
+            TitleAlignment::Left => 1,
+            TitleAlignment::Center => {
+                if title_width < available_width {
+                    (available_width - title_width) / 2
+                } else {
+                    1
+                }
+            }
+            TitleAlignment::Right => available_width.saturating_sub(title_width + 1),
+        };
+
+        let mut x = start_x;
+
+        // Draw line before title
+        for _ in 0..left_padding {
+            window.write_str_colored(self.y, x, &chars.horizontal.to_string(), color)?;
+            x += 1;
+        }
+
+        // Draw title with space before
+        if left_padding > 0 {
+            x -= 1;
+            window.write_str_colored(self.y, x, " ", color)?;
+            x += 1;
+        }
+
+        // Draw title
+        window.write_str_colored(self.y, x, display_title, color)?;
+        x += title_width;
+
+        // Draw space and line after
+        if x < start_x + available_width {
+            window.write_str_colored(self.y, x, " ", color)?;
+            x += 1;
+        }
+
+        for _ in x..(start_x + available_width) {
+            window.write_str_colored(self.y, x, &chars.horizontal.to_string(), color)?;
+            x += 1;
+        }
+
+        Ok(())
+    }
+
+    /// Draws the bottom border
+    fn draw_bottom_border(
+        &self,
+        window: &mut dyn Window,
+        chars: BorderChars,
+        color: ColorPair,
+    ) -> Result<()> {
+        let y = self.y + self.height - 1;
+        let has_left = self.border.sides.contains(&BorderSide::Left);
+        let has_right = self.border.sides.contains(&BorderSide::Right);
+
+        let mut x = self.x;
+
+        // Draw left corner
+        if has_left {
+            window.write_str_colored(y, x, &chars.bottom_left.to_string(), color)?;
+            x += 1;
+        }
+
+        // Draw horizontal line
+        let end_x = self.x + self.width - if has_right { 1 } else { 0 };
+        while x < end_x {
+            window.write_str_colored(y, x, &chars.horizontal.to_string(), color)?;
+            x += 1;
+        }
+
+        // Draw right corner
+        if has_right {
+            window.write_str_colored(
+                y,
+                self.x + self.width - 1,
+                &chars.bottom_right.to_string(),
+                color,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Draws the left border
+    fn draw_left_border(
+        &self,
+        window: &mut dyn Window,
+        chars: BorderChars,
+        color: ColorPair,
+    ) -> Result<()> {
+        let start_y = self.y
+            + if self.border.sides.contains(&BorderSide::Top) {
+                1
+            } else {
+                0
+            };
+        let end_y = self.y + self.height
+            - if self.border.sides.contains(&BorderSide::Bottom) {
+                1
+            } else {
+                0
+            };
+
+        for y in start_y..end_y {
+            window.write_str_colored(y, self.x, &chars.vertical.to_string(), color)?;
+        }
+
+        Ok(())
+    }
+
+    /// Draws the right border
+    fn draw_right_border(
+        &self,
+        window: &mut dyn Window,
+        chars: BorderChars,
+        color: ColorPair,
+    ) -> Result<()> {
+        let x = self.x + self.width - 1;
+        let start_y = self.y
+            + if self.border.sides.contains(&BorderSide::Top) {
+                1
+            } else {
+                0
+            };
+        let end_y = self.y + self.height
+            - if self.border.sides.contains(&BorderSide::Bottom) {
+                1
+            } else {
+                0
+            };
+
+        for y in start_y..end_y {
+            window.write_str_colored(y, x, &chars.vertical.to_string(), color)?;
+        }
+
+        Ok(())
+    }
+
+    /// Draws background fill
+    fn draw_background(&self, window: &mut dyn Window) -> Result<()> {
+        if !self.should_fill {
+            return Ok(());
+        }
+
+        if let Some(color) = self.background_color {
+            let (content_x, content_y, content_width, content_height) = self.get_content_area();
+
+            for y in content_y..(content_y + content_height) {
+                for x in content_x..(content_x + content_width) {
+                    window.write_str_colored(y, x, " ", color)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Draws all children
     fn draw_children(&self, window: &mut dyn Window) -> Result<()> {
         let (content_x, content_y, content_width, content_height) = self.get_content_area();
 
-        // Calculate total content size for auto-centering
-        let (total_content_width, total_content_height) =
-            if matches!(self.content_alignment, ContentAlignment::AutoCenter) {
-                self.calculate_total_content_size()
-            } else {
-                (0, 0) // Not needed for normal alignment
-            };
+        let gap = self.resolve_gap(match self.layout_direction {
+            LayoutDirection::Vertical => content_height,
+            LayoutDirection::Horizontal => content_width,
+        });
 
-        // Calculate centering offsets for the entire content block
-        let (start_x, start_y) = match self.content_alignment {
-            ContentAlignment::Normal => (0, 0),
-            ContentAlignment::AutoCenter => {
-                let offset_x = match self.layout_direction {
-                    LayoutDirection::Vertical => {
-                        // For vertical layout, center the widest child horizontally
-                        if total_content_width < content_width {
-                            (content_width - total_content_width) / 2
-                        } else {
-                            0
-                        }
-                    }
-                    LayoutDirection::Horizontal => {
-                        // For horizontal layout, center the entire content block
-                        if total_content_width < content_width {
-                            (content_width - total_content_width) / 2
-                        } else {
-                            0
-                        }
-                    }
-                };
-                let offset_y = if total_content_height < content_height {
-                    (content_height - total_content_height) / 2
-                } else {
-                    0
-                };
-                (offset_x, offset_y)
-            }
-        };
+        let mut current_x = content_x;
+        let mut current_y = content_y;
 
-        let mut current_x = start_x;
-        let mut current_y = start_y;
-
-        for (i, child) in self.children.iter().enumerate() {
+        for (idx, child) in self.children.iter().enumerate() {
             let (child_width, child_height) = child.get_size();
 
-            // Calculate final child position
-            let (child_x, child_y) = match self.content_alignment {
-                ContentAlignment::Normal => (current_x, current_y),
-                ContentAlignment::AutoCenter => {
-                    match self.layout_direction {
-                        LayoutDirection::Vertical => {
-                            // For vertical layout in auto-center mode, center each child individually
-                            // but ensure precise centering calculation
-                            let centered_x = if child_width < content_width {
-                                let available_space = content_width - child_width;
-                                available_space / 2
-                            } else {
-                                0
-                            };
-                            (centered_x, current_y)
-                        }
-                        LayoutDirection::Horizontal => {
-                            // For horizontal layout, use calculated positions
-                            (current_x, start_y)
-                        }
-                    }
-                }
-            };
+            // Create a window view for the child.
+            //
+            // Use the child's intrinsic size, but clip to the remaining content area so children
+            // can't draw outside the container's content box.
+            let remaining_width = content_width.saturating_sub(current_x - content_x);
+            let remaining_height = content_height.saturating_sub(current_y - content_y);
 
-            // Create a window view for the child within our content area
-            let mut child_window = WindowView {
+            let mut child_view = WindowView {
                 window,
-                x_offset: content_x + child_x,
-                y_offset: content_y + child_y,
-                width: content_width.saturating_sub(child_x),
-                height: content_height.saturating_sub(child_y),
+                x_offset: current_x,
+                y_offset: current_y,
+                width: child_width.min(remaining_width),
+                height: child_height.min(remaining_height),
             };
 
-            // Draw the child widget
-            child.draw(&mut child_window)?;
+            child.draw(&mut child_view)?;
 
-            // Update position for next child
             match self.layout_direction {
                 LayoutDirection::Vertical => {
                     current_y += child_height;
-                    if i < self.children.len() - 1 {
-                        current_y += self.child_spacing;
+                    if idx < self.children.len() - 1 {
+                        current_y += gap;
                     }
                 }
                 LayoutDirection::Horizontal => {
                     current_x += child_width;
-                    if i < self.children.len() - 1 {
-                        current_x += self.child_spacing;
+                    if idx < self.children.len() - 1 {
+                        current_x += gap;
                     }
                 }
             }
@@ -655,135 +953,27 @@ impl Container {
 
         Ok(())
     }
+}
 
-    /// Calculates the total size of all content for centering purposes
-    fn calculate_total_content_size(&self) -> (u16, u16) {
-        if self.children.is_empty() {
-            return (0, 0);
-        }
-
-        let mut total_width = 0u16;
-        let mut total_height = 0u16;
-
-        match self.layout_direction {
-            LayoutDirection::Vertical => {
-                // Width: maximum child width
-                // Height: sum of all child heights + spacing
-                for (i, child) in self.children.iter().enumerate() {
-                    let (child_width, child_height) = child.get_size();
-                    total_width = total_width.max(child_width);
-                    total_height += child_height;
-
-                    if i < self.children.len() - 1 {
-                        total_height += self.child_spacing;
-                    }
-                }
-            }
-            LayoutDirection::Horizontal => {
-                // Width: sum of all child widths + spacing
-                // Height: maximum child height
-                for (i, child) in self.children.iter().enumerate() {
-                    let (child_width, child_height) = child.get_size();
-                    total_width += child_width;
-                    total_height = total_height.max(child_height);
-
-                    if i < self.children.len() - 1 {
-                        total_width += self.child_spacing;
-                    }
-                }
-            }
-        }
-
-        (total_width, total_height)
+impl Default for Container {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Widget for Container {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
-        // For fullscreen containers, we assume they've been properly sized externally
-        // before calling draw(). The draw() method shouldn't mutate the container.
-
-        // Draw border first (if visible)
-        self.draw_border(window)?;
-
-        // Then draw children
+        self.draw_background(window)?;
+        self.draw_borders(window)?;
         self.draw_children(window)?;
-
         Ok(())
     }
 
     fn get_size(&self) -> (u16, u16) {
-        // For fullscreen containers that haven't been sized yet, return terminal size
-        if self.fullscreen && (self.width == 0 || self.height == 0) {
-            // This is a fallback - ideally update_fullscreen_size should be called first
-            (80, 24) // Default terminal size
-        } else {
-            (self.width, self.height)
-        }
+        (self.width, self.height)
     }
 
     fn get_position(&self) -> (u16, u16) {
         (self.x, self.y)
-    }
-}
-
-// Convenience constructors for common patterns
-impl Container {
-    /// Creates a simple div-like container with no border
-    pub fn div() -> Self {
-        Self::new(0, 0, 0, 0).without_border()
-    }
-
-    /// Creates a bordered panel-like container
-    pub fn panel() -> Self {
-        Self::new(0, 0, 0, 0)
-            .with_border(BorderChars::single_line())
-            .with_padding(1)
-    }
-
-    /// Creates a card-like container with double border
-    pub fn card() -> Self {
-        Self::new(0, 0, 0, 0)
-            .with_border(BorderChars::double_line())
-            .with_padding(2)
-    }
-
-    /// Creates a container that centers a single text widget horizontally
-    /// This is a convenience method for the common pattern of centering text
-    pub fn centered_text(text: impl Into<String>, terminal_width: u16) -> Self {
-        use crate::widgets::Text;
-
-        let text_string = text.into();
-        let text_len = text_string.chars().count() as u16;
-        let left_padding = if terminal_width > text_len {
-            (terminal_width - text_len) / 2
-        } else {
-            0
-        };
-
-        Self::div()
-            .add_child(Text::new(text_string))
-            .with_padding_config(Padding::custom(0, 0, 0, left_padding))
-    }
-
-    /// Creates a container that centers colored text horizontally
-    pub fn centered_colored_text(
-        text: impl Into<String>,
-        color: crate::Color,
-        terminal_width: u16,
-    ) -> Self {
-        use crate::widgets::Text;
-
-        let text_string = text.into();
-        let text_len = text_string.chars().count() as u16;
-        let left_padding = if terminal_width > text_len {
-            (terminal_width - text_len) / 2
-        } else {
-            0
-        };
-
-        Self::div()
-            .add_child(Text::new(text_string).with_text_color(color))
-            .with_padding_config(Padding::custom(0, 0, 0, left_padding))
     }
 }

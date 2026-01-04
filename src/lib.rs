@@ -74,22 +74,25 @@ pub use widgets::{
     Alignment,
     // Utilities
     BorderChars,
-    BorderStyle,
-    // Container system
+    // Box widget (OpenTUI-inspired)
+    BorderSide,
     Container,
+
     // Text widgets
     FigletText,
+    Gap,
     Label,
     LayoutDirection,
-    Padding,
-
-    // Other widgets
-    Panel,
-
+    // Scroll acceleration strategies
+    LinearScrollAccel,
+    MacOSScrollAccel,
+    ScrollAcceleration,
+    ScrollBox,
+    StickyEdge,
     Text,
     TextBlock,
     TextWrapMode,
-
+    TitleAlignment,
     VerticalAlignment,
 
     // Viewport for scrolling
@@ -98,28 +101,6 @@ pub use widgets::{
     // Core widget trait and utilities
     Widget,
     WidgetArea,
-
-    // Helper functions
-    code_block,
-    error_panel,
-    error_text,
-    footer_section,
-    header_section,
-    help_text,
-    highlighted_panel,
-    info_card,
-    info_panel,
-    main_content_area,
-    metric_card,
-    minimal_panel,
-    progress_bar,
-    sidebar,
-    status_bar,
-    subtitle_text,
-    success_panel,
-    success_text,
-    title_text,
-    warning_panel,
 };
 
 /// Common imports for MinUI applications.
@@ -142,66 +123,47 @@ pub mod prelude {
         App,
         // Utilities
         BorderChars,
-        BorderStyle,
+        // Layout system
+        BorderSide,
         // Colors
         Color,
         ColorPair,
 
         // Input handling
         CombinedInputHandler,
-        // Layout system
+
         Container,
         Error,
         Event,
 
         // Text widgets
+        Gap,
         KeybindAction,
         KeyboardHandler,
         Label,
         LayoutDirection,
+        LinearScrollAccel,
+        MacOSScrollAccel,
         MouseHandler,
 
-        Padding,
-
-        // Other widgets
-        Panel,
         Result,
+        ScrollAcceleration,
+        ScrollBox,
         ScrollDirection,
         Scroller,
+        StickyEdge,
         TerminalWindow,
         Text,
         TextBlock,
         TextWrapMode,
-
+        TitleAlignment,
         VerticalAlignment,
 
         // Viewport for scrolling
         Viewport,
 
+        // Core widget trait and utilities
         Widget,
-        // Window and input
-        Window,
-
-        // Helper functions
-        code_block,
-        error_panel,
-        error_text,
-        footer_section,
-        header_section,
-        help_text,
-        highlighted_panel,
-        info_card,
-        info_panel,
-        main_content_area,
-        metric_card,
-        minimal_panel,
-        progress_bar,
-        sidebar,
-        status_bar,
-        subtitle_text,
-        success_panel,
-        success_text,
-        title_text,
-        warning_panel,
+        WidgetArea,
     };
 }
