@@ -102,6 +102,7 @@
 //! enabling widgets to share styling elements while maintaining flexibility
 //! for custom appearances and cross-platform terminal compatibility.
 
+use crate::window::CursorSpec;
 use crate::{ColorPair, Result, Window};
 
 /// Character sets for drawing borders, boxes, and frames.
@@ -379,6 +380,29 @@ impl<'a> Window for WindowView<'a> {
 
     fn flush(&mut self) -> Result<()> {
         self.window.flush()
+    }
+
+    fn request_cursor(&mut self, cursor: CursorSpec) {
+        // Forward deferred cursor requests through the view, translating coordinates into the
+        // parent window's coordinate space and accounting for scroll.
+        //
+        // Without this, widgets rendered inside a `WindowView` (e.g. TextInput inside containers)
+        // will "request" a cursor that never reaches the real window, making the cursor invisible.
+        let x = self
+            .x_offset
+            .saturating_add(cursor.x.saturating_sub(self.scroll_x));
+        let y = self
+            .y_offset
+            .saturating_add(cursor.y.saturating_sub(self.scroll_y));
+        self.window.request_cursor(CursorSpec {
+            x,
+            y,
+            visible: cursor.visible,
+        });
+    }
+
+    fn clear_cursor_request(&mut self) {
+        self.window.clear_cursor_request();
     }
 
     fn set_cursor_position(&mut self, x: u16, y: u16) -> Result<()> {

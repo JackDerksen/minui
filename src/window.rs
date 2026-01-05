@@ -343,6 +343,11 @@ pub struct TerminalWindow {
     /// Deferred cursor request to apply at end-of-frame.
     pending_cursor: Option<CursorSpec>,
 
+    /// Last cursor state we applied to the real terminal (position + visibility).
+    ///
+    /// Used to avoid redundant `Show`/`Hide` churn which can cause flicker on some terminals.
+    last_cursor: Option<CursorSpec>,
+
     /// Persistent stdout handle used for all terminal output.
     ///
     /// Keeping a single handle avoids interleaving/flicker caused by repeatedly creating
@@ -406,6 +411,7 @@ impl TerminalWindow {
             capabilities: TerminalCapabilities::detect(),
 
             pending_cursor: None,
+            last_cursor: None,
 
             out,
 
@@ -830,9 +836,12 @@ impl TerminalWindow {
         let changes = self.buffer.process_changes();
         let mut last_colors: Option<ColorPair> = None;
 
-        // Hide cursor while applying buffered changes so transient cursor movement during `MoveTo`
-        // calls isn't visible (prevents occasional flicker).
-        execute!(self.out, cursor::Hide)?;
+        // Hide the cursor while rendering changes to avoid flicker from transient `MoveTo` calls.
+        // We track whether we hid it so we know to restore it afterward.
+        let hid_cursor_for_render = !changes.is_empty();
+        if hid_cursor_for_render {
+            execute!(self.out, cursor::Hide)?;
+        }
 
         for change in changes {
             // Move the cursor to the correct position for the change
@@ -865,19 +874,57 @@ impl TerminalWindow {
         // Reset the color at the end of the flush
         execute!(self.out, style::ResetColor)?;
 
-        // Apply deferred cursor request after rendering. This is the ONLY place we show the cursor.
-        match self.pending_cursor.take() {
-            Some(spec) if spec.visible => {
-                execute!(self.out, cursor::MoveTo(spec.x, spec.y), cursor::Show)?;
-            }
-            Some(_spec) => {
-                execute!(self.out, cursor::Hide)?;
-            }
-            None => {
-                // No request: keep cursor hidden for deterministic behavior and to prevent flicker.
-                execute!(self.out, cursor::Hide)?;
+        // Apply deferred cursor request after rendering.
+        //
+        // We track the last cursor state we applied to avoid redundant Show/Hide toggles
+        // and redundant MoveTo calls, which can cause flicker on some terminals.
+        //
+        // Important behavior: if nobody requested a cursor state this frame, we preserve the
+        // previous cursor visibility instead of forcing it hidden. This avoids "cursor disappears"
+        // bugs when an app doesn't call `clear_cursor_request()` every frame.
+        let desired = match self.pending_cursor.take() {
+            Some(spec) => spec,
+            None => self.last_cursor.unwrap_or(CursorSpec {
+                x: 0,
+                y: 0,
+                visible: false,
+            }),
+        };
+
+        let prev = self.last_cursor;
+
+        // Move cursor to the desired position if it should be visible.
+        //
+        // We must ALWAYS reposition if we rendered any changes this frame, because rendering
+        // uses MoveTo for each change and leaves the terminal cursor at the last printed
+        // character position. Without this, the cursor would appear at the end of the last
+        // rendered text instead of the requested position.
+        if desired.visible {
+            let needs_move = match prev {
+                Some(p) => !p.visible || p.x != desired.x || p.y != desired.y,
+                None => true,
+            };
+            if needs_move || hid_cursor_for_render {
+                execute!(self.out, cursor::MoveTo(desired.x, desired.y))?;
             }
         }
+
+        // Toggle visibility as needed.
+        //
+        // If we hid the cursor for rendering, we must explicitly show it again when
+        // `desired.visible` is true, even if our logical `last_cursor` already had it visible.
+        // Otherwise, the cursor stays hidden because the terminal state diverged from our
+        // tracked state.
+        let prev_visible = prev.map(|p| p.visible).unwrap_or(false);
+        if desired.visible {
+            if !prev_visible || hid_cursor_for_render {
+                execute!(self.out, cursor::Show)?;
+            }
+        } else if prev_visible {
+            execute!(self.out, cursor::Hide)?;
+        }
+
+        self.last_cursor = Some(desired);
 
         self.out.flush()?;
         Ok(())
