@@ -130,7 +130,7 @@ pub use crate::widgets::{Table, TableColumn};
 pub mod ui;
 pub use ui::{
     AutoHide, HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags,
-    InteractionId,
+    InteractionId, OwnerId, PolicyEffects, RouteTarget, UiScene,
 };
 
 /// Common imports for MinUI applications.
@@ -193,7 +193,10 @@ pub mod prelude {
         MacOSScrollAccel,
         MouseHandler,
 
+        OwnerId,
+        PolicyEffects,
         Result,
+        RouteTarget,
         ScrollAcceleration,
         ScrollBar,
         ScrollBarOptions,
@@ -223,6 +226,7 @@ pub mod prelude {
         TextBlock,
         TextWrapMode,
         TitleAlignment,
+        UiScene,
         VerticalAlignment,
 
         // Viewport for scrolling
