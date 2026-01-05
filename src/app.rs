@@ -7,7 +7,7 @@
 //! ## Two Modes
 //!
 //! - **Event-driven** (default): Waits for user input, great for TUI apps
-//! - **Game mode**: Fixed tick rate for smooth animations and games
+//! - **Ticked mode**: Fixed frame rate for smooth animations and realtime terminal apps (`Event::Frame`)
 //!
 //! ## Example
 //!
@@ -43,11 +43,11 @@ use std::time::{Duration, Instant};
 /// Application runner that manages the main loop.
 ///
 /// Handles window setup, input polling, and timing so you can focus on your application logic.
-/// Can run in event-driven mode (default) or with a fixed tick rate for games.
+/// Can run in event-driven mode (default) or with a fixed frame rate for animated applications (and possibly games in the future).
 pub struct App<S> {
     window: TerminalWindow,
     state: S,
-    tick_rate: Option<Duration>,
+    frame_rate: Option<Duration>,
 }
 
 impl<S> App<S> {
@@ -58,7 +58,7 @@ impl<S> App<S> {
         Ok(App {
             window,
             state: initial_state,
-            tick_rate: None, // Default to event-driven TUI mode
+            frame_rate: None, // Default to event-driven TUI mode
         })
     }
 
@@ -79,11 +79,16 @@ impl<S> App<S> {
         &mut self.window
     }
 
-    /// Enables game mode with a fixed tick rate.
+    /// Enables a fixed frame rate (useful for animations and realtime-style terminal apps).
     ///
-    /// Your update function will receive `Event::Tick` at regular intervals.
-    pub fn with_tick_rate(mut self, tick_rate: Duration) -> Self {
-        self.tick_rate = Some(tick_rate);
+    /// Your update function will receive `Event::Frame` at regular intervals.
+    ///
+    /// Note: this currently does not change the overall loop structure — the runner still
+    /// iterates continuously and draws every pass. A future improvement would be to make
+    /// the "event-driven" mode block efficiently (only waking for input / resize /
+    /// invalidation), while "ticked" mode redraws on a schedule.
+    pub fn with_frame_rate(mut self, frame_rate: Duration) -> Self {
+        self.frame_rate = Some(frame_rate);
         self
     }
 
@@ -123,12 +128,12 @@ impl<S> App<S> {
                 }
             }
 
-            // --- Game Tick Handling ---
-            // If in game mode, check if it's time for a fixed update.
-            if let Some(tick_rate) = self.tick_rate
-                && last_tick.elapsed() >= tick_rate
+            // --- Ticked Updates ---
+            // If using a fixed tick rate, check if it's time to emit a fixed-rate frame event.
+            if let Some(frame_rate) = self.frame_rate
+                && last_tick.elapsed() >= frame_rate
             {
-                if !update(&mut self.state, Event::Tick) {
+                if !update(&mut self.state, Event::Frame) {
                     break; // Exit if the tick update returns false
                 }
                 last_tick = Instant::now();
@@ -153,7 +158,7 @@ impl<S> App<S> {
             self.window.clear_screen()?;
             draw(&mut self.state, &mut self.window)?;
 
-            // Yield CPU time to avoid spinning, especially in game mode.
+            // Yield CPU time to avoid spinning, especially when using a fixed tick rate.
             std::thread::sleep(Duration::from_millis(1));
         }
 

@@ -30,7 +30,7 @@ fn main() -> minui::Result<()> {
         mouse_pos: (0, 0),
     };
 
-    let mut app = App::new(initial_state)?.with_tick_rate(Duration::from_millis(16));
+    let mut app = App::new(initial_state)?.with_frame_rate(Duration::from_millis(16));
 
     app.run(
         |state, event| {

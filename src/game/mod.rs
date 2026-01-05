@@ -52,11 +52,11 @@
 //! struct Game { x: f32, y: f32, dx: f32, dy: f32 }
 //!
 //! let mut app = App::new(Game { x: 40.0, y: 12.0, dx: 0.0, dy: 0.0 })?
-//!     .with_tick_rate(Duration::from_millis(16)); // 60 FPS
+//!     .with_frame_rate(Duration::from_millis(16)); // 60 FPS
 //!
 //! app.run(
 //!     |game, event| match event {
-//!         Event::Tick => {
+//!         Event::Frame => {
 //!             game.x += game.dx; game.y += game.dy;
 //!             game.dx *= 0.9; game.dy *= 0.9; // friction
 //!             true

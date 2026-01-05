@@ -1,7 +1,7 @@
 //! # Input Events
 //!
 //! Events represent user input and system changes like keyboard presses, mouse clicks,
-//! window resizes, and timer ticks for games.
+//! window resizes, and timed frame events for animations / realtime apps.
 //!
 //! ## Modifier-aware keyboard input
 //!
@@ -32,6 +32,9 @@
 //!
 //! let mut app = App::new(())?;
 //!
+//! // Enable timed frame events (optional).
+//! let mut app = app.with_frame_rate(std::time::Duration::from_millis(16)); // ~60 FPS
+//!
 //! app.run(
 //!     |state, event| {
 //!         // Optional: normalize modifier-aware key events into legacy ones.
@@ -42,7 +45,7 @@
 //!             Event::KeyUp => { /* move up */ true },
 //!             Event::Keybind(KeybindAction::Quit) => false, // Exit via keybind
 //!             Event::MouseClick { x, y, .. } => { /* handle click */ true },
-//!             Event::Tick => { /* game update */ true },
+//!             Event::Frame => { /* animation / realtime update */ true },
 //!             _ => true,
 //!         }
 //!     },
@@ -132,9 +135,9 @@ pub enum Event {
     /// Terminal window was resized to the new dimensions
     Resize { width: u16, height: u16 },
 
-    // Fixed step updates in game/app loops
-    /// Fixed-rate tick event for game loops (generated when using `App::with_tick_rate`)
-    Tick,
+    // Fixed step updates in app loops (timed updates / animations)
+    /// Fixed-rate frame event (generated when using `App::with_frame_rate`)
+    Frame,
 
     /// Unknown or unhandled event type
     Unknown,

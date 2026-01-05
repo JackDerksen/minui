@@ -1,17 +1,17 @@
 //! # MinUI - A Minimal Terminal UI Framework
 //!
-//! MinUI is a lightweight terminal UI framework for building both traditional TUI applications
-//! and terminal-based games. It focuses on simplicity and ease of use while providing the
-//! essential tools you need to create engaging terminal interfaces.
+//! MinUI is a lightweight terminal UI framework for building traditional terminal applications.
+//! It focuses on simplicity and ease of use while providing the essential tools you need to
+//! create responsive, interactive terminal interfaces.
 //!
 //! ## What MinUI Offers
 //!
-//! - Event-driven TUI applications and fixed-rate game loops
+//! - Event-driven terminal applications with optional timed updates (fixed tick rate) for animations
 //! - Simple widget system with containers, labels, panels, and text blocks
 //! - Full color support (RGB, ANSI, named colors)
 //! - Cross-platform keyboard and mouse input
-//! - Game development tools (sprites, collision detection, maps)
 //! - Buffered rendering for smooth updates
+//! - Experimental game utilities (sprites/tiles/maps/collision) — expect breaking changes
 //!
 //! ## Quick Start
 //!
@@ -40,7 +40,7 @@
 //! - [`color`] - Color handling and styling
 //! - [`input`] - Keyboard and mouse input
 //! - [`render`] - Low-level rendering and buffers
-//! - [`game`] - Game development utilities
+//! - [`game`] - Experimental game-oriented utilities (early-stage; API/behavior may change)
 //! - [`window`] - Terminal window management
 //!
 //! Check out the examples in the `examples/` directory to see MinUI in action.

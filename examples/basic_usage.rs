@@ -52,7 +52,7 @@
 //! The update closure receives an `Event` which can be:
 //! - **Keyboard events**: `Event::Character`, `Event::KeyUp`, `Event::KeyDown`, etc.
 //! - **Mouse events**: `Event::MouseClick`, `Event::MouseMove`, `Event::MouseScroll`, etc.
-//! - **System events**: `Event::Resize`, `Event::Tick` (in game mode)
+//! - **System events**: `Event::Resize`, `Event::Frame` (when using a fixed frame rate)
 //!
 //! Return `false` from the update closure to exit the application.
 //!
@@ -63,16 +63,16 @@
 //! - Call `.draw(window)?` to render them
 //! - Use low-level window methods like `window.write_str()` for custom rendering
 //!
-//! # Game Mode (Optional)
+//! # Timed Updates (Optional)
 //!
 //! By default, the app runs in **event-driven mode** - the update closure is only called
-//! when there's input. For games or animations, you can enable a fixed tick rate:
+//! when there's input. For animations or realtime-style apps, you can enable a fixed frame rate:
 //!
 //! ```ignore
-//! let mut app = App::new(state)?.with_tick_rate(Duration::from_millis(16)); // ~60 FPS
+//! let mut app = App::new(state)?.with_frame_rate(Duration::from_millis(16)); // ~60 FPS
 //! ```
 //!
-//! In game mode, you'll also receive `Event::Tick` events at regular intervals.
+//! When using a fixed frame rate, you'll also receive `Event::Frame` events at regular intervals.
 
 use minui::prelude::*;
 
