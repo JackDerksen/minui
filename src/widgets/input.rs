@@ -302,11 +302,29 @@ impl TextInputState {
         }
 
         // Modifier-aware keyboard events are now the default input path.
-        // Translate them into the legacy `Event::*` variants this widget already understands.
         //
-        // This keeps `TextInputState` stable while allowing apps that care about modifiers
-        // to route `Event::KeyWithModifiers` directly (or implement richer behavior later).
+        // We translate them into the legacy `Event::*` variants this widget already understands,
+        // but for selection we also honor Shift-modified navigation keys by using the widget's
+        // existing selection-aware movement methods.
         if let Event::KeyWithModifiers(k) = event {
+            // Shift-selection: extend selection while moving the caret.
+            //
+            // Note: This is intentionally limited to left/right for now, because the current
+            // TextInput event model is single-line and does not have dedicated Home/End events.
+            if k.mods.shift {
+                match k.key {
+                    crate::KeyKind::Left => {
+                        self.move_left(true);
+                        return true;
+                    }
+                    crate::KeyKind::Right => {
+                        self.move_right(true);
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+
             let translated = match k.key {
                 crate::KeyKind::Char(c) => Event::Character(c),
                 crate::KeyKind::Up => Event::KeyUp,
