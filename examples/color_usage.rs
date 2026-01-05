@@ -13,8 +13,16 @@ fn main() -> minui::Result<()> {
 
     app.run(
         |_state, event| {
-            // Return false to exit
-            !matches!(event, Event::Character('q'))
+            // Return false to exit.
+            //
+            // The keyboard handler may emit:
+            // - `Event::KeyWithModifiers(KeyKind::Char('q'))` (modifier-aware), or
+            // - `Event::Character('q')` (legacy fallback).
+            match event {
+                Event::KeyWithModifiers(k) if matches!(k.key, KeyKind::Char('q')) => false,
+                Event::Character('q') => false,
+                _ => true,
+            }
         },
         |_state, window| {
             // Display title at the top

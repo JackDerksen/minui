@@ -19,7 +19,14 @@ fn main() -> minui::Result<()> {
     let mut app = App::new(())?;
 
     app.run(
-        |_state, event| !matches!(event, Event::Character('q')),
+        |_state, event| {
+            // Quit on 'q' (supports both modifier-aware and legacy events).
+            match event {
+                Event::KeyWithModifiers(k) if matches!(k.key, KeyKind::Char('q')) => false,
+                Event::Character('q') => false,
+                _ => true,
+            }
+        },
         |_state, window| {
             let (w, h) = window.get_size();
             create_app_layout(w, h).draw(window)?;

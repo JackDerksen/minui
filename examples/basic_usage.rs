@@ -90,9 +90,16 @@ fn main() -> minui::Result<()> {
         // Purpose: Update application state based on user input
         // Returns: true to continue running, false to exit
         |_state, event| {
-            // Handle the 'q' key to quit the application
-            // For other events, return true to keep running
-            !matches!(event, Event::Character('q'))
+            // Handle the 'q' key to quit the application.
+            //
+            // The keyboard handler may emit:
+            // - `Event::KeyWithModifiers(KeyKind::Char('q'))` (modifier-aware), or
+            // - `Event::Character('q')` (legacy fallback).
+            match event {
+                Event::KeyWithModifiers(k) if matches!(k.key, KeyKind::Char('q')) => false,
+                Event::Character('q') => false,
+                _ => true,
+            }
         },
         // ========== DRAW CLOSURE ==========
         // Called after each update to render the current application state

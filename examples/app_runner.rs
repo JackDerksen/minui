@@ -10,7 +10,7 @@
 //! - Keyboard input handling
 //! - Clean separation of update and draw logic
 
-use minui::{App, Event};
+use minui::{App, Event, KeyKind};
 use std::time::Duration;
 
 /// Game state - just a position that moves around
@@ -32,14 +32,24 @@ fn main() -> minui::Result<()> {
         // Return false to exit, true to continue
         |state, event| {
             match event {
-                // Exit when 'q' is pressed
+                // Prefer modifier-aware key events (the keyboard handler may emit these for most keys).
+                Event::KeyWithModifiers(k) => match k.key {
+                    KeyKind::Char('q') => return false,
+                    KeyKind::Up => state.y = state.y.saturating_sub(1),
+                    KeyKind::Down => state.y += 1,
+                    KeyKind::Left => state.x = state.x.saturating_sub(1),
+                    KeyKind::Right => state.x += 1,
+                    _ => {}
+                },
+
+                // Legacy fallback.
                 Event::Character('q') => return false,
 
-                // Arrow keys move the player
                 Event::KeyUp => state.y = state.y.saturating_sub(1),
                 Event::KeyDown => state.y += 1,
                 Event::KeyLeft => state.x = state.x.saturating_sub(1),
                 Event::KeyRight => state.x += 1,
+
                 Event::Tick => {
                     // Automatic movement every tick (100ms)
                     state.x += 1;

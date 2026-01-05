@@ -3,7 +3,7 @@
 //! Demonstrates MinUI's unified scrolling architecture:
 //! - `ScrollBox` provides a scrollable viewport backed by a shared `ScrollState`
 //! - `ScrollBar` binds to the same `ScrollState` for thumb dragging + arrow buttons
-//! - Phase 1 interaction routing via `InteractionCache` + `WidgetArea`
+//! - Interaction routing via `InteractionCache` + `WidgetArea`
 //! - Scrollbar auto-hide UX via `AutoHide`
 //!
 //! Controls:
@@ -115,7 +115,12 @@ fn main() -> minui::Result<()> {
             // Observe mouse position for proximity-based scrollbar reveal.
             state.ui.observe_event(&event);
 
-            // Quit
+            // Quit (prefer modifier-aware events, with legacy fallback)
+            if let Event::KeyWithModifiers(k) = event {
+                if matches!(k.key, KeyKind::Char('q')) {
+                    return false;
+                }
+            }
             if matches!(event, Event::Character('q')) {
                 return false;
             }
@@ -213,8 +218,25 @@ fn main() -> minui::Result<()> {
                 _ => {}
             }
 
-            // Keyboard scrolling fallback.
+            // Keyboard scrolling (prefer modifier-aware events, with legacy fallback).
             match event {
+                Event::KeyWithModifiers(k) => match k.key {
+                    KeyKind::Up => state
+                        .vbar
+                        .scroll_by_fraction(-1.0 / 5.0, ScrollUnit::Viewport),
+                    KeyKind::Down => state
+                        .vbar
+                        .scroll_by_fraction(1.0 / 5.0, ScrollUnit::Viewport),
+                    KeyKind::Left => state
+                        .hbar
+                        .scroll_by_fraction(-1.0 / 5.0, ScrollUnit::Viewport),
+                    KeyKind::Right => state
+                        .hbar
+                        .scroll_by_fraction(1.0 / 5.0, ScrollUnit::Viewport),
+                    _ => {}
+                },
+
+                // Legacy fallback.
                 Event::KeyUp => state
                     .vbar
                     .scroll_by_fraction(-1.0 / 5.0, ScrollUnit::Viewport),
@@ -227,6 +249,7 @@ fn main() -> minui::Result<()> {
                 Event::KeyRight => state
                     .hbar
                     .scroll_by_fraction(1.0 / 5.0, ScrollUnit::Viewport),
+
                 _ => {}
             }
 

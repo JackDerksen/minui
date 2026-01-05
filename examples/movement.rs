@@ -23,6 +23,34 @@ fn main() -> minui::Result<()> {
             let (width, height) = (80u16, 24u16); // Reasonable defaults
 
             match event {
+                // Prefer modifier-aware key events first (the keyboard handler may emit these for most keys).
+                Event::KeyWithModifiers(k) => match k.key {
+                    KeyKind::Char('q') | KeyKind::Escape => return false,
+
+                    KeyKind::Up => {
+                        if state.y > 0 {
+                            state.y -= 1;
+                        }
+                    }
+                    KeyKind::Down => {
+                        if state.y < height - 1 {
+                            state.y += 1;
+                        }
+                    }
+                    KeyKind::Left => {
+                        if state.x > 0 {
+                            state.x -= 1;
+                        }
+                    }
+                    KeyKind::Right => {
+                        if state.x < width - 1 {
+                            state.x += 1;
+                        }
+                    }
+                    _ => {}
+                },
+
+                // Legacy fallback.
                 Event::Character('q') | Event::Escape => return false,
                 Event::KeyUp => {
                     if state.y > 0 {
@@ -44,6 +72,7 @@ fn main() -> minui::Result<()> {
                         state.x += 1;
                     }
                 }
+
                 _ => {}
             }
 

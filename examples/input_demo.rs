@@ -34,13 +34,89 @@ fn main() -> minui::Result<()> {
 
     app.run(
         |state, event| {
-            // Return false to exit
+            // Return false to exit (supports modifier-aware and legacy events).
+            if let Event::KeyWithModifiers(k) = event {
+                if matches!(k.key, KeyKind::Char('q')) {
+                    return false;
+                }
+            }
             if matches!(event, Event::Character('q')) {
                 return false;
             }
 
             // Handle events and update state
             match event {
+                // Prefer modifier-aware keyboard events (the keyboard handler may emit these for most keys).
+                Event::KeyWithModifiers(k) => match k.key {
+                    KeyKind::Char(c) => {
+                        state.event_log.push_back(format!(
+                            "Key: '{}' (mods: shift={}, ctrl={}, alt={}, super={})",
+                            c, k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Up => {
+                        state.event_log.push_back(format!(
+                            "Key: ↑ Up (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Down => {
+                        state.event_log.push_back(format!(
+                            "Key: ↓ Down (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Left => {
+                        state.event_log.push_back(format!(
+                            "Key: ← Left (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Right => {
+                        state.event_log.push_back(format!(
+                            "Key: → Right (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Enter => {
+                        state.event_log.push_back(format!(
+                            "Key: ⏎ Enter (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Escape => {
+                        state.event_log.push_back(format!(
+                            "Key: Escape (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Backspace => {
+                        state.event_log.push_back(format!(
+                            "Key: ⌫ Backspace (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Delete => {
+                        state.event_log.push_back(format!(
+                            "Key: ⌦ Delete (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Tab => {
+                        state.event_log.push_back(format!(
+                            "Key: Tab (mods: shift={}, ctrl={}, alt={}, super={})",
+                            k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                    KeyKind::Function(n) => {
+                        state.event_log.push_back(format!(
+                            "Key: F{} (mods: shift={}, ctrl={}, alt={}, super={})",
+                            n, k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
+                        ));
+                    }
+                },
+
+                // Legacy fallback keyboard events (some backends may still emit these).
                 Event::Character(c) => {
                     state.event_log.push_back(format!("Key: '{}'", c));
                 }

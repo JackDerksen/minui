@@ -81,12 +81,32 @@ fn main() -> minui::Result<()> {
                 return true;
             }
 
-            // Quit
+            // Prefer modifier-aware key events first (the keyboard handler may emit these for most keys),
+            // with legacy fallback for older event paths.
+            if let Event::KeyWithModifiers(k) = event {
+                match k.key {
+                    KeyKind::Char('q') => return false,
+                    KeyKind::Tab => {
+                        toggle_focus(state);
+                        return true;
+                    }
+                    KeyKind::Enter => {
+                        state.last_submit = match state.focus {
+                            Focus::Plain => format!("plain: {}", state.plain.text()),
+                            Focus::Wrapped => format!("wrapped: {}", state.wrapped.text()),
+                        };
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+
+            // Quit (legacy fallback)
             if matches!(event, Event::Character('q')) {
                 return false;
             }
 
-            // Focus switching.
+            // Focus switching (legacy fallback)
             if matches!(event, Event::Tab) {
                 toggle_focus(state);
                 return true;
@@ -154,7 +174,7 @@ fn main() -> minui::Result<()> {
                 _ => {}
             }
 
-            // Submit on Enter: copy current focused value to output area
+            // Submit on Enter: copy current focused value to output area (legacy fallback)
             if matches!(event, Event::Enter) {
                 state.last_submit = match state.focus {
                     Focus::Plain => format!("plain: {}", state.plain.text()),
