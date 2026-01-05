@@ -301,6 +301,29 @@ impl TextInputState {
             return false;
         }
 
+        // Modifier-aware keyboard events are now the default input path.
+        // Translate them into the legacy `Event::*` variants this widget already understands.
+        //
+        // This keeps `TextInputState` stable while allowing apps that care about modifiers
+        // to route `Event::KeyWithModifiers` directly (or implement richer behavior later).
+        if let Event::KeyWithModifiers(k) = event {
+            let translated = match k.key {
+                crate::KeyKind::Char(c) => Event::Character(c),
+                crate::KeyKind::Up => Event::KeyUp,
+                crate::KeyKind::Down => Event::KeyDown,
+                crate::KeyKind::Left => Event::KeyLeft,
+                crate::KeyKind::Right => Event::KeyRight,
+                crate::KeyKind::Delete => Event::Delete,
+                crate::KeyKind::Backspace => Event::Backspace,
+                crate::KeyKind::Tab => Event::Tab,
+                crate::KeyKind::Enter => Event::Enter,
+                crate::KeyKind::Escape => Event::Escape,
+                crate::KeyKind::Function(n) => Event::FunctionKey(n),
+            };
+
+            return self.handle_event(translated);
+        }
+
         match event {
             Event::Character(c) => {
                 // Ignore control chars in raw mode; framework should map those to keybinds.
