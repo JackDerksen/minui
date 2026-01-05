@@ -27,7 +27,7 @@ MinUI is actively developed with these features available:
   - [x] FIGlet text widget for rendering ASCII text labels
   - [x] `ScrollBox` (scrollable container backed by `ScrollState`)
   - [x] `ScrollBar` + `Slider` controls (vertical/horizontal)
-  - [ ] Table widget
+  - [x] Table widget
   - [x] Input widget
   - [ ] Predefined common widget layouts / presets
 - [x] Robust error handling

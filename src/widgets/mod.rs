@@ -160,6 +160,7 @@ pub use scroll::state::{ScrollOffset, ScrollOrientation, ScrollSize, ScrollState
 pub use scrollbox::{
     LinearScrollAccel, MacOSScrollAccel, ScrollAcceleration, ScrollBox, StickyEdge,
 };
+pub use table::{Table, TableColumn};
 pub use text::{Alignment, Label, Text, TextBlock, TextWrapMode, VerticalAlignment};
 pub use viewport::Viewport;
 

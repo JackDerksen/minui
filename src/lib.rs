@@ -123,6 +123,9 @@ pub use widgets::{
     WidgetArea,
 };
 
+// Widgets re-exported via the `widgets` module (not crate root)
+pub use crate::widgets::{Table, TableColumn};
+
 // UI utilities (hit-testing, focus helpers, etc.)
 pub mod ui;
 pub use ui::{
@@ -210,6 +213,8 @@ pub mod prelude {
 
         // Text utilities (cell-width + clipping)
         TabPolicy,
+        Table,
+        TableColumn,
         TerminalCapabilities,
 
         TerminalWindow,
