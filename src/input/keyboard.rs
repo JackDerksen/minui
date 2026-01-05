@@ -3,7 +3,7 @@
 //! This module provides the core keyboard input functionality using crossterm
 //! for cross-platform terminal input handling and crokey for custom keybinds.
 
-use crate::{Event, Result};
+use crate::{Event, KeyKind, KeyModifiers, KeyWithModifiers, Result};
 use crokey::KeyCombination;
 use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEvent};
 use std::collections::HashMap;
@@ -522,9 +522,15 @@ impl KeyboardHandler {
     pub fn wait_for_input(&self) -> Result<Event> {
         loop {
             if let CrosstermEvent::Key(key) = event::read()? {
-                // Check for keybind matches first
+                // Check for keybind matches first (higher priority than raw modifier events).
                 if let Some(action) = self.check_keybind_match(&key) {
                     return Ok(Event::Keybind(action));
+                }
+
+                // Emit a modifier-aware event when possible. If we can't represent this key in our
+                // current KeyKind model, fall back to legacy conversion.
+                if let Some(e) = self.convert_key_event_with_modifiers(&key) {
+                    return Ok(e);
                 }
 
                 return Ok(self.convert_key_event(key.code));
@@ -766,6 +772,43 @@ impl KeyboardHandler {
         }
     }
 
+    /// Converts a crossterm KeyEvent to a MinUI modifier-aware key event.
+    ///
+    /// Returns `None` if the key cannot be represented by the current `KeyKind` model.
+    fn convert_key_event_with_modifiers(&self, key_event: &KeyEvent) -> Option<Event> {
+        let mods = KeyModifiers {
+            shift: key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::SHIFT),
+            ctrl: key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL),
+            alt: key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::ALT),
+            super_key: key_event
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::SUPER),
+        };
+
+        let key = match key_event.code {
+            KeyCode::Char(c) => KeyKind::Char(c),
+            KeyCode::Tab => KeyKind::Tab,
+            KeyCode::Up => KeyKind::Up,
+            KeyCode::Down => KeyKind::Down,
+            KeyCode::Left => KeyKind::Left,
+            KeyCode::Right => KeyKind::Right,
+            KeyCode::Delete => KeyKind::Delete,
+            KeyCode::Backspace => KeyKind::Backspace,
+            KeyCode::Enter => KeyKind::Enter,
+            KeyCode::Esc => KeyKind::Escape,
+            KeyCode::F(n) => KeyKind::Function(n),
+            _ => return None,
+        };
+
+        Some(Event::KeyWithModifiers(KeyWithModifiers { key, mods }))
+    }
+
     /// Converts a crossterm KeyEvent to a MinUI Event with keybind support.
     ///
     /// This public method allows external code to process key events through
@@ -779,9 +822,14 @@ impl KeyboardHandler {
     ///
     /// The corresponding MinUI Event, checking for keybinds first.
     pub fn process_key_event(&self, key_event: KeyEvent) -> Event {
-        // Check for keybind matches first
+        // Check for keybind matches first (higher priority than raw modifier events).
         if let Some(action) = self.check_keybind_match(&key_event) {
             return Event::Keybind(action);
+        }
+
+        // Prefer modifier-aware conversion when possible.
+        if let Some(e) = self.convert_key_event_with_modifiers(&key_event) {
+            return e;
         }
 
         // Fall back to standard event conversion

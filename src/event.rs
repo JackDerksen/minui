@@ -3,6 +3,16 @@
 //! Events represent user input and system changes like keyboard presses, mouse clicks,
 //! window resizes, and timer ticks for games.
 //!
+//! ## Modifier-aware keyboard input
+//!
+//! MinUI historically exposed keyboard input as a small set of coarse variants
+//! (e.g. `Event::KeyLeft`, `Event::Character('a')`). For editor-like behavior, MinUI now
+//! includes a modifier-aware key event: `Event::KeyWithModifiers(KeyWithModifiers)`.
+//!
+//! Backends may emit *both* the legacy event and the modifier-aware event for a single
+//! physical key press. Apps that care about modifiers should prefer `KeyWithModifiers`
+//! and treat legacy events as a compatibility layer.
+//!
 //! ## Usage
 //!
 //! Handle events in your main loop:
@@ -56,6 +66,18 @@ pub enum Event {
     /// and decoding bracketed paste.
     Paste(String),
 
+    /// A key press with explicit modifier information.
+    ///
+    /// This is intended for editor-like behavior and richer widgets (e.g. shift-selection),
+    /// while still keeping the existing `Event::KeyUp`, `Event::Character`, etc. for
+    /// backwards compatibility.
+    ///
+    /// Notes:
+    /// - Apps can prefer `KeyWithModifiers` when they care about Shift/Ctrl/Alt/Super.
+    /// - Backends may choose to emit both legacy events and `KeyWithModifiers` for the same
+    ///   physical key press; routing policy is app-owned.
+    KeyWithModifiers(KeyWithModifiers),
+
     /// Up arrow key was pressed
     KeyUp,
     /// Down arrow key was pressed
@@ -107,6 +129,80 @@ pub enum Event {
 
     /// Unknown or unhandled event type
     Unknown,
+}
+
+/// A minimal keyboard modifier model.
+///
+/// This is intentionally small and terminal-friendly (no IME / dead-key state).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct KeyModifiers {
+    pub shift: bool,
+    pub ctrl: bool,
+    pub alt: bool,
+    pub super_key: bool,
+}
+
+impl KeyModifiers {
+    pub const fn none() -> Self {
+        Self {
+            shift: false,
+            ctrl: false,
+            alt: false,
+            super_key: false,
+        }
+    }
+
+    pub const fn shift() -> Self {
+        Self {
+            shift: true,
+            ctrl: false,
+            alt: false,
+            super_key: false,
+        }
+    }
+
+    pub const fn ctrl() -> Self {
+        Self {
+            shift: false,
+            ctrl: true,
+            alt: false,
+            super_key: false,
+        }
+    }
+
+    pub const fn alt() -> Self {
+        Self {
+            shift: false,
+            ctrl: false,
+            alt: true,
+            super_key: false,
+        }
+    }
+}
+
+/// Key kinds used by `Event::KeyWithModifiers`.
+///
+/// This mirrors the current legacy key variants without trying to model every terminal key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyKind {
+    Char(char),
+    Up,
+    Down,
+    Left,
+    Right,
+    Delete,
+    Backspace,
+    Tab,
+    Enter,
+    Escape,
+    Function(u8),
+}
+
+/// A modifier-aware key press.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyWithModifiers {
+    pub key: KeyKind,
+    pub mods: KeyModifiers,
 }
 
 /// Mouse button types for click events.
