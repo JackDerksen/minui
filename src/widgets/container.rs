@@ -1,4 +1,4 @@
-//! # Container Widget
+//! # Container
 //!
 //! A unified layout-managed container widget inspired by OpenTUI's "box" component.
 //!
@@ -229,12 +229,20 @@ impl Default for Padding {
 /// This is intentionally minimal for the first pass:
 /// - `Auto`: use the child's intrinsic size along that axis.
 /// - `Fixed`: force a fixed size.
-/// - `Fill`: participate in fill sizing (even-split for the main axis, fill remaining on cross-axis).
+/// - `Fill { weight }`: participate in fill sizing (remaining main-axis space is distributed
+///   proportionally by `weight`; cross-axis Fill still occupies remaining cross-axis space).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeSpec {
     Auto,
     Fixed(u16),
-    Fill,
+    Fill { weight: u16 },
+}
+
+impl SizeSpec {
+    /// Convenience helper for `Fill { weight: 1 }`.
+    pub const fn fill() -> Self {
+        SizeSpec::Fill { weight: 1 }
+    }
 }
 
 impl Default for SizeSpec {
@@ -548,8 +556,8 @@ impl Container {
         let (w, h) = child.get_size();
 
         let (width, height) = match self.layout_direction {
-            LayoutDirection::Vertical => (SizeSpec::Fill, SizeSpec::Auto),
-            LayoutDirection::Horizontal => (SizeSpec::Auto, SizeSpec::Fill),
+            LayoutDirection::Vertical => (SizeSpec::fill(), SizeSpec::Auto),
+            LayoutDirection::Horizontal => (SizeSpec::Auto, SizeSpec::fill()),
         };
 
         self.children.push(ContainerChild {
@@ -568,18 +576,29 @@ impl Container {
 
     /// Adds a child that participates in **Fill** sizing on the container's main axis.
     ///
-    /// - Vertical layout: `height = Fill` (remaining height is split evenly across Fill children)
-    /// - Horizontal layout: `width = Fill` (remaining width is split evenly across Fill children)
+    /// Weight defaults to 1. For custom weights, use `add_child_fill_weight`.
     ///
-    /// Cross-axis defaults remain consistent with `add_child`:
-    /// - Vertical layout: `width = Fill`
-    /// - Horizontal layout: `height = Fill`
-    pub fn add_child_fill(mut self, child: impl Widget + 'static) -> Self {
+    /// - Vertical layout: `height = Fill { weight }`
+    /// - Horizontal layout: `width = Fill { weight }`
+    ///
+    /// Cross-axis defaults:
+    /// - Vertical layout: `width = Fill { weight: 1 }`
+    /// - Horizontal layout: `height = Fill { weight: 1 }`
+    pub fn add_child_fill(self, child: impl Widget + 'static) -> Self {
+        self.add_child_fill_weight(child, 1)
+    }
+
+    /// Adds a child that participates in **Fill** sizing with an explicit `weight`.
+    ///
+    /// `weight = 0` is treated as 1.
+    pub fn add_child_fill_weight(mut self, child: impl Widget + 'static, weight: u16) -> Self {
         let (w, h) = child.get_size();
 
+        let weight = weight.max(1);
+
         let (width, height) = match self.layout_direction {
-            LayoutDirection::Vertical => (SizeSpec::Fill, SizeSpec::Fill),
-            LayoutDirection::Horizontal => (SizeSpec::Fill, SizeSpec::Fill),
+            LayoutDirection::Vertical => (SizeSpec::fill(), SizeSpec::Fill { weight }),
+            LayoutDirection::Horizontal => (SizeSpec::Fill { weight }, SizeSpec::fill()),
         };
 
         self.children.push(ContainerChild {
@@ -626,8 +645,8 @@ impl Container {
         let (w, h) = child.get_size();
 
         let (width, height) = match self.layout_direction {
-            LayoutDirection::Vertical => (SizeSpec::Fill, SizeSpec::Fixed(main)),
-            LayoutDirection::Horizontal => (SizeSpec::Fixed(main), SizeSpec::Fill),
+            LayoutDirection::Vertical => (SizeSpec::fill(), SizeSpec::Fixed(main)),
+            LayoutDirection::Horizontal => (SizeSpec::Fixed(main), SizeSpec::fill()),
         };
 
         self.children.push(ContainerChild {
@@ -1200,12 +1219,15 @@ impl Container {
             LayoutDirection::Horizontal => content_width,
         });
 
-        // ---- Main-axis fill resolution (even split, no weights yet) ----
+        // ---- Main-axis fill resolution (weighted, deterministic remainder) ----
         //
         // Strategy:
         // 1) Compute the main-axis space consumed by non-Fill children (Auto/Fixed) plus gaps.
-        // 2) Split the remaining main-axis space evenly among Fill children.
-        // 3) Apply per-child min/max constraints after resolution (clamped to remaining space).
+        // 2) Distribute the remaining main-axis space proportionally across Fill children
+        //    using `weight` (integer math).
+        // 3) Track integer remainder and distribute leftover cells deterministically
+        //    in child order (first Fill children get the extra cells).
+        // 4) Apply per-child min/max constraints after resolution (clamped to remaining space).
         //
         // Notes:
         // - "Main axis" is Y for vertical containers and X for horizontal containers.
@@ -1217,15 +1239,17 @@ impl Container {
             0
         };
 
-        let (available_main, fill_count, fixed_main_total) = match self.layout_direction {
+        let (available_main, fixed_main_total, total_weight_u32) = match self.layout_direction {
             LayoutDirection::Vertical => {
                 let available = content_height.saturating_sub(gap_total);
-                let mut fill = 0usize;
                 let mut fixed_total: u16 = 0;
+                let mut total_weight: u32 = 0;
 
                 for c in self.children.iter() {
                     match c.height {
-                        SizeSpec::Fill => fill += 1,
+                        SizeSpec::Fill { weight } => {
+                            total_weight = total_weight.saturating_add(weight.max(1) as u32)
+                        }
                         SizeSpec::Fixed(h) => fixed_total = fixed_total.saturating_add(h),
                         SizeSpec::Auto => {
                             fixed_total = fixed_total.saturating_add(c.intrinsic_height)
@@ -1233,16 +1257,18 @@ impl Container {
                     }
                 }
 
-                (available, fill, fixed_total)
+                (available, fixed_total, total_weight)
             }
             LayoutDirection::Horizontal => {
                 let available = content_width.saturating_sub(gap_total);
-                let mut fill = 0usize;
                 let mut fixed_total: u16 = 0;
+                let mut total_weight: u32 = 0;
 
                 for c in self.children.iter() {
                     match c.width {
-                        SizeSpec::Fill => fill += 1,
+                        SizeSpec::Fill { weight } => {
+                            total_weight = total_weight.saturating_add(weight.max(1) as u32)
+                        }
                         SizeSpec::Fixed(w) => fixed_total = fixed_total.saturating_add(w),
                         SizeSpec::Auto => {
                             fixed_total = fixed_total.saturating_add(c.intrinsic_width)
@@ -1250,28 +1276,55 @@ impl Container {
                     }
                 }
 
-                (available, fill, fixed_total)
+                (available, fixed_total, total_weight)
             }
         };
 
         let remaining_main = available_main.saturating_sub(fixed_main_total);
 
-        // Even split: distribute remainder one cell at a time to the first N children
-        // so the total exactly matches remaining_main.
-        let (fill_each, fill_remainder) = if fill_count > 0 {
-            (
-                remaining_main / (fill_count as u16),
-                remaining_main % (fill_count as u16),
-            )
-        } else {
-            (0, 0)
-        };
+        // Weighted split:
+        // - base allocation per fill child is `remaining_main * weight / total_weight`
+        // - leftover cells (`remainder`) are assigned +1 to the first N Fill children, in order
+        //
+        // Compute remainder as: remaining_main - sum(base allocations).
+        let mut weighted_remainder: u16 = 0;
+        if total_weight_u32 > 0 {
+            let mut base_sum: u16 = 0;
+
+            match self.layout_direction {
+                LayoutDirection::Vertical => {
+                    for c in self.children.iter() {
+                        if let SizeSpec::Fill { weight } = c.height {
+                            let w = weight.max(1) as u32;
+                            let base = ((remaining_main as u32).saturating_mul(w)
+                                / total_weight_u32) as u16;
+                            base_sum = base_sum.saturating_add(base);
+                        }
+                    }
+                }
+                LayoutDirection::Horizontal => {
+                    for c in self.children.iter() {
+                        if let SizeSpec::Fill { weight } = c.width {
+                            let w = weight.max(1) as u32;
+                            let base = ((remaining_main as u32).saturating_mul(w)
+                                / total_weight_u32) as u16;
+                            base_sum = base_sum.saturating_add(base);
+                        }
+                    }
+                }
+            }
+
+            weighted_remainder = remaining_main.saturating_sub(base_sum);
+        }
 
         let mut current_x = content_x;
         let mut current_y = content_y;
 
         // Tracks how many Fill children we've assigned so far (to dole out the remainder).
         let mut fill_assigned: u16 = 0;
+
+        // Tracks how many leftover cells we've distributed for weighted fill.
+        let mut weighted_remainder_assigned: u16 = 0;
 
         for (idx, child) in self.children.iter().enumerate() {
             let (intrinsic_w, intrinsic_h) = (child.intrinsic_width, child.intrinsic_height);
@@ -1285,17 +1338,34 @@ impl Container {
                 LayoutDirection::Vertical => {
                     // Cross-axis (width): Fill means occupy remaining width.
                     let w = match child.width {
-                        SizeSpec::Fill => remaining_width,
+                        SizeSpec::Fill { .. } => remaining_width,
                         SizeSpec::Fixed(w) => w,
                         SizeSpec::Auto => intrinsic_w,
                     };
 
-                    // Main-axis (height): Fill participates in even split.
+                    // Main-axis (height): Fill participates in weighted split.
                     let h = match child.height {
-                        SizeSpec::Fill => {
-                            let extra = if fill_assigned < fill_remainder { 1 } else { 0 };
+                        SizeSpec::Fill { weight } => {
+                            let weight = weight.max(1) as u32;
+                            let base = if total_weight_u32 > 0 {
+                                ((remaining_main as u32).saturating_mul(weight) / total_weight_u32)
+                                    as u16
+                            } else {
+                                0
+                            };
+
+                            // Deterministic remainder: first N Fill children get +1
+                            let extra = if weighted_remainder_assigned < weighted_remainder {
+                                1
+                            } else {
+                                0
+                            };
+
                             fill_assigned = fill_assigned.saturating_add(1);
-                            fill_each.saturating_add(extra)
+                            weighted_remainder_assigned =
+                                weighted_remainder_assigned.saturating_add(extra);
+
+                            base.saturating_add(extra)
                         }
                         SizeSpec::Fixed(h) => h,
                         SizeSpec::Auto => intrinsic_h,
@@ -1306,17 +1376,34 @@ impl Container {
                 LayoutDirection::Horizontal => {
                     // Cross-axis (height): Fill means occupy remaining height.
                     let h = match child.height {
-                        SizeSpec::Fill => remaining_height,
+                        SizeSpec::Fill { .. } => remaining_height,
                         SizeSpec::Fixed(h) => h,
                         SizeSpec::Auto => intrinsic_h,
                     };
 
-                    // Main-axis (width): Fill participates in even split.
+                    // Main-axis (width): Fill participates in weighted split.
                     let w = match child.width {
-                        SizeSpec::Fill => {
-                            let extra = if fill_assigned < fill_remainder { 1 } else { 0 };
+                        SizeSpec::Fill { weight } => {
+                            let weight = weight.max(1) as u32;
+                            let base = if total_weight_u32 > 0 {
+                                ((remaining_main as u32).saturating_mul(weight) / total_weight_u32)
+                                    as u16
+                            } else {
+                                0
+                            };
+
+                            // Deterministic remainder: first N Fill children get +1
+                            let extra = if weighted_remainder_assigned < weighted_remainder {
+                                1
+                            } else {
+                                0
+                            };
+
                             fill_assigned = fill_assigned.saturating_add(1);
-                            fill_each.saturating_add(extra)
+                            weighted_remainder_assigned =
+                                weighted_remainder_assigned.saturating_add(extra);
+
+                            base.saturating_add(extra)
                         }
                         SizeSpec::Fixed(w) => w,
                         SizeSpec::Auto => intrinsic_w,
