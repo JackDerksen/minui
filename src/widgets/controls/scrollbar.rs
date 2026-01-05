@@ -28,7 +28,9 @@
 use crate::widgets::controls::slider::{Slider, SliderOptions, SliderOrientation};
 use crate::widgets::scroll::{ScrollOrientation, ScrollState};
 use crate::widgets::{Widget, WidgetArea, WindowView};
-use crate::{Color, ColorPair, Event, MouseButton, Result, Window};
+use crate::{
+    Color, ColorPair, Event, InteractionCache, InteractionId, MouseButton, Result, Window,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -220,6 +222,63 @@ impl ScrollBar {
     /// This is primarily intended for app-level policies like auto-hide/show behavior.
     pub fn is_dragging(&self) -> bool {
         self.slider.is_dragging()
+    }
+
+    /// Register the scrollbar's interactive regions in `ui` under the provided ids.
+    ///
+    /// This is optional / opt-in: it does not change `Widget::draw()` and it does not enforce
+    /// any routing policy. It simply answers: "what did the user click/drag?"
+    ///
+    /// Suggested routing:
+    /// - Register `root_id` as `focusable` (click target; avoids stealing wheel routing).
+    /// - Register `thumb_id` as `draggable` (drag thumb/track).
+    /// - If arrows are enabled, register `start_arrow_id` / `end_arrow_id` as `focusable`
+    ///   (clickable).
+    ///
+    /// Notes:
+    /// - `area` must be the absolute area the scrollbar occupies in terminal coordinates.
+    /// - The helper intentionally does not call `begin_frame()`; the app owns the frame lifecycle.
+    pub fn register_with_ids(
+        &mut self,
+        ui: &mut InteractionCache,
+        area: WidgetArea,
+        root_id: InteractionId,
+        thumb_id: InteractionId,
+        start_arrow_id: Option<InteractionId>,
+        end_arrow_id: Option<InteractionId>,
+    ) {
+        // Keep internal slider configured from latest scroll state so computed regions are correct.
+        self.sync_from_state_and_resize_parts();
+
+        // Whole scrollbar: treat as a clickable/focusable region (but not a wheel target).
+        ui.register_focusable(root_id, area);
+
+        // Thumb/track region: draggable (slider handles click+drag behavior).
+        let slider_area = self.slider_area_within(area);
+        ui.register_draggable(thumb_id, slider_area);
+
+        // Optional arrow buttons: clickable (focusable is the closest existing flag).
+        if self.opts.show_arrows {
+            if let Some(id) = start_arrow_id {
+                ui.register_focusable(id, self.start_arrow_area_within(area));
+            }
+            if let Some(id) = end_arrow_id {
+                ui.register_focusable(id, self.end_arrow_area_within(area));
+            }
+        }
+    }
+
+    /// Convenience: register just the primary interactive regions (whole bar + thumb/track).
+    ///
+    /// If you don't care about per-arrow hit-testing, use this.
+    pub fn register_with_id(
+        &mut self,
+        ui: &mut InteractionCache,
+        area: WidgetArea,
+        root_id: InteractionId,
+        thumb_id: InteractionId,
+    ) {
+        self.register_with_ids(ui, area, root_id, thumb_id, None, None);
     }
 
     /// Convenience: vertical scrollbar.

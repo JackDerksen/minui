@@ -48,9 +48,10 @@
 //! ```
 
 use super::{BorderChars, Container, Widget};
+use crate::widgets::WidgetArea;
 use crate::widgets::common::WindowView;
 use crate::widgets::scroll::{ScrollOrientation, ScrollSize, ScrollState};
-use crate::{ColorPair, Result, Window};
+use crate::{ColorPair, InteractionCache, InteractionId, Result, Window};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -800,6 +801,97 @@ impl ScrollBox {
 impl Default for ScrollBox {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl ScrollBox {
+    /// Compute the scrollbox's viewport/content area **within** an explicit outer area.
+    ///
+    /// This is the interaction-registration equivalent of the draw-time viewport calculation:
+    /// the viewport is the root container's *content area* (inside its border + padding).
+    ///
+    /// Design note:
+    /// - We intentionally do **not** rely on cloning `Container` or caching geometry during draw.
+    /// - The app provides `outer` (the rect it chose to draw into), and we derive the viewport
+    ///   using the same border/padding rules configured on `root`.
+    pub fn viewport_area_within(&self, outer: WidgetArea) -> WidgetArea {
+        // Compute content area bounds using the same rules as `Container::content_area()`:
+        //
+        // - Border thickness is per-side (left/right/top/bottom) based on enabled border sides.
+        // - Padding is then applied inside the border.
+        //
+        // We intentionally take an explicit `outer` rect (app-provided) so this remains
+        // immediate-mode friendly and does not depend on cached geometry from draw().
+        let border = self.root.border_config();
+
+        let border_left = if border.sides.contains(&super::container::BorderSide::Left) {
+            1
+        } else {
+            0
+        };
+        let border_right = if border.sides.contains(&super::container::BorderSide::Right) {
+            1
+        } else {
+            0
+        };
+        let border_top = if border.sides.contains(&super::container::BorderSide::Top) {
+            1
+        } else {
+            0
+        };
+        let border_bottom = if border.sides.contains(&super::container::BorderSide::Bottom) {
+            1
+        } else {
+            0
+        };
+
+        let padding = self.root.padding();
+
+        let x = outer.x + border_left + padding.left;
+        let y = outer.y + border_top + padding.top;
+
+        let w = outer
+            .width
+            .saturating_sub(border_left + padding.left + padding.right + border_right);
+        let h = outer
+            .height
+            .saturating_sub(border_top + padding.top + padding.bottom + border_bottom);
+
+        WidgetArea::new(x, y, w, h)
+    }
+
+    /// Register the scrollbox as a scroll/hover target under `id`.
+    ///
+    /// This is optional / opt-in: it does not change `Widget::draw()` and does not enforce any
+    /// routing policy. It simply answers: "is the mouse over this scroll region?"
+    ///
+    /// Recommended usage:
+    /// - Register the viewport/content area as `scrollable` so wheel events can be routed based on
+    ///   hit-testing.
+    pub fn register_with_id(
+        &self,
+        ui: &mut InteractionCache,
+        outer: WidgetArea,
+        id: InteractionId,
+    ) {
+        let viewport = self.viewport_area_within(outer);
+        ui.register_scrollable(id, viewport);
+    }
+
+    /// Register both the outer frame region and the inner viewport region under separate ids.
+    ///
+    /// This is useful if you want to treat the frame as focusable/clickable (panels/splits later),
+    /// while still routing wheel events specifically to the scrollable viewport.
+    pub fn register_with_ids(
+        &self,
+        ui: &mut InteractionCache,
+        outer: WidgetArea,
+        root_id: InteractionId,
+        viewport_id: InteractionId,
+    ) {
+        ui.register_focusable(root_id, outer);
+        let viewport = self.viewport_area_within(outer);
+        ui.register_scrollable(viewport_id, viewport);
     }
 }
 

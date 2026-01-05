@@ -15,8 +15,10 @@
 //!   know its absolute position (widgets generally draw at (0,0) inside a `WindowView`).
 //! - Rendering uses Unicode block characters where possible.
 
-use crate::widgets::Widget;
-use crate::{Color, ColorPair, Event, MouseButton, Result, Window};
+use crate::widgets::{Widget, WidgetArea};
+use crate::{
+    Color, ColorPair, Event, InteractionCache, InteractionId, MouseButton, Result, Window,
+};
 
 /// Slider orientation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,6 +95,19 @@ impl Slider {
             is_dragging: false,
             drag_offset_virtual: 0,
         }
+    }
+
+    /// Register this slider's interactive area in `ui` under `id`.
+    ///
+    /// This is optional / opt-in: it does not change `Widget::draw()` and it does not enforce
+    /// any routing policy. It simply answers: "what did the user click/drag?"
+    ///
+    /// `area` must be the absolute area the slider occupies in terminal coordinates.
+    ///
+    /// Suggested routing:
+    /// - register as `draggable` so drags/clicks can be routed into `Slider::handle_event(...)`.
+    pub fn register_with_id(&self, ui: &mut InteractionCache, area: WidgetArea, id: InteractionId) {
+        ui.register_draggable(id, area);
     }
 
     /// Convenience constructor: vertical slider with width 1 (or 2) and given height.

@@ -41,8 +41,9 @@
 //! state so multiple widgets stay in sync.
 
 use super::{Widget, WindowView};
+use crate::widgets::WidgetArea;
 use crate::widgets::scroll::ScrollState;
-use crate::{Color, ColorPair, Result, Window};
+use crate::{Color, ColorPair, InteractionCache, InteractionId, Result, Window};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -77,6 +78,18 @@ pub struct Viewport {
 }
 
 impl Viewport {
+    /// Register this viewport's region in `ui` under `id`.
+    ///
+    /// This is optional / opt-in: it does not change `Widget::draw()` and does not enforce any
+    /// routing policy. It simply marks a region as a "scroll/hover target" so apps can:
+    /// - hit-test what is under the mouse
+    /// - decide whether to route wheel events to a scroll state owner (often `ScrollBox`)
+    ///
+    /// `area` must be the absolute area the viewport occupies in terminal coordinates.
+    pub fn register_with_id(&self, ui: &mut InteractionCache, area: WidgetArea, id: InteractionId) {
+        ui.register_scrollable(id, area);
+    }
+
     /// Creates a new viewport with the specified visible dimensions.
     ///
     /// By default, the content size matches the viewport size (no scrolling).

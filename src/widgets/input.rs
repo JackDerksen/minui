@@ -62,8 +62,9 @@
 
 use crate::input::KeybindAction;
 use crate::text::{TabPolicy, cell_width_char, clip_to_cells};
+use crate::widgets::WidgetArea;
 use crate::window::CursorSpec;
-use crate::{Color, ColorPair, Event, Result, Window};
+use crate::{Color, ColorPair, Event, InteractionCache, InteractionId, Result, Window};
 
 /// Persistent state for a [`TextInput`].
 ///
@@ -611,6 +612,12 @@ impl TextInput {
     /// - caches geometry into the state for mouse helpers
     /// - updates horizontal scroll (`view_col`) to keep caret visible
     /// - places the real terminal cursor (recommended)
+    /// Draws the input at its configured position/width using `state`.
+    ///
+    /// This also:
+    /// - caches geometry into the state for mouse helpers
+    /// - updates horizontal scroll (`view_col`) to keep caret visible
+    /// - places the real terminal cursor (recommended)
     pub fn draw(&self, window: &mut dyn Window, state: &mut TextInputState) -> Result<()> {
         // Cache for mouse hit helpers.
         state.last_x = self.x;
@@ -726,6 +733,34 @@ impl TextInput {
         }
 
         Ok(())
+    }
+
+    /// Draws the input and registers it into the given `InteractionCache` under `id`.
+    ///
+    /// This is an optional immediate-mode routing hook. It lets apps avoid duplicating geometry
+    /// for hit-testing and focus routing.
+    ///
+    /// Registration behavior:
+    /// - Always registers the widget's full area as `focusable`
+    /// - Additionally registers it as `draggable` when the input is focused (for selection drags)
+    ///
+    /// Note: this does not mutate focus itself; focus policy remains app-owned.
+    pub fn draw_with_id(
+        &self,
+        window: &mut dyn Window,
+        state: &mut TextInputState,
+        ui: &mut InteractionCache,
+        id: InteractionId,
+    ) -> Result<()> {
+        let height: u16 = 1;
+        let area = WidgetArea::new(self.x, self.y, self.width, height);
+
+        ui.register_focusable(id, area);
+        if state.is_focused() {
+            ui.register_draggable(id, area);
+        }
+
+        self.draw(window, state)
     }
 
     fn draw_with_selection(

@@ -593,6 +593,22 @@ impl Container {
         (x, y, width, height)
     }
 
+    /// Returns this container's padding configuration.
+    ///
+    /// This is intentionally a small, read-only accessor so higher-level widgets (and optional
+    /// interaction registration helpers) can derive sub-areas without needing to cache geometry.
+    pub fn padding(&self) -> Padding {
+        self.padding
+    }
+
+    /// Returns this container's border configuration.
+    ///
+    /// This enables higher-level widgets (e.g. `ScrollBox`) to mirror `content_area()` math when
+    /// given an explicit outer rect, without making the interaction system intrusive.
+    pub fn border_config(&self) -> &BorderConfig {
+        &self.border
+    }
+
     /// Internal helper retained for backwards compatibility inside this module.
     fn get_content_area(&self) -> (u16, u16, u16, u16) {
         self.content_area()
