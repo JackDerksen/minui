@@ -7,9 +7,9 @@
 //! - Scrollbar auto-hide UX via `AutoHide`
 //!
 //! Controls:
-//! - Mouse wheel: vertical scroll
-//! - Horizontal wheel (if your terminal sends it): horizontal scroll
-//! - Drag scrollbar thumbs
+//! - Mouse wheel: vertical scroll (only when over a registered scroll target / or focused)
+//! - Horizontal wheel (if your terminal sends it): horizontal scroll (same routing policy)
+//! - Drag scrollbar thumbs (with app-level mouse capture)
 //! - Click scrollbar arrows
 //! - Arrow keys: scroll (Up/Down/Left/Right)
 //! - Press 'q' to quit
@@ -22,6 +22,7 @@
 //!   - the mouse is near the scrollbar area, or
 //!   - you are actively dragging the thumb.
 
+use minui::MouseButton;
 use minui::prelude::*;
 use minui::ui::{AutoHide, InteractionCache};
 use minui::widgets::controls::scrollbar::{ScrollBar, ScrollBarOptions, ScrollUnit};
@@ -33,14 +34,29 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const ID_SCROLLBOX: usize = 1;
-const ID_VSCROLL: usize = 2;
-const ID_HSCROLL: usize = 3;
+const ID_SCROLLBOX_VIEWPORT: usize = 4;
+
+// Scrollbar composite ids (root + thumb/track + arrows)
+const ID_VSCROLL_ROOT: usize = 2;
+const ID_VSCROLL_THUMB: usize = 5;
+const ID_VSCROLL_ARROW_START: usize = 6;
+const ID_VSCROLL_ARROW_END: usize = 7;
+
+const ID_HSCROLL_ROOT: usize = 3;
+const ID_HSCROLL_THUMB: usize = 8;
+const ID_HSCROLL_ARROW_START: usize = 9;
+const ID_HSCROLL_ARROW_END: usize = 10;
 
 struct ScrollDemoState {
     ui: InteractionCache,
     scroll: Rc<RefCell<ScrollState>>,
     vbar: ScrollBar,
     hbar: ScrollBar,
+
+    // App-level mouse capture for dragging.
+    // Once captured, we keep routing drag/release events to the captured widget id even if the
+    // mouse leaves the original area.
+    active_drag_id: Option<usize>,
 
     // Auto-hide behavior for scrollbars.
     // NOTE: This is app-level policy (Phase 1), not owned by the widgets.
@@ -85,6 +101,7 @@ fn main() -> minui::Result<()> {
         scroll,
         vbar,
         hbar,
+        active_drag_id: None,
         autohide: AutoHide::new(Duration::from_millis(900), 2),
     };
 
@@ -103,28 +120,95 @@ fn main() -> minui::Result<()> {
                 return false;
             }
 
-            // Mouse wheel scrolling -> update shared ScrollState directly.
+            // Mouse capture:
+            // - On left-click, capture the *draggable* region under cursor (thumb/track).
+            // - During drag/release, keep routing to the captured id even if the cursor leaves.
+            match event {
+                Event::MouseClick {
+                    x,
+                    y,
+                    button: MouseButton::Left,
+                } => {
+                    state.active_drag_id = None;
+
+                    if let Some(hit) = state.ui.hit_test(x, y) {
+                        if hit.flags.draggable {
+                            state.active_drag_id = Some(hit.id);
+                        } else if hit.flags.focusable {
+                            // Click-to-focus: focus only focusable regions (e.g. scrollbox frame/panel).
+                            state.ui.focus(hit.id);
+                        }
+                    }
+                }
+                Event::MouseRelease {
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    // Release always clears capture (but we still route the release event below).
+                    // This mirrors common UI "mouse capture" behavior.
+                    // NOTE: we clear after routing by storing the old value.
+                }
+                _ => {}
+            }
+
+            // Mouse wheel scrolling:
+            // Route ONLY to the scroll target under cursor (preferred) or the focused scroll target.
+            //
+            // Policy:
+            // - If the mouse is over a registered `scrollable` region, scroll.
+            // - Otherwise, if the currently focused id corresponds to a `scrollable` region this frame,
+            //   scroll that.
+            // - Otherwise: ignore wheel input.
+            //
             // Also mark "activity" so scrollbars reveal for a short time.
             match event {
                 Event::MouseScroll { delta } => {
-                    state.autohide.mark_activity();
+                    let mut should_scroll = false;
 
-                    // Convention: delta > 0 scrolls up, delta < 0 scrolls down.
-                    // We invert to translate "scroll down" into positive offset movement.
-                    let dy: i16 = -(delta as i16);
-                    state
-                        .scroll
-                        .borrow_mut()
-                        .scroll_by(ScrollOrientation::Vertical, dy);
+                    if let Some((mx, my)) = state.ui.last_mouse_pos() {
+                        if let Some(hit) = state.ui.hit_test(mx, my) {
+                            should_scroll = hit.flags.scrollable;
+                        }
+                    } else if let Some(focused) = state.ui.focused() {
+                        if let Some(entry) = state.ui.get(focused) {
+                            should_scroll = entry.flags.scrollable;
+                        }
+                    }
+
+                    if should_scroll {
+                        state.autohide.mark_activity();
+
+                        // Convention: delta > 0 scrolls up, delta < 0 scrolls down.
+                        // We invert to translate "scroll down" into positive offset movement.
+                        let dy: i16 = -(delta as i16);
+                        state
+                            .scroll
+                            .borrow_mut()
+                            .scroll_by(ScrollOrientation::Vertical, dy);
+                    }
                 }
                 Event::MouseScrollHorizontal { delta } => {
-                    state.autohide.mark_activity();
+                    let mut should_scroll = false;
 
-                    let dx: i16 = -(delta as i16);
-                    state
-                        .scroll
-                        .borrow_mut()
-                        .scroll_by(ScrollOrientation::Horizontal, dx);
+                    if let Some((mx, my)) = state.ui.last_mouse_pos() {
+                        if let Some(hit) = state.ui.hit_test(mx, my) {
+                            should_scroll = hit.flags.scrollable;
+                        }
+                    } else if let Some(focused) = state.ui.focused() {
+                        if let Some(entry) = state.ui.get(focused) {
+                            should_scroll = entry.flags.scrollable;
+                        }
+                    }
+
+                    if should_scroll {
+                        state.autohide.mark_activity();
+
+                        let dx: i16 = -(delta as i16);
+                        state
+                            .scroll
+                            .borrow_mut()
+                            .scroll_by(ScrollOrientation::Horizontal, dx);
+                    }
                 }
                 _ => {}
             }
@@ -147,13 +231,70 @@ fn main() -> minui::Result<()> {
             }
 
             // Route pointer events into scrollbars (click/drag/arrows).
-            // IMPORTANT: only route if the scrollbar was registered this frame (i.e. visible).
-            // Areas come from the most recent draw frame.
-            if let Some(entry) = state.ui.get(ID_VSCROLL) {
-                let _ = state.vbar.handle_event(&event, entry.area);
+            //
+            // IMPORTANT:
+            // - Only route if the relevant areas were registered (i.e. visible).
+            // - If a drag is captured, keep routing drag/release to the captured scrollbar *owner*
+            //   even if the cursor leaves the original region.
+            //
+            // This uses a simple id→owner mapping (still immediate-mode; no retained tree).
+            let captured = state.active_drag_id;
+
+            // Helper: map an interaction id to the owning scrollbar.
+            let owner_for = |id: usize| -> Option<&'static str> {
+                match id {
+                    ID_VSCROLL_ROOT
+                    | ID_VSCROLL_THUMB
+                    | ID_VSCROLL_ARROW_START
+                    | ID_VSCROLL_ARROW_END => Some("v"),
+                    ID_HSCROLL_ROOT
+                    | ID_HSCROLL_THUMB
+                    | ID_HSCROLL_ARROW_START
+                    | ID_HSCROLL_ARROW_END => Some("h"),
+                    _ => None,
+                }
+            };
+
+            // Determine which owners should receive this event.
+            let mut route_vbar = false;
+            let mut route_hbar = false;
+
+            if let Some(id) = captured {
+                match owner_for(id) {
+                    Some("v") => route_vbar = true,
+                    Some("h") => route_hbar = true,
+                    _ => {}
+                }
+            } else if let Some((mx, my)) = state.ui.last_mouse_pos() {
+                if let Some(hit_id) = state.ui.hit_test_id(mx, my) {
+                    match owner_for(hit_id) {
+                        Some("v") => route_vbar = true,
+                        Some("h") => route_hbar = true,
+                        _ => {}
+                    }
+                }
             }
-            if let Some(entry) = state.ui.get(ID_HSCROLL) {
-                let _ = state.hbar.handle_event(&event, entry.area);
+
+            if route_vbar {
+                if let Some(entry) = state.ui.get(ID_VSCROLL_ROOT) {
+                    let _ = state.vbar.handle_event(&event, entry.area);
+                }
+            }
+            if route_hbar {
+                if let Some(entry) = state.ui.get(ID_HSCROLL_ROOT) {
+                    let _ = state.hbar.handle_event(&event, entry.area);
+                }
+            }
+
+            // Clear capture after routing a left-button release.
+            if matches!(
+                event,
+                Event::MouseRelease {
+                    button: MouseButton::Left,
+                    ..
+                }
+            ) {
+                state.active_drag_id = None;
             }
 
             true
@@ -254,11 +395,15 @@ fn main() -> minui::Result<()> {
                 .with_row_gap(Gap::Pixels(1))
                 .add_child(content);
 
-            // Register scrollbox area (not strictly required for this demo, but useful for future focus/hover work).
-            state.ui.register_scrollable(
+            // Register scrollbox interaction regions:
+            // - outer frame as focusable (panel/split-friendly)
+            // - inner viewport as scrollable (wheel routing)
+            let outer_area = WidgetArea::new(outer_x, outer_y, outer_w, outer_h);
+            scrollbox.register_with_ids(
+                &mut state.ui,
+                outer_area,
                 ID_SCROLLBOX,
-                // Register the OUTER area for hover/click routing (matches draw bounds).
-                WidgetArea::new(outer_x, outer_y, outer_w, outer_h),
+                ID_SCROLLBOX_VIEWPORT,
             );
 
             // Draw scrollbox (updates ScrollState sizes + applies offsets via WindowView).
@@ -311,7 +456,16 @@ fn main() -> minui::Result<()> {
                 || near_scrollbox_right_edge;
 
             if show_vbar {
-                state.ui.register_draggable(ID_VSCROLL, v_area);
+                // Register sub-areas so routing can distinguish thumb vs arrows.
+                // Root is scrollable (hover target), thumb/track is draggable, arrows are focusable.
+                state.vbar.register_with_ids(
+                    &mut state.ui,
+                    v_area,
+                    ID_VSCROLL_ROOT,
+                    ID_VSCROLL_THUMB,
+                    Some(ID_VSCROLL_ARROW_START),
+                    Some(ID_VSCROLL_ARROW_END),
+                );
 
                 {
                     let mut view = WindowView {
@@ -374,7 +528,16 @@ fn main() -> minui::Result<()> {
                 || near_scrollbox_bottom_edge;
 
             if show_hbar {
-                state.ui.register_draggable(ID_HSCROLL, h_area);
+                // Register sub-areas so routing can distinguish thumb vs arrows.
+                // Root is scrollable (hover target), thumb/track is draggable, arrows are focusable.
+                state.hbar.register_with_ids(
+                    &mut state.ui,
+                    h_area,
+                    ID_HSCROLL_ROOT,
+                    ID_HSCROLL_THUMB,
+                    Some(ID_HSCROLL_ARROW_START),
+                    Some(ID_HSCROLL_ARROW_END),
+                );
 
                 {
                     let mut view = WindowView {

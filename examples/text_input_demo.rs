@@ -4,6 +4,9 @@
 //! - A bordered `TextInput`
 //! - A borderless `TextInput` drawn inside a bordered `Container`
 //!
+//! This demo routes focus + mouse selection using `InteractionCache` registration,
+//! instead of relying on cached widget geometry stored in `TextInputState`.
+//!
 //! Controls:
 //! - Click to focus
 //! - Type to edit; Backspace/Delete to remove
@@ -18,6 +21,9 @@
 use minui::prelude::*;
 use minui::widgets::{TextInput, TextInputState};
 
+const ID_PLAIN: InteractionId = 1;
+const ID_WRAPPED: InteractionId = 2;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
     Plain,
@@ -29,6 +35,9 @@ struct State {
     plain: TextInputState,
     wrapped: TextInputState,
     last_submit: String,
+
+    // Immediate-mode interaction registry for routing
+    ui: InteractionCache,
 
     // Mouse drag tracking (Model B): only extend selection while mouse is down.
     mouse_down: bool,
@@ -48,6 +57,8 @@ fn main() -> minui::Result<()> {
         wrapped,
         last_submit: String::from("(press Enter to submit focused field)"),
 
+        ui: InteractionCache::new(),
+
         mouse_down: false,
         dragging: false,
     };
@@ -62,6 +73,9 @@ fn main() -> minui::Result<()> {
         // Update
         // ============================
         |state, event| {
+            // Keep `InteractionCache` up to date (mouse position, etc.)
+            state.ui.observe_event(&event);
+
             // Ignore noisy events we don't use in this demo.
             if matches!(event, Event::MouseMove { .. } | Event::Unknown) {
                 return true;
@@ -78,34 +92,32 @@ fn main() -> minui::Result<()> {
                 return true;
             }
 
-            // Mouse focus + selection.
+            // Mouse focus + selection, routed via InteractionCache.
             match event {
                 Event::MouseClick { x, y, button: _ } => {
                     state.mouse_down = true;
                     state.dragging = false;
 
-                    let plain_hit = hit_test_field(&state.plain, x, y);
-                    let wrapped_hit = hit_test_field(&state.wrapped, x, y);
+                    // Hit-test against the most recently drawn frame's registry.
+                    let hit = state.ui.hit_test_id(x, y);
 
-                    // Click outside: cancel drag/selection tracking.
-                    if !plain_hit && !wrapped_hit {
-                        state.mouse_down = false;
-                        state.dragging = false;
-                        return true;
-                    }
-
-                    // Plain field hit-test
-                    if plain_hit {
-                        set_focus(state, Focus::Plain);
-                        state.plain.click_set_cursor(x);
-                        return true;
-                    }
-
-                    // Wrapped field hit-test
-                    if wrapped_hit {
-                        set_focus(state, Focus::Wrapped);
-                        state.wrapped.click_set_cursor(x);
-                        return true;
+                    match hit {
+                        Some(ID_PLAIN) => {
+                            set_focus(state, Focus::Plain);
+                            state.plain.click_set_cursor(x);
+                            return true;
+                        }
+                        Some(ID_WRAPPED) => {
+                            set_focus(state, Focus::Wrapped);
+                            state.wrapped.click_set_cursor(x);
+                            return true;
+                        }
+                        _ => {
+                            // Click outside: cancel drag/selection tracking.
+                            state.mouse_down = false;
+                            state.dragging = false;
+                            return true;
+                        }
                     }
                 }
                 Event::MouseDrag { x, y: _, button: _ } => {
@@ -169,6 +181,9 @@ fn main() -> minui::Result<()> {
             // Clear any stale cursor request; focused inputs will request one during draw.
             window.clear_cursor_request();
 
+            // Begin a fresh immediate-mode interaction registry for this frame.
+            state.ui.begin_frame();
+
             // Layout constants
             let margin: u16 = 2;
             let row_gap: u16 = 2;
@@ -213,8 +228,9 @@ fn main() -> minui::Result<()> {
             let output_text = format!("{}{}", output_prefix, state.last_submit);
             let output_line = fit_to_cells(&output_text, output_w, TabPolicy::SingleCell, true);
 
-            // Draw plain field
-            plain.draw(window, &mut state.plain)?;
+            // Draw + register plain field
+            // NOTE: this requires `TextInput::draw_with_id(...)` to exist.
+            plain.draw_with_id(window, &mut state.plain, &mut state.ui, ID_PLAIN)?;
 
             // Draw container + wrapped field
             container.draw(window)?;
@@ -229,7 +245,8 @@ fn main() -> minui::Result<()> {
                 .with_border(false)
                 .with_placeholder("Wrapped input (click to focus)…");
 
-            wrapped.draw(window, &mut state.wrapped)?;
+            // Draw + register wrapped field
+            wrapped.draw_with_id(window, &mut state.wrapped, &mut state.ui, ID_WRAPPED)?;
 
             // Output area box
             window.write_str_colored(
@@ -271,8 +288,4 @@ fn set_focus(state: &mut State, focus: Focus) {
     state.focus = focus;
     state.plain.set_focused(focus == Focus::Plain);
     state.wrapped.set_focused(focus == Focus::Wrapped);
-}
-
-fn hit_test_field(field: &TextInputState, x: u16, y: u16) -> bool {
-    y == field.last_y && x >= field.last_x && x < field.last_x.saturating_add(field.last_w)
 }
