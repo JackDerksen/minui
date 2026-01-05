@@ -7,12 +7,16 @@
 //!
 //! Currently provided:
 //! - `interaction`: draw-time interaction caching for hit testing + basic focus tracking.
+//! - `scene`: thin wrapper over `InteractionCache` with focus/capture + routing conventions.
 //! - `IdAllocator`: a tiny monotonic ID allocator for generating `InteractionId`s.
 //! - `AutoHide`: helper for auto-hide UX (e.g. scrollbars that reveal on scroll/proximity).
 
 pub mod interaction;
+pub mod scene;
 
 pub use interaction::{
     AutoHide, HitTestResult, IdAllocator, InteractionCache, InteractionEntry, InteractionFlags,
     InteractionId,
 };
+
+pub use scene::{OwnerId, PolicyEffects, RouteTarget, UiScene};
