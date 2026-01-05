@@ -36,7 +36,7 @@ MinUI is actively developed with these features available:
 - [x] Support for various input methods (customizable key binds with crokey, mouse support, etc.)
 - [x] Unified content scrolling support (`ScrollState` + `WindowView` scroll offsets)
 - [x] Interaction routing utilities (`InteractionCache`, `IdAllocator`, `AutoHide`)
-- [x] Even router system
+- [x] Event router system
 - [ ] Simplified character/sprite and map management utilities
 - [ ] Easy character/sprite movement support with common Unicode characters built-in
 - [ ] Cell management with collision detection options
