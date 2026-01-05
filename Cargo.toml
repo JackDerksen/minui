@@ -9,7 +9,7 @@ repository = "https://github.com/JackDerksen/minui"
 homepage = "https://github.com/JackDerksen/minui"
 readme = "README.md"
 keywords = ["terminal", "framework", "tui", "ui", "crossterm"]
-categories = ["command-line-interface", "terminal-ui", "widgets"]
+categories = ["command-line-interface"]
 
 [dependencies]
 crossterm = "0.28.1"
