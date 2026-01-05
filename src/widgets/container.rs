@@ -243,10 +243,47 @@ impl Default for SizeSpec {
     }
 }
 
+/// Optional min/max constraints for a single axis.
+///
+/// `max = None` means "unbounded".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AxisConstraints {
+    pub min: u16,
+    pub max: Option<u16>,
+}
+
+impl Default for AxisConstraints {
+    fn default() -> Self {
+        Self { min: 0, max: None }
+    }
+}
+
+impl AxisConstraints {
+    pub const fn new(min: u16, max: Option<u16>) -> Self {
+        Self { min, max }
+    }
+
+    pub fn clamp(&self, v: u16) -> u16 {
+        let v = v.max(self.min);
+        match self.max {
+            Some(max) => v.min(max),
+            None => v,
+        }
+    }
+}
+
+/// Per-child constraints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ChildConstraints {
+    pub width: AxisConstraints,
+    pub height: AxisConstraints,
+}
+
 struct ContainerChild {
     widget: Box<dyn Widget>,
     width: SizeSpec,
     height: SizeSpec,
+    constraints: ChildConstraints,
 
     // Cached intrinsic size from time of insertion (used for Auto sizing).
     // A future layout pass may refresh this each frame if needed.
@@ -519,6 +556,7 @@ impl Container {
             widget: Box::new(child),
             width,
             height,
+            constraints: ChildConstraints::default(),
             // Cache current intrinsic size so auto-size and simple layout can work without a full pass.
             intrinsic_width: w,
             intrinsic_height: h,
@@ -548,11 +586,31 @@ impl Container {
             widget: Box::new(child),
             width,
             height,
+            constraints: ChildConstraints::default(),
             intrinsic_width: w,
             intrinsic_height: h,
         });
 
         self.recalculate_size();
+        self
+    }
+
+    /// Sets width constraints on the most recently added child.
+    ///
+    /// This is a minimal builder convenience for configuring per-child constraints without
+    /// introducing a full retained layout API.
+    pub fn last_child_width_constraints(mut self, min: u16, max: Option<u16>) -> Self {
+        if let Some(last) = self.children.last_mut() {
+            last.constraints.width = AxisConstraints::new(min, max);
+        }
+        self
+    }
+
+    /// Sets height constraints on the most recently added child.
+    pub fn last_child_height_constraints(mut self, min: u16, max: Option<u16>) -> Self {
+        if let Some(last) = self.children.last_mut() {
+            last.constraints.height = AxisConstraints::new(min, max);
+        }
         self
     }
 
@@ -576,6 +634,7 @@ impl Container {
             widget: Box::new(child),
             width,
             height,
+            constraints: ChildConstraints::default(),
             intrinsic_width: w,
             intrinsic_height: h,
         });
@@ -1146,6 +1205,7 @@ impl Container {
         // Strategy:
         // 1) Compute the main-axis space consumed by non-Fill children (Auto/Fixed) plus gaps.
         // 2) Split the remaining main-axis space evenly among Fill children.
+        // 3) Apply per-child min/max constraints after resolution (clamped to remaining space).
         //
         // Notes:
         // - "Main axis" is Y for vertical containers and X for horizontal containers.
@@ -1220,8 +1280,8 @@ impl Container {
             let remaining_width = content_width.saturating_sub(current_x - content_x);
             let remaining_height = content_height.saturating_sub(current_y - content_y);
 
-            // Resolve main-axis size (even split for Fill).
-            let (resolved_w, resolved_h) = match self.layout_direction {
+            // Resolve sizes, then apply per-child constraints.
+            let (mut resolved_w, mut resolved_h) = match self.layout_direction {
                 LayoutDirection::Vertical => {
                     // Cross-axis (width): Fill means occupy remaining width.
                     let w = match child.width {
@@ -1266,14 +1326,26 @@ impl Container {
                 }
             };
 
+            // Apply constraints (then clamp to remaining space so we never draw outside).
+            resolved_w = child
+                .constraints
+                .width
+                .clamp(resolved_w)
+                .min(remaining_width);
+            resolved_h = child
+                .constraints
+                .height
+                .clamp(resolved_h)
+                .min(remaining_height);
+
             let mut child_view = WindowView {
                 window,
                 x_offset: current_x,
                 y_offset: current_y,
                 scroll_x: 0,
                 scroll_y: 0,
-                width: resolved_w.min(remaining_width),
-                height: resolved_h.min(remaining_height),
+                width: resolved_w,
+                height: resolved_h,
             };
 
             child.widget.draw(&mut child_view)?;
