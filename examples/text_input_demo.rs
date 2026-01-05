@@ -4,7 +4,7 @@
 //! - A bordered `TextInput`
 //! - A borderless `TextInput` drawn inside a bordered `Container`
 //!
-//! This demo routes focus + mouse selection using `InteractionCache` registration,
+//! This demo routes focus + mouse selection using `UiScene` (wraps `InteractionCache`) registration,
 //! instead of relying on cached widget geometry stored in `TextInputState`.
 //!
 //! Controls:
@@ -19,6 +19,7 @@
 //! `window.end_frame()?`.
 
 use minui::prelude::*;
+use minui::ui::UiScene;
 use minui::widgets::{TextInput, TextInputState};
 
 const ID_PLAIN: InteractionId = 1;
@@ -36,8 +37,8 @@ struct State {
     wrapped: TextInputState,
     last_submit: String,
 
-    // Immediate-mode interaction registry for routing
-    ui: InteractionCache,
+    // Immediate-mode scene/router (wraps InteractionCache + focus/capture policies)
+    ui: UiScene,
 
     // Mouse drag tracking (Model B): only extend selection while mouse is down.
     mouse_down: bool,
@@ -57,7 +58,7 @@ fn main() -> minui::Result<()> {
         wrapped,
         last_submit: String::from("(press Enter to submit focused field)"),
 
-        ui: InteractionCache::new(),
+        ui: UiScene::new(),
 
         mouse_down: false,
         dragging: false,
@@ -73,8 +74,11 @@ fn main() -> minui::Result<()> {
         // Update
         // ============================
         |state, event| {
-            // Keep `InteractionCache` up to date (mouse position, etc.)
-            state.ui.observe_event(&event);
+            // Apply common scene policies:
+            // - observe mouse position
+            // - tab traversal (if enabled; this demo uses manual toggle on Tab)
+            // - click-to-focus + mouse capture
+            let _effects = state.ui.apply_policies(&event);
 
             // Ignore noisy events we don't use in this demo.
             if matches!(event, Event::MouseMove { .. } | Event::Unknown) {
@@ -87,6 +91,12 @@ fn main() -> minui::Result<()> {
                 match k.key {
                     KeyKind::Char('q') => return false,
                     KeyKind::Tab => {
+                        // Many backends emit modifier-aware Tab (`KeyWithModifiers`) but may not emit
+                        // the legacy `Event::Tab`. Since this demo has exactly two fields, we keep a
+                        // deterministic, backend-agnostic behavior: toggle focus between them.
+                        //
+                        // Note: UiScene's built-in tab traversal depends on per-frame registration order
+                        // (available after draw), so we intentionally do not use it here.
                         toggle_focus(state);
                         return true;
                     }
@@ -108,6 +118,9 @@ fn main() -> minui::Result<()> {
 
             // Focus switching (legacy fallback)
             if matches!(event, Event::Tab) {
+                // `UiScene` tab traversal relies on the current frame's registered focusables
+                // (which only exists after draw). In this demo, we keep a simple, deterministic
+                // fallback: toggle between the two fields.
                 toggle_focus(state);
                 return true;
             }
@@ -198,11 +211,11 @@ fn main() -> minui::Result<()> {
         |state, window| {
             let (w, h) = window.get_size();
 
+            // Begin a fresh immediate-mode scene frame (clears registrations, focusables, owners).
+            state.ui.begin_frame();
+
             // Clear any stale cursor request; focused inputs will request one during draw.
             window.clear_cursor_request();
-
-            // Begin a fresh immediate-mode interaction registry for this frame.
-            state.ui.begin_frame();
 
             // Layout constants
             let margin: u16 = 2;
@@ -249,8 +262,9 @@ fn main() -> minui::Result<()> {
             let output_line = fit_to_cells(&output_text, output_w, TabPolicy::SingleCell, true);
 
             // Draw + register plain field
-            // NOTE: this requires `TextInput::draw_with_id(...)` to exist.
-            plain.draw_with_id(window, &mut state.plain, &mut state.ui, ID_PLAIN)?;
+            // NOTE: `TextInput::draw_with_id(...)` registers into an InteractionCache, so we pass
+            // the underlying cache from UiScene.
+            plain.draw_with_id(window, &mut state.plain, state.ui.cache_mut(), ID_PLAIN)?;
 
             // Draw container + wrapped field
             container.draw(window)?;
@@ -266,7 +280,7 @@ fn main() -> minui::Result<()> {
                 .with_placeholder("Wrapped input (click to focus)…");
 
             // Draw + register wrapped field
-            wrapped.draw_with_id(window, &mut state.wrapped, &mut state.ui, ID_WRAPPED)?;
+            wrapped.draw_with_id(window, &mut state.wrapped, state.ui.cache_mut(), ID_WRAPPED)?;
 
             // Output area box
             window.write_str_colored(
