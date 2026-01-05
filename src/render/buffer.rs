@@ -89,8 +89,8 @@ impl Cell {
 /// - **Change Detection**: Only cells that differ between buffers are updated
 ///
 /// ## Dirty Region Tracking
-/// - Tracks the minimum and maximum Y coordinates that have changed
-/// - Skips processing of unchanged rows entirely
+/// - Tracks the minimum and maximum X and Y coordinates that have changed
+/// - Skips processing of unchanged regions entirely
 /// - Reduces processing time for sparse updates
 ///
 /// ## Run-Length Encoding
@@ -121,9 +121,11 @@ impl Cell {
 pub struct Buffer {
     width: u16,
     height: u16,
-    current: Vec<Cell>,       // What should be displayed
-    previous: Vec<Cell>,      // What was last rendered
-    dirty_min_y: Option<u16>, // For tracking the dirty region
+    current: Vec<Cell>,  // What should be displayed
+    previous: Vec<Cell>, // What was last rendered
+    dirty_min_x: Option<u16>,
+    dirty_max_x: Option<u16>,
+    dirty_min_y: Option<u16>,
     dirty_max_y: Option<u16>,
 }
 
@@ -138,6 +140,8 @@ impl Buffer {
             height,
             current,
             previous,
+            dirty_min_x: None,
+            dirty_max_x: None,
             dirty_min_y: None,
             dirty_max_y: None,
         }
@@ -173,6 +177,14 @@ impl Buffer {
             cell.modified = true;
 
             // Update dirty region
+            match self.dirty_min_x {
+                None => self.dirty_min_x = Some(x),
+                Some(min_x) => self.dirty_min_x = Some(min(min_x, x)),
+            }
+            match self.dirty_max_x {
+                None => self.dirty_max_x = Some(x),
+                Some(max_x) => self.dirty_max_x = Some(max(max_x, x)),
+            }
             match self.dirty_min_y {
                 None => self.dirty_min_y = Some(y),
                 Some(min_y) => self.dirty_min_y = Some(min(min_y, y)),
@@ -220,6 +232,8 @@ impl Buffer {
                 cell.modified = true;
             }
         }
+        self.dirty_min_x = Some(0);
+        self.dirty_max_x = Some(self.width - 1);
         self.dirty_min_y = Some(0);
         self.dirty_max_y = Some(self.height - 1);
     }
@@ -242,7 +256,15 @@ impl Buffer {
             }
         }
 
-        // Update dirty region
+        // Update dirty region (full width of the line)
+        match self.dirty_min_x {
+            None => self.dirty_min_x = Some(0),
+            Some(min_x) => self.dirty_min_x = Some(min(min_x, 0)),
+        }
+        match self.dirty_max_x {
+            None => self.dirty_max_x = Some(self.width - 1),
+            Some(max_x) => self.dirty_max_x = Some(max(max_x, self.width - 1)),
+        }
         match self.dirty_min_y {
             None => self.dirty_min_y = Some(y),
             Some(min_y) => self.dirty_min_y = Some(min(min_y, y)),
@@ -258,11 +280,16 @@ impl Buffer {
     pub(crate) fn process_changes(&mut self) -> Vec<BufferChange> {
         let mut changes = Vec::new();
 
-        // Only process rows in the dirty region
-        if let (Some(min_y), Some(max_y)) = (self.dirty_min_y, self.dirty_max_y) {
+        // Only process the dirty region
+        if let (Some(min_x), Some(max_x), Some(min_y), Some(max_y)) = (
+            self.dirty_min_x,
+            self.dirty_max_x,
+            self.dirty_min_y,
+            self.dirty_max_y,
+        ) {
             for y in min_y..=max_y {
-                let mut x = 0;
-                while x < self.width {
+                let mut x = min_x;
+                while x <= max_x {
                     let idx = self.coords_to_index(x, y);
                     let current = &self.current[idx];
                     let previous = &self.previous[idx];
@@ -275,11 +302,11 @@ impl Buffer {
 
                     // Find run of consecutive modified cells with same colors
                     let mut run_length = 1;
-                    let mut run_str = String::with_capacity(self.width as usize);
+                    let mut run_str = String::with_capacity((max_x - min_x + 1) as usize);
                     run_str.push(current.ch);
 
                     // Look ahead for similar cells to batch
-                    while x + run_length < self.width {
+                    while x + run_length <= max_x {
                         let next_idx = self.coords_to_index(x + run_length, y);
                         let next_cell = &self.current[next_idx];
                         let next_prev = &self.previous[next_idx];
@@ -317,6 +344,8 @@ impl Buffer {
             cell.modified = false;
         }
 
+        self.dirty_min_x = None;
+        self.dirty_max_x = None;
         self.dirty_min_y = None;
         self.dirty_max_y = None;
 
@@ -331,12 +360,18 @@ impl Buffer {
             _ => 0,
         };
 
+        let dirty_cols = match (self.dirty_min_x, self.dirty_max_x) {
+            (Some(min), Some(max)) => (max - min + 1) as usize,
+            _ => 0,
+        };
+
         let modified_cells = self.current.iter().filter(|c| c.modified).count();
 
         BufferStats {
             width: self.width,
             height: self.height,
             dirty_rows,
+            dirty_cols,
             modified_cells,
         }
     }
@@ -348,5 +383,6 @@ pub struct BufferStats {
     pub width: u16,
     pub height: u16,
     pub dirty_rows: usize,
+    pub dirty_cols: usize,
     pub modified_cells: usize,
 }
