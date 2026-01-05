@@ -1,93 +1,46 @@
 //! # Text Widgets
 //!
-//! A comprehensive collection of text-based UI components for displaying and formatting
-//! textual content in terminal applications. This module provides three primary widgets:
-//! labels for titles and captions, standalone text widgets for simple content display,
-//! and advanced multi-line text blocks with rich formatting capabilities.
+//! MinUI provides a small set of text primitives with intentionally distinct roles.
+//! The goal is to keep text rendering predictable and editor-friendly without baking
+//! scrolling policies into every text widget.
 //!
-//! ## Features
+//! ## Widget Roles
 //!
-//! - **Multiple text widgets**: Label, Text, and TextBlock for different use cases
-//! - **Flexible alignment**: Horizontal and vertical text positioning options
-//! - **Advanced wrapping**: Character-level, word-aware, and no-wrap modes
-//! - **Rich styling**: Color pairs and formatting options
-//! - **Auto-sizing**: Automatic dimension calculation based on content
-//! - **Container integration**: Seamless layout within MinUI's container system
+//! - [`Label`]: single-line captions and titles. Prefer this for headings and UI chrome.
+//! - [`Text`]: single-line body text. Lightweight alternative to `TextBlock` when you do not
+//!   need wrapping or multiline behavior.
+//! - [`TextBlock`]: multiline text renderer with wrapping and alignment. `TextBlock` is a
+//!   **pure renderer** and does not own scroll state.
 //!
-//! ## Widget Types
+//! ## Scrolling and clipping
 //!
-//! ### Label
-//! Simple, single-line text for titles, captions, and widget labeling. Ideal for
-//! header text, form labels, and UI element identification.
+//! `TextBlock` intentionally does **not** implement scrolling internally. To scroll a
+//! multiline text surface, draw it into a `WindowView` with `scroll_y`/`scroll_x` applied,
+//! or wrap it in higher-level scrolling primitives (`ScrollBox` / `Viewport` + `ScrollState`).
 //!
-//! ### Text
-//! Standalone text display widget for general content. Supports multi-line content
-//! with basic alignment and color styling.
+//! ## Text width correctness
 //!
-//! ### TextBlock
-//! Advanced multi-line text widget with sophisticated formatting options including
-//! word wrapping, vertical alignment, and precise dimension control.
+//! All single-line widgets (`Label` / `Text`) use cell-width aware alignment and clipping via
+//! `minui::text` helpers so wide glyphs are less likely to break layout.
 //!
-//! ## Basic Usage
+//! ## Basic usage
 //!
 //! ```rust
 //! use minui::{Label, Text, TextBlock, Alignment, VerticalAlignment, TextWrapMode, Color};
 //!
-//! // Simple label for UI elements
 //! let title = Label::new("Application Settings")
 //!     .with_color(Some(Color::Cyan.into()));
 //!
-//! // Basic text content
-//! let info = Text::new("Welcome to the application!\nPlease configure your preferences.")
-//!     .with_alignment(Alignment::Center);
+//! let status = Text::new("Ready")
+//!     .with_alignment(Alignment::Right);
 //!
-//! // Advanced formatted text block
 //! let content = TextBlock::new(40, 10, "Long content that will wrap nicely...")
 //!     .with_wrap_mode(TextWrapMode::WrapWords)
 //!     .with_vertical_alignment(VerticalAlignment::Middle);
 //! ```
-//!
-//! ## Advanced Text Formatting
-//!
-//! ```rust
-//! use minui::{TextBlock, TextWrapMode, VerticalAlignment, Alignment, ColorPair, Color};
-//!
-//! // Create a sophisticated text display
-//! let formatted_text = TextBlock::new(50, 15,
-//!     "This is a comprehensive example of advanced text formatting. \
-//!      The text will wrap at word boundaries and be vertically centered \
-//!      within the specified dimensions. Color styling enhances readability.")
-//!     .with_wrap_mode(TextWrapMode::WrapWords)
-//!     .with_vertical_alignment(VerticalAlignment::Middle)
-//!     .with_alignment(Alignment::Left)
-//!     .with_color(Some(ColorPair::new(Color::White, Color::Blue)));
-//! ```
-//!
-//! ## Layout Integration
-//!
-//! ```rust
-//! use minui::{Container, Label, Text, LayoutDirection};
-//!
-//! // Combine text widgets in layouts
-//! let info_section = Container::new(LayoutDirection::Vertical)
-//!     .add_child(Label::new("System Information").with_color(Some(Color::Green.into())))
-//!     .add_child(Text::new("CPU: 45% usage\nMemory: 2.1GB / 8GB\nDisk: 250GB free"));
-//! ```
-//!
-//! ## Text Wrapping Modes
-//!
-//! The TextBlock widget supports three wrapping strategies:
-//!
-//! - **None**: Content extending beyond width is clipped
-//! - **Wrap**: Character-level wrapping at any position
-//! - **WrapWords**: Intelligent word-boundary wrapping for readability
-//!
-//! Text widgets integrate seamlessly with MinUI's container-based layout system,
-//! automatically positioning and sizing themselves within parent containers while
-//! maintaining proper text formatting and alignment.
 
 use super::Widget;
-use crate::input::scroll::Scroller;
+use crate::text::{TabPolicy, cell_width, clip_to_cells, fit_to_cells};
 use crate::{Color, ColorPair, Result, Window};
 
 /// How to align text horizontally
@@ -174,46 +127,54 @@ impl Label {
         &self.text
     }
 
-    /// Returns the text length in characters
+    /// Returns the text length in characters.
+    ///
+    /// Note: this is **not** terminal cell width. For display width, use `cell_width()`.
     pub fn get_length(&self) -> u16 {
         self.text.chars().count() as u16
     }
 
-    fn calculate_aligned_x(&self, available_width: u16) -> u16 {
-        let text_length = self.get_length();
-        match self.alignment {
-            Alignment::Left => 0,
-            Alignment::Center => {
-                if text_length < available_width {
-                    (available_width - text_length) / 2
-                } else {
-                    0
-                }
-            }
-            Alignment::Right => {
-                if text_length < available_width {
-                    available_width - text_length
-                } else {
-                    0
-                }
-            }
-        }
+    /// Returns the display width of this label in terminal cells (TabPolicy::SingleCell).
+    pub fn cell_width(&self) -> u16 {
+        crate::text::cell_width(&self.text, crate::text::TabPolicy::SingleCell) as u16
     }
 }
 
 impl Widget for Label {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
         let (window_width, _) = window.get_size();
-        let x_pos = self.calculate_aligned_x(window_width);
+
+        // Cell-width aware alignment + safe clipping.
+        let text_w = cell_width(&self.text, TabPolicy::SingleCell) as u16;
+        let x_pos = match self.alignment {
+            Alignment::Left => 0,
+            Alignment::Center => {
+                if text_w < window_width {
+                    (window_width - text_w) / 2
+                } else {
+                    0
+                }
+            }
+            Alignment::Right => {
+                if text_w < window_width {
+                    window_width - text_w
+                } else {
+                    0
+                }
+            }
+        };
+
+        let max_cells = window_width.saturating_sub(x_pos);
+        let clipped = clip_to_cells(&self.text, max_cells, TabPolicy::SingleCell);
 
         match self.colors {
-            Some(colors) => window.write_str_colored(0, x_pos, &self.text, colors),
-            None => window.write_str(0, x_pos, &self.text),
+            Some(colors) => window.write_str_colored(0, x_pos, &clipped, colors),
+            None => window.write_str(0, x_pos, &clipped),
         }
     }
 
     fn get_size(&self) -> (u16, u16) {
-        (self.text.chars().count() as u16, 1)
+        (cell_width(&self.text, TabPolicy::SingleCell) as u16, 1)
     }
 
     fn get_position(&self) -> (u16, u16) {
@@ -271,46 +232,54 @@ impl Text {
         &self.text
     }
 
-    /// Returns the text length in characters
+    /// Returns the text length in characters.
+    ///
+    /// Note: this is **not** terminal cell width. For display width, use `cell_width()`.
     pub fn get_length(&self) -> u16 {
         self.text.chars().count() as u16
     }
 
-    fn calculate_aligned_x(&self, available_width: u16) -> u16 {
-        let text_length = self.get_length();
-        match self.alignment {
-            Alignment::Left => 0,
-            Alignment::Center => {
-                if text_length < available_width {
-                    (available_width - text_length) / 2
-                } else {
-                    0
-                }
-            }
-            Alignment::Right => {
-                if text_length < available_width {
-                    available_width - text_length
-                } else {
-                    0
-                }
-            }
-        }
+    /// Returns the display width of this text in terminal cells (TabPolicy::SingleCell).
+    pub fn cell_width(&self) -> u16 {
+        crate::text::cell_width(&self.text, crate::text::TabPolicy::SingleCell) as u16
     }
 }
 
 impl Widget for Text {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
         let (available_width, _) = window.get_size();
-        let x_pos = self.calculate_aligned_x(available_width);
+
+        // Cell-width aware alignment + safe clipping.
+        let text_w = cell_width(&self.text, TabPolicy::SingleCell) as u16;
+        let x_pos = match self.alignment {
+            Alignment::Left => 0,
+            Alignment::Center => {
+                if text_w < available_width {
+                    (available_width - text_w) / 2
+                } else {
+                    0
+                }
+            }
+            Alignment::Right => {
+                if text_w < available_width {
+                    available_width - text_w
+                } else {
+                    0
+                }
+            }
+        };
+
+        let max_cells = available_width.saturating_sub(x_pos);
+        let clipped = clip_to_cells(&self.text, max_cells, TabPolicy::SingleCell);
 
         match self.colors {
-            Some(colors) => window.write_str_colored(0, x_pos, &self.text, colors),
-            None => window.write_str(0, x_pos, &self.text),
+            Some(colors) => window.write_str_colored(0, x_pos, &clipped, colors),
+            None => window.write_str(0, x_pos, &clipped),
         }
     }
 
     fn get_size(&self) -> (u16, u16) {
-        (self.text.chars().count() as u16, 1)
+        (cell_width(&self.text, TabPolicy::SingleCell) as u16, 1)
     }
 
     fn get_position(&self) -> (u16, u16) {
@@ -318,9 +287,12 @@ impl Widget for Text {
     }
 }
 
-/// A multi-line text widget with wrapping and scrolling support.
+/// A multi-line text widget with wrapping support.
 ///
-/// Use this for longer text content that spans multiple lines.
+/// `TextBlock` is intentionally a **pure renderer**:
+/// - It does not own scroll state.
+/// - Scrolling/clipping should be implemented by drawing into a `WindowView` with scroll offsets
+///   (or by using `ScrollBox` / `Viewport` + `ScrollState`).
 pub struct TextBlock {
     /// Width of the text display area
     width: u16,
@@ -336,14 +308,10 @@ pub struct TextBlock {
     h_align: Alignment,
     /// Vertical text alignment
     v_align: VerticalAlignment,
-    /// Scroll state manager for displaying large content
-    scroller: Scroller,
-    /// Whether to show scroll indicators
-    show_scroll_indicators: bool,
 }
 
 impl TextBlock {
-    /// Creates a new TextBlock with the given size and content
+    /// Creates a new TextBlock with the given size and content.
     pub fn new(width: u16, height: u16, text: impl Into<String>) -> Self {
         Self {
             width,
@@ -353,8 +321,6 @@ impl TextBlock {
             wrap_mode: TextWrapMode::Wrap,
             h_align: Alignment::Left,
             v_align: VerticalAlignment::Top,
-            scroller: Scroller::new(),
-            show_scroll_indicators: false,
         }
     }
 
@@ -439,169 +405,9 @@ impl TextBlock {
         self
     }
 
-    /// Enables or disables scroll indicators
-    pub fn with_scroll_indicators(mut self, show: bool) -> Self {
-        self.show_scroll_indicators = show;
-        self
-    }
-
-    /// Sets the scroll direction for the text block.
-    ///
-    /// # Arguments
-    /// * `natural` - `true` for natural scrolling (default), `false` for inverted scrolling
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use minui::TextBlock;
-    ///
-    /// let text = TextBlock::new(40, 20, "Some content...")
-    ///     .with_scroll_direction(false); // Inverted scrolling
-    /// ```
-    pub fn with_scroll_direction(mut self, natural: bool) -> Self {
-        self.scroller.set_invert_scroll_vertical(!natural);
-        self
-    }
-
-    /// Sets whether scroll direction is inverted for the text block.
-    ///
-    /// When enabled, scrolling direction is reversed (e.g., up becomes down).
-    pub fn set_invert_scroll(&mut self, invert: bool) {
-        self.scroller.set_invert_scroll_vertical(invert);
-    }
-
-    /// Returns whether scroll direction is inverted for the text block.
-    pub fn is_scroll_inverted(&self) -> bool {
-        self.scroller.is_scroll_vertical_inverted()
-    }
-
-    /// Scrolls to a specific line
-    pub fn scroll_to(&mut self, line: u16) {
-        let max_offset = self.max_scroll_offset();
-        self.scroller.scroll_to(line, max_offset);
-    }
-
-    /// Scrolls by a relative amount (positive = down, negative = up)
-    pub fn scroll_by(&mut self, delta: i16) {
-        let max_offset = self.max_scroll_offset();
-        self.scroller.scroll_by(delta, max_offset);
-    }
-
-    /// Scrolls to the top of the content
-    pub fn scroll_to_top(&mut self) {
-        self.scroller.scroll_to_top();
-    }
-
-    /// Scrolls to the bottom of the content
-    pub fn scroll_to_bottom(&mut self) {
-        let max_offset = self.max_scroll_offset();
-        self.scroller.scroll_to_bottom(max_offset);
-    }
-
-    /// Returns the current scroll offset
-    pub fn scroll_offset(&self) -> u16 {
-        self.scroller.offset()
-    }
-
-    /// Returns the maximum valid scroll offset
-    pub fn max_scroll_offset(&self) -> u16 {
-        let lines = self.get_wrapped_lines();
-        let total_lines = lines.len() as u16;
-        total_lines.saturating_sub(self.height)
-    }
-
-    /// Returns whether the content can be scrolled
-    pub fn can_scroll(&self) -> bool {
-        let lines = self.get_wrapped_lines();
-        lines.len() as u16 > self.height
-    }
-
-    /// Returns whether scrolling up is possible
-    pub fn can_scroll_up(&self) -> bool {
-        self.scroller.can_scroll_up()
-    }
-
-    /// Returns whether scrolling down is possible
-    pub fn can_scroll_down(&self) -> bool {
-        self.scroller.can_scroll_down(self.max_scroll_offset())
-    }
-
-    /// Handles a mouse scroll event and updates the scroll position
-    ///
-    /// Returns true if the scroll position changed
-    pub fn handle_scroll_event(&mut self, delta: i8) -> bool {
-        let max_offset = self.max_scroll_offset();
-        self.scroller.handle_scroll_event(delta, max_offset)
-    }
-
-    /// Handles a mouse drag event on the TextBlock.
-    /// If the drag is on the scrollbar, scrolls to that position.
-    /// Returns true if the scroll position changed.
-    ///
-    /// # Arguments
-    /// * `drag_x` - X coordinate of drag relative to TextBlock's top-left
-    /// * `drag_y` - Y coordinate of drag relative to TextBlock's top-left
-    pub fn handle_drag_event(&mut self, drag_x: u16, drag_y: u16) -> bool {
-        if !self.can_scroll() {
-            return false;
-        }
-
-        let scrollbar_x = self.width.saturating_sub(1);
-        let max_scroll = self.max_scroll_offset();
-
-        // Use dedicated drag method for smoother interaction
-        self.scroller
-            .handle_drag_event(drag_x, drag_y, scrollbar_x, self.height, 0, max_scroll)
-    }
-
-    /// Handles a mouse click event on the TextBlock.
-    /// If the click is on the scrollbar, scrolls to that position.
-    /// Returns true if the scroll position changed.
-    ///
-    /// # Arguments
-    /// * `click_x` - X coordinate of click relative to TextBlock's top-left
-    /// * `click_y` - Y coordinate of click relative to TextBlock's top-left
-    pub fn handle_click_event(&mut self, click_x: u16, click_y: u16) -> bool {
-        if !self.can_scroll() {
-            return false;
-        }
-
-        let scrollbar_x = self.width.saturating_sub(1);
-        let max_scroll = self.max_scroll_offset();
-
-        // Check if click is on scrollbar
-        if click_x == scrollbar_x && click_y < self.height {
-            return self.scroller.handle_scrollbar_event(
-                click_x,
-                click_y,
-                scrollbar_x,
-                self.height,
-                0,
-                max_scroll,
-            );
-        }
-
-        false
-    }
-
-    /// Returns the number of lines in the wrapped content
-    pub fn line_count(&self) -> usize {
-        self.get_wrapped_lines().len()
-    }
-
-    /// Returns the visible line range as (start, end)
-    pub fn visible_range(&self) -> (u16, u16) {
-        let start = self.scroller.offset();
-        let end = (start + self.height).min(self.line_count() as u16);
-        (start, end)
-    }
-
-    /// Changes the text content
+    /// Changes the text content.
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
-        // Clamp scroll offset to new content bounds
-        let max_offset = self.max_scroll_offset();
-        self.scroller.set_offset(self.scroller.offset(), max_offset);
     }
 
     /// Returns the current text
@@ -676,13 +482,10 @@ impl Widget for TextBlock {
             }
         };
 
-        // Get displayable lines with scroll offset
-        let start_line = self.scroller.offset() as usize;
-        let display_lines: Vec<String> = lines
-            .into_iter()
-            .skip(start_line)
-            .take(available_height as usize)
-            .collect();
+        // `TextBlock` does not own scroll state.
+        // If you want scrolling, draw into a `WindowView` with `scroll_y` applied (or use ScrollBox).
+        let display_lines: Vec<String> =
+            lines.into_iter().take(available_height as usize).collect();
 
         // Draw each line
         for (i, line) in display_lines.iter().enumerate() {
@@ -691,18 +494,23 @@ impl Widget for TextBlock {
                 break;
             }
 
+            // NOTE: `String::len()` is bytes; use cell-aware fitting for alignment/clipping.
+            let fitted = fit_to_cells(line, available_width, TabPolicy::SingleCell, true);
+
             let line_x = match self.h_align {
                 Alignment::Left => 0,
                 Alignment::Center => {
-                    if line.len() < available_width as usize {
-                        (available_width - line.len() as u16) / 2
+                    let w = crate::text::cell_width(&fitted, TabPolicy::SingleCell) as u16;
+                    if w < available_width {
+                        (available_width - w) / 2
                     } else {
                         0
                     }
                 }
                 Alignment::Right => {
-                    if line.len() < available_width as usize {
-                        available_width - line.len() as u16
+                    let w = crate::text::cell_width(&fitted, TabPolicy::SingleCell) as u16;
+                    if w < available_width {
+                        available_width - w
                     } else {
                         0
                     }
@@ -710,9 +518,9 @@ impl Widget for TextBlock {
             };
 
             if let Some(colors) = self.colors {
-                window.write_str_colored(line_y, line_x, line, colors)?;
+                window.write_str_colored(line_y, line_x, &fitted, colors)?;
             } else {
-                window.write_str(line_y, line_x, line)?;
+                window.write_str(line_y, line_x, &fitted)?;
             }
         }
 
