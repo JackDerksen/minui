@@ -224,6 +224,36 @@ impl Default for Padding {
     }
 }
 
+/// A simple sizing spec for container children.
+///
+/// This is intentionally minimal for the first pass:
+/// - `Auto`: use the child's intrinsic size along that axis.
+/// - `Fixed`: force a fixed size.
+/// - `Fill`: participate in fill sizing (even-split for the main axis, fill remaining on cross-axis).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizeSpec {
+    Auto,
+    Fixed(u16),
+    Fill,
+}
+
+impl Default for SizeSpec {
+    fn default() -> Self {
+        SizeSpec::Auto
+    }
+}
+
+struct ContainerChild {
+    widget: Box<dyn Widget>,
+    width: SizeSpec,
+    height: SizeSpec,
+
+    // Cached intrinsic size from time of insertion (used for Auto sizing).
+    // A future layout pass may refresh this each frame if needed.
+    intrinsic_width: u16,
+    intrinsic_height: u16,
+}
+
 /// A unified layout-managed container widget
 pub struct Container {
     /// X-coordinate position
@@ -267,8 +297,11 @@ pub struct Container {
     /// Focus state
     focused: bool,
 
-    /// Child widgets
-    children: Vec<Box<dyn Widget>>,
+    /// Child widgets.
+    ///
+    /// Children are stored with per-child sizing so `Container` can resolve layout
+    /// deterministically within a known content rect (phase-2 sizing work).
+    children: Vec<ContainerChild>,
 }
 
 impl Container {
@@ -469,19 +502,98 @@ impl Container {
         self
     }
 
-    /// Adds a child widget
+    /// Adds a child widget.
+    ///
+    /// Default sizing:
+    /// - Vertical layout: children fill width, auto height.
+    /// - Horizontal layout: children auto width, fill height.
     pub fn add_child(mut self, child: impl Widget + 'static) -> Self {
-        self.children.push(Box::new(child));
+        let (w, h) = child.get_size();
+
+        let (width, height) = match self.layout_direction {
+            LayoutDirection::Vertical => (SizeSpec::Fill, SizeSpec::Auto),
+            LayoutDirection::Horizontal => (SizeSpec::Auto, SizeSpec::Fill),
+        };
+
+        self.children.push(ContainerChild {
+            widget: Box::new(child),
+            width,
+            height,
+            // Cache current intrinsic size so auto-size and simple layout can work without a full pass.
+            intrinsic_width: w,
+            intrinsic_height: h,
+        });
+
+        self.recalculate_size();
+        self
+    }
+
+    /// Adds a child that participates in **Fill** sizing on the container's main axis.
+    ///
+    /// - Vertical layout: `height = Fill` (remaining height is split evenly across Fill children)
+    /// - Horizontal layout: `width = Fill` (remaining width is split evenly across Fill children)
+    ///
+    /// Cross-axis defaults remain consistent with `add_child`:
+    /// - Vertical layout: `width = Fill`
+    /// - Horizontal layout: `height = Fill`
+    pub fn add_child_fill(mut self, child: impl Widget + 'static) -> Self {
+        let (w, h) = child.get_size();
+
+        let (width, height) = match self.layout_direction {
+            LayoutDirection::Vertical => (SizeSpec::Fill, SizeSpec::Fill),
+            LayoutDirection::Horizontal => (SizeSpec::Fill, SizeSpec::Fill),
+        };
+
+        self.children.push(ContainerChild {
+            widget: Box::new(child),
+            width,
+            height,
+            intrinsic_width: w,
+            intrinsic_height: h,
+        });
+
+        self.recalculate_size();
+        self
+    }
+
+    /// Adds a child with a fixed size on the container's **main axis**.
+    ///
+    /// - Vertical layout: `height = Fixed(main)`
+    /// - Horizontal layout: `width = Fixed(main)`
+    ///
+    /// Cross-axis defaults remain consistent with `add_child`:
+    /// - Vertical layout: `width = Fill`
+    /// - Horizontal layout: `height = Fill`
+    pub fn add_child_fixed_main(mut self, child: impl Widget + 'static, main: u16) -> Self {
+        let (w, h) = child.get_size();
+
+        let (width, height) = match self.layout_direction {
+            LayoutDirection::Vertical => (SizeSpec::Fill, SizeSpec::Fixed(main)),
+            LayoutDirection::Horizontal => (SizeSpec::Fixed(main), SizeSpec::Fill),
+        };
+
+        self.children.push(ContainerChild {
+            widget: Box::new(child),
+            width,
+            height,
+            intrinsic_width: w,
+            intrinsic_height: h,
+        });
+
         self.recalculate_size();
         self
     }
 
     /// Returns a read-only view of this container's children.
     ///
+    /// Returns borrowed references to child widgets (in insertion order).
+    ///
     /// This is primarily intended for higher-level widgets (e.g. `ScrollBox`) that need to
-    /// infer content sizing from child intrinsic sizes without taking ownership.
-    pub fn children(&self) -> &[Box<dyn Widget>] {
-        &self.children
+    /// inspect children without taking ownership.
+    ///
+    /// Note: this returns references to the widgets, not the internal sizing wrappers.
+    pub fn children(&self) -> Vec<&dyn Widget> {
+        self.children.iter().map(|c| c.widget.as_ref()).collect()
     }
 
     /// Returns this container's layout direction.
@@ -660,7 +772,7 @@ impl Container {
         match self.layout_direction {
             LayoutDirection::Vertical => {
                 for (idx, child) in self.children.iter().enumerate() {
-                    let (cw, ch) = child.get_size();
+                    let (cw, ch) = (child.intrinsic_width, child.intrinsic_height);
                     content_required_w = content_required_w.max(cw);
                     content_required_h = content_required_h.saturating_add(ch);
 
@@ -671,7 +783,7 @@ impl Container {
             }
             LayoutDirection::Horizontal => {
                 for (idx, child) in self.children.iter().enumerate() {
-                    let (cw, ch) = child.get_size();
+                    let (cw, ch) = (child.intrinsic_width, child.intrinsic_height);
                     content_required_w = content_required_w.saturating_add(cw);
                     content_required_h = content_required_h.max(ch);
 
@@ -1029,18 +1141,130 @@ impl Container {
             LayoutDirection::Horizontal => content_width,
         });
 
+        // ---- Main-axis fill resolution (even split, no weights yet) ----
+        //
+        // Strategy:
+        // 1) Compute the main-axis space consumed by non-Fill children (Auto/Fixed) plus gaps.
+        // 2) Split the remaining main-axis space evenly among Fill children.
+        //
+        // Notes:
+        // - "Main axis" is Y for vertical containers and X for horizontal containers.
+        // - Cross-axis Fill is still handled per-child during drawing.
+        let child_count = self.children.len();
+        let gap_total = if child_count > 1 {
+            gap.saturating_mul((child_count - 1) as u16)
+        } else {
+            0
+        };
+
+        let (available_main, fill_count, fixed_main_total) = match self.layout_direction {
+            LayoutDirection::Vertical => {
+                let available = content_height.saturating_sub(gap_total);
+                let mut fill = 0usize;
+                let mut fixed_total: u16 = 0;
+
+                for c in self.children.iter() {
+                    match c.height {
+                        SizeSpec::Fill => fill += 1,
+                        SizeSpec::Fixed(h) => fixed_total = fixed_total.saturating_add(h),
+                        SizeSpec::Auto => {
+                            fixed_total = fixed_total.saturating_add(c.intrinsic_height)
+                        }
+                    }
+                }
+
+                (available, fill, fixed_total)
+            }
+            LayoutDirection::Horizontal => {
+                let available = content_width.saturating_sub(gap_total);
+                let mut fill = 0usize;
+                let mut fixed_total: u16 = 0;
+
+                for c in self.children.iter() {
+                    match c.width {
+                        SizeSpec::Fill => fill += 1,
+                        SizeSpec::Fixed(w) => fixed_total = fixed_total.saturating_add(w),
+                        SizeSpec::Auto => {
+                            fixed_total = fixed_total.saturating_add(c.intrinsic_width)
+                        }
+                    }
+                }
+
+                (available, fill, fixed_total)
+            }
+        };
+
+        let remaining_main = available_main.saturating_sub(fixed_main_total);
+
+        // Even split: distribute remainder one cell at a time to the first N children
+        // so the total exactly matches remaining_main.
+        let (fill_each, fill_remainder) = if fill_count > 0 {
+            (
+                remaining_main / (fill_count as u16),
+                remaining_main % (fill_count as u16),
+            )
+        } else {
+            (0, 0)
+        };
+
         let mut current_x = content_x;
         let mut current_y = content_y;
 
-        for (idx, child) in self.children.iter().enumerate() {
-            let (child_width, child_height) = child.get_size();
+        // Tracks how many Fill children we've assigned so far (to dole out the remainder).
+        let mut fill_assigned: u16 = 0;
 
-            // Create a window view for the child.
-            //
-            // Use the child's intrinsic size, but clip to the remaining content area so children
-            // can't draw outside the container's content box.
+        for (idx, child) in self.children.iter().enumerate() {
+            let (intrinsic_w, intrinsic_h) = (child.intrinsic_width, child.intrinsic_height);
+
+            // Remaining space in content area
             let remaining_width = content_width.saturating_sub(current_x - content_x);
             let remaining_height = content_height.saturating_sub(current_y - content_y);
+
+            // Resolve main-axis size (even split for Fill).
+            let (resolved_w, resolved_h) = match self.layout_direction {
+                LayoutDirection::Vertical => {
+                    // Cross-axis (width): Fill means occupy remaining width.
+                    let w = match child.width {
+                        SizeSpec::Fill => remaining_width,
+                        SizeSpec::Fixed(w) => w,
+                        SizeSpec::Auto => intrinsic_w,
+                    };
+
+                    // Main-axis (height): Fill participates in even split.
+                    let h = match child.height {
+                        SizeSpec::Fill => {
+                            let extra = if fill_assigned < fill_remainder { 1 } else { 0 };
+                            fill_assigned = fill_assigned.saturating_add(1);
+                            fill_each.saturating_add(extra)
+                        }
+                        SizeSpec::Fixed(h) => h,
+                        SizeSpec::Auto => intrinsic_h,
+                    };
+
+                    (w, h)
+                }
+                LayoutDirection::Horizontal => {
+                    // Cross-axis (height): Fill means occupy remaining height.
+                    let h = match child.height {
+                        SizeSpec::Fill => remaining_height,
+                        SizeSpec::Fixed(h) => h,
+                        SizeSpec::Auto => intrinsic_h,
+                    };
+
+                    // Main-axis (width): Fill participates in even split.
+                    let w = match child.width {
+                        SizeSpec::Fill => {
+                            let extra = if fill_assigned < fill_remainder { 1 } else { 0 };
+                            fill_assigned = fill_assigned.saturating_add(1);
+                            fill_each.saturating_add(extra)
+                        }
+                        SizeSpec::Fixed(w) => w,
+                        SizeSpec::Auto => intrinsic_w,
+                    };
+
+                    (w, h)
+                }
+            };
 
             let mut child_view = WindowView {
                 window,
@@ -1048,21 +1272,21 @@ impl Container {
                 y_offset: current_y,
                 scroll_x: 0,
                 scroll_y: 0,
-                width: child_width.min(remaining_width),
-                height: child_height.min(remaining_height),
+                width: resolved_w.min(remaining_width),
+                height: resolved_h.min(remaining_height),
             };
 
-            child.draw(&mut child_view)?;
+            child.widget.draw(&mut child_view)?;
 
             match self.layout_direction {
                 LayoutDirection::Vertical => {
-                    current_y += child_height;
+                    current_y += resolved_h;
                     if idx < self.children.len() - 1 {
                         current_y += gap;
                     }
                 }
                 LayoutDirection::Horizontal => {
-                    current_x += child_width;
+                    current_x += resolved_w;
                     if idx < self.children.len() - 1 {
                         current_x += gap;
                     }
