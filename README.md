@@ -62,7 +62,13 @@ fn main() -> minui::Result<()> {
         |_state, event| {
             // Closure for handling input and updates.
             // Capture input here!
-            !matches!(event, Event::Character('q'))
+            match event {
+                Event::KeyWithModifiers(k) if matches!(k.key, KeyKind::Char('q')) => false,
+                Event::Character('q') => false,
+                _ => true,
+            }
+        },
+
         },
         |_state, window| {
             // Closure for rendering the application state.
