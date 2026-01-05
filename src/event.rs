@@ -13,6 +13,12 @@
 //! physical key press. Apps that care about modifiers should prefer `KeyWithModifiers`
 //! and treat legacy events as a compatibility layer.
 //!
+//! ## Compatibility helper
+//!
+//! If you have existing code that matches on legacy keyboard events, prefer calling
+//! `Event::as_legacy_key_event()` at your event-handling boundary. This lets you keep old
+//! match statements working while MinUI defaults to modifier-aware key events.
+//!
 //! ## Usage
 //!
 //! Handle events in your main loop:
@@ -28,6 +34,9 @@
 //!
 //! app.run(
 //!     |state, event| {
+//!         // Optional: normalize modifier-aware key events into legacy ones.
+//!         let event = event.as_legacy_key_event().unwrap_or(event);
+//!
 //!         match event {
 //!             Event::Character('q') => false, // Exit
 //!             Event::KeyUp => { /* move up */ true },
@@ -129,6 +138,38 @@ pub enum Event {
 
     /// Unknown or unhandled event type
     Unknown,
+}
+
+impl Event {
+    /// If this event is a modifier-aware key event, convert it into the closest legacy
+    /// key event variant (e.g. `KeyUp`, `Character('a')`, `Enter`, etc.).
+    ///
+    /// This is a compatibility helper for code that still matches on legacy key events.
+    ///
+    /// Notes:
+    /// - This intentionally drops modifier information.
+    /// - This does not expand into multiple events; it returns a single "best fit".
+    pub fn as_legacy_key_event(&self) -> Option<Event> {
+        match self {
+            Event::KeyWithModifiers(k) => {
+                let legacy = match k.key {
+                    KeyKind::Char(c) => Event::Character(c),
+                    KeyKind::Up => Event::KeyUp,
+                    KeyKind::Down => Event::KeyDown,
+                    KeyKind::Left => Event::KeyLeft,
+                    KeyKind::Right => Event::KeyRight,
+                    KeyKind::Delete => Event::Delete,
+                    KeyKind::Backspace => Event::Backspace,
+                    KeyKind::Tab => Event::Tab,
+                    KeyKind::Enter => Event::Enter,
+                    KeyKind::Escape => Event::Escape,
+                    KeyKind::Function(n) => Event::FunctionKey(n),
+                };
+                Some(legacy)
+            }
+            _ => None,
+        }
+    }
 }
 
 /// A minimal keyboard modifier model.

@@ -12,7 +12,7 @@
 //!
 //! ## Implemented (first pass)
 //! - [`TextInput`] single-line input with:
-//!   - cursor movement (left/right/home/end)
+//!   - cursor movement (left/right)
 //!   - selection (mouse drag + shift+arrows where available)
 //!   - copy/cut/paste (best-effort: uses `KeybindAction` + `Event::Paste`)
 //!   - horizontal scrolling to keep caret visible
@@ -23,8 +23,8 @@
 //! - Unicode handling is pragmatic: cursor/selection operate on `char` boundaries.
 //! - Terminal cell width for rendering uses `minui::text` helpers (so wide chars are less likely
 //!   to corrupt layout), but mapping from char-index to cell columns is still approximate.
-//! - Shift+arrow support depends on whether MinUI currently exposes shift-modified arrow events.
-//!   This widget still supports mouse-based selection and keyboard selection via explicit calls.
+//! - Shift+arrow support uses modifier-aware events when available. For compatibility, the widget
+//!   also normalizes `Event::KeyWithModifiers` via `Event::as_legacy_key_event()`.
 //!
 //! ## Typical usage
 //!
@@ -39,23 +39,19 @@
 //!
 //! app.run(
 //!     |state, event| {
-//!         // Route events to the input state.
-//!         // You can decide focus outside the widget (e.g., based on click hit-testing).
-//!         state.input.handle_event(event);
-//!         true
+//!         match event {
+//!             Event::Character('q') => false,
+//!             _ => {
+//!                 state.input.handle_event(event);
+//!                 true
+//!             }
+//!         }
 //!     },
 //!     |state, window| {
-//!         let (w, _h) = window.get_size();
-//!         let input = TextInput::new()
-//!             .with_position(2, 2)
-//!             .with_width(w.saturating_sub(4))
-//!             .with_border(true)
-//!             .with_placeholder("Type here...");
-//!
-//!         input.draw(window, &mut state.input)?;
-//!         window.end_frame()?; // applies cursor request
+//!         TextInput::new().with_width(30).draw(window, &mut state.input)?;
+//!         window.end_frame()?;
 //!         Ok(())
-//!     }
+//!     },
 //! )?;
 //! # Ok::<(), minui::Error>(())
 //! ```
@@ -301,16 +297,13 @@ impl TextInputState {
             return false;
         }
 
-        // Modifier-aware keyboard events are now the default input path.
+        // Modifier-aware keyboard events are now the default input path in MinUI.
         //
-        // We translate them into the legacy `Event::*` variants this widget already understands,
-        // but for selection we also honor Shift-modified navigation keys by using the widget's
-        // existing selection-aware movement methods.
-        if let Event::KeyWithModifiers(k) = event {
-            // Shift-selection: extend selection while moving the caret.
-            //
-            // Note: This is intentionally limited to left/right for now, because the current
-            // TextInput event model is single-line and does not have dedicated Home/End events.
+        // This widget is intentionally implemented in terms of the legacy `Event::*` variants,
+        // so we normalize at the boundary:
+        // - If `event` is `KeyWithModifiers`, we can honor Shift-selection for left/right.
+        // - Then we convert to the closest legacy key event via `as_legacy_key_event()`.
+        if let Event::KeyWithModifiers(k) = &event {
             if k.mods.shift {
                 match k.key {
                     crate::KeyKind::Left => {
@@ -324,23 +317,9 @@ impl TextInputState {
                     _ => {}
                 }
             }
-
-            let translated = match k.key {
-                crate::KeyKind::Char(c) => Event::Character(c),
-                crate::KeyKind::Up => Event::KeyUp,
-                crate::KeyKind::Down => Event::KeyDown,
-                crate::KeyKind::Left => Event::KeyLeft,
-                crate::KeyKind::Right => Event::KeyRight,
-                crate::KeyKind::Delete => Event::Delete,
-                crate::KeyKind::Backspace => Event::Backspace,
-                crate::KeyKind::Tab => Event::Tab,
-                crate::KeyKind::Enter => Event::Enter,
-                crate::KeyKind::Escape => Event::Escape,
-                crate::KeyKind::Function(n) => Event::FunctionKey(n),
-            };
-
-            return self.handle_event(translated);
         }
+
+        let event = event.as_legacy_key_event().unwrap_or(event);
 
         match event {
             Event::Character(c) => {
