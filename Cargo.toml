@@ -2,7 +2,7 @@
 name = "minui"
 version = "0.6.0"
 edition = "2024"
-description = "A minimalist Rust framework for building terminal UIs (TUIs) in Rust."
+description = "A minimalist framework for building terminal UIs in Rust."
 authors = ["Jack Derksen <jmderksen9@gmail.com>"]
 license = "GPL-3.0"
 repository = "https://github.com/JackDerksen/minui"
