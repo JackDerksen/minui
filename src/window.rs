@@ -893,6 +893,18 @@ impl TerminalWindow {
 
         let prev = self.last_cursor;
 
+        // Show the cursor BEFORE moving it.
+        // This is important on some terminals where Show + MoveTo in quick succession can cause flicker.
+        // By showing first, we ensure the cursor is visible when it moves to the final position.
+        let prev_visible = prev.map(|p| p.visible).unwrap_or(false);
+        if desired.visible {
+            if !prev_visible || hid_cursor_for_render {
+                execute!(self.out, cursor::Show)?;
+            }
+        } else if prev_visible {
+            execute!(self.out, cursor::Hide)?;
+        }
+
         // Move cursor to the desired position if it should be visible.
         //
         // We must ALWAYS reposition if we rendered any changes this frame, because rendering
@@ -901,27 +913,12 @@ impl TerminalWindow {
         // rendered text instead of the requested position.
         if desired.visible {
             let needs_move = match prev {
-                Some(p) => !p.visible || p.x != desired.x || p.y != desired.y,
+                Some(p) => p.x != desired.x || p.y != desired.y,
                 None => true,
             };
             if needs_move || hid_cursor_for_render {
                 execute!(self.out, cursor::MoveTo(desired.x, desired.y))?;
             }
-        }
-
-        // Toggle visibility as needed.
-        //
-        // If we hid the cursor for rendering, we must explicitly show it again when
-        // `desired.visible` is true, even if our logical `last_cursor` already had it visible.
-        // Otherwise, the cursor stays hidden because the terminal state diverged from our
-        // tracked state.
-        let prev_visible = prev.map(|p| p.visible).unwrap_or(false);
-        if desired.visible {
-            if !prev_visible || hid_cursor_for_render {
-                execute!(self.out, cursor::Show)?;
-            }
-        } else if prev_visible {
-            execute!(self.out, cursor::Hide)?;
         }
 
         self.last_cursor = Some(desired);

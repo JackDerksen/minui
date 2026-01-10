@@ -300,6 +300,13 @@ impl Buffer {
                         continue;
                     }
 
+                    // Skip cells that are identical to previous frame (no visual change).
+                    // This prevents unnecessary cursor hide/show when content hasn't actually changed.
+                    if current == previous {
+                        x += 1;
+                        continue;
+                    }
+
                     // Find run of consecutive modified cells with same colors
                     let mut run_length = 1;
                     let mut run_str = String::with_capacity((max_x - min_x + 1) as usize);
