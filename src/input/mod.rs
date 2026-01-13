@@ -99,6 +99,8 @@
 //! keyboard.set_poll_rate(50);
 //! ```
 
+#[cfg(feature = "clipboard")]
+pub mod clipboard;
 mod keyboard;
 mod mouse;
 pub mod scroll;
@@ -106,6 +108,8 @@ pub mod scroll;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "clipboard")]
+pub use clipboard::Clipboard;
 pub use keyboard::{KeybindAction, KeyboardHandler};
-pub use mouse::{CombinedInputHandler, MouseHandler};
+pub use mouse::{ClickTracker, CombinedInputHandler, MouseHandler};
 pub use scroll::{ScrollDirection, Scroller};
