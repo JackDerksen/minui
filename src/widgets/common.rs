@@ -28,12 +28,19 @@
 //! ## Visual Border Styles
 //!
 //! ```text
-//! Single Line:              Double Line:              ASCII Compatible:
-//! ┌─────────────────┐       ╔═══════════════════╗     +-------------------+
-//! │     Content     │       ║      Content      ║     |      Content      |
-//! ├─────────────────┤       ╠═══════════════════╣     +-------------------+
-//! │   More Content  │       ║   More Content    ║     |   More Content    |
-//! └─────────────────┘       ╚═══════════════════╝     +-------------------+
+//! Single Line:              Double Line:              Rounded:
+//! ┌─────────────────┐       ╔═══════════════════╗     ╭─────────────────╮
+//! │     Content     │       ║      Content      ║     │     Content     │
+//! ├─────────────────┤       ╠═══════════════════╣     ├─────────────────┤
+//! │   More Content  │       ║   More Content    ║     │   More Content  │
+//! └─────────────────┘       ╚═══════════════════╝     ╰─────────────────╯
+//!
+//! ASCII Compatible:
+//! +-------------------+
+//! |      Content      |
+//! +-------------------+
+//! |   More Content    |
+//! +-------------------+
 //! ```
 //!
 //! ## Basic Usage
@@ -252,6 +259,42 @@ impl BorderChars {
             intersect_right: '+',
             intersect_top: '+',
             intersect_bottom: '+',
+        }
+    }
+
+    /// Creates a rounded Unicode border character set.
+    ///
+    /// This provides modern, smooth borders using Unicode rounded corner box-drawing characters.
+    /// The style is perfect for a softer, more contemporary aesthetic while maintaining the
+    /// elegance of single-line borders. Corners are rounded while edges remain straight.
+    ///
+    /// Characters used: ╭╮╰╯─│┼├┤┬┴
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::BorderChars;
+    ///
+    /// let border = BorderChars::rounded();
+    /// assert_eq!(border.top_left, '╭');
+    /// assert_eq!(border.top_right, '╮');
+    /// assert_eq!(border.bottom_left, '╰');
+    /// assert_eq!(border.bottom_right, '╯');
+    /// assert_eq!(border.horizontal, '─');
+    /// ```
+    pub const fn rounded() -> Self {
+        Self {
+            top_left: '╭',
+            top_right: '╮',
+            bottom_left: '╰',
+            bottom_right: '╯',
+            horizontal: '─',
+            vertical: '│',
+            intersect: '┼',
+            intersect_left: '├',
+            intersect_right: '┤',
+            intersect_top: '┬',
+            intersect_bottom: '┴',
         }
     }
 }
