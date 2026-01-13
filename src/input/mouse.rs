@@ -8,7 +8,7 @@ use crate::{Event, MouseButton, Result};
 use crossterm::event::{
     self, Event as CrosstermEvent, MouseButton as CrosstermMouseButton, MouseEvent, MouseEventKind,
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Handles mouse input with configurable polling rates and event tracking.
 ///
@@ -92,12 +92,133 @@ pub struct MouseHandler {
     scroll_buffer_count: u8,
     invert_scroll_vertical: bool,
     invert_scroll_horizontal: bool,
+    click_tracker: ClickTracker,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ScrollDirection {
     Vertical,
     Horizontal,
+}
+
+/// Tracks click timing and position for double-click detection.
+///
+/// `ClickTracker` monitors mouse clicks and determines if a click is a double-click
+/// based on time interval and position proximity.
+///
+/// # Examples
+///
+/// ```rust
+/// use minui::input::ClickTracker;
+///
+/// let mut tracker = ClickTracker::new();
+///
+/// // Check if a click is a double-click
+/// if tracker.is_double_click(10, 5) {
+///     println!("Double-click detected at (10, 5)");
+/// }
+/// ```
+pub struct ClickTracker {
+    /// Timestamp of the last click
+    last_click: Instant,
+    /// Position of the last click
+    last_pos: (u16, u16),
+    /// Maximum time between clicks to be considered a double-click (default: 500ms)
+    double_click_threshold: Duration,
+    /// Maximum distance between clicks to be considered a double-click (default: 3 pixels)
+    double_click_distance: u16,
+}
+
+impl ClickTracker {
+    /// Creates a new click tracker with default thresholds.
+    ///
+    /// Defaults:
+    /// - 500ms double-click threshold
+    /// - 3 cell maximum distance
+    pub fn new() -> Self {
+        Self {
+            last_click: Instant::now() - Duration::from_secs(1), // Initialize in the past
+            last_pos: (0, 0),
+            double_click_threshold: Duration::from_millis(500),
+            double_click_distance: 3,
+        }
+    }
+
+    /// Sets the maximum time between clicks for double-click detection.
+    pub fn with_threshold(mut self, threshold: Duration) -> Self {
+        self.double_click_threshold = threshold;
+        self
+    }
+
+    /// Sets the maximum distance between clicks for double-click detection.
+    pub fn with_distance(mut self, distance: u16) -> Self {
+        self.double_click_distance = distance;
+        self
+    }
+
+    /// Checks if a click at the given position is a double-click.
+    ///
+    /// A double-click is detected if:
+    /// - The time since the last click is less than `double_click_threshold`
+    /// - The click position is within `double_click_distance` of the last click
+    ///
+    /// # Returns
+    ///
+    /// - `true` if this is a double-click
+    /// - `false` otherwise
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::input::ClickTracker;
+    ///
+    /// let mut tracker = ClickTracker::new();
+    ///
+    /// // First click
+    /// assert!(!tracker.is_double_click(10, 5)); // First click is never a double-click
+    ///
+    /// // Simulate a quick second click
+    /// // (in real code, you'd call this from the mouse event handler)
+    /// ```
+    pub fn is_double_click(&mut self, x: u16, y: u16) -> bool {
+        let now = Instant::now();
+        let time_diff = now.duration_since(self.last_click);
+        let pos_diff_x = if x > self.last_pos.0 {
+            x - self.last_pos.0
+        } else {
+            self.last_pos.0 - x
+        };
+        let pos_diff_y = if y > self.last_pos.1 {
+            y - self.last_pos.1
+        } else {
+            self.last_pos.1 - y
+        };
+
+        let is_double = time_diff < self.double_click_threshold
+            && pos_diff_x <= self.double_click_distance
+            && pos_diff_y <= self.double_click_distance;
+
+        self.last_click = now;
+        self.last_pos = (x, y);
+
+        is_double
+    }
+
+    /// Returns the position of the last click.
+    pub fn last_position(&self) -> (u16, u16) {
+        self.last_pos
+    }
+
+    /// Returns the time elapsed since the last click.
+    pub fn time_since_last_click(&self) -> Duration {
+        self.last_click.elapsed()
+    }
+}
+
+impl Default for ClickTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MouseHandler {
@@ -131,6 +252,7 @@ impl MouseHandler {
             scroll_buffer_count: 0,
             invert_scroll_vertical: false,
             invert_scroll_horizontal: false,
+            click_tracker: ClickTracker::new(),
         }
     }
 
@@ -263,6 +385,34 @@ impl MouseHandler {
         } else {
             None
         }
+    }
+
+    /// Returns a reference to the click tracker for double-click detection.
+    ///
+    /// This allows you to manually check if a click is a double-click or customize
+    /// the double-click thresholds.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::input::MouseHandler;
+    ///
+    /// let mut mouse = MouseHandler::new();
+    ///
+    /// // Check for double-click
+    /// if mouse.click_tracker().is_double_click(10, 5) {
+    ///     println!("Double-click detected!");
+    /// }
+    /// ```
+    pub fn click_tracker(&self) -> &ClickTracker {
+        &self.click_tracker
+    }
+
+    /// Returns a mutable reference to the click tracker for configuration.
+    ///
+    /// This allows you to customize double-click thresholds.
+    pub fn click_tracker_mut(&mut self) -> &mut ClickTracker {
+        &mut self.click_tracker
     }
 
     /// Sets whether to invert vertical scrolling (natural scrolling).

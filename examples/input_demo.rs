@@ -3,19 +3,21 @@
 //! This example demonstrates the keyboard and mouse input capabilities of MinUI,
 //! displaying events in a structured panel on the screen.
 
-use minui::MouseButton;
+use minui::input::ClickTracker;
 use minui::prelude::*;
+use minui::MouseButton;
 use std::collections::VecDeque;
 use std::time::Duration;
 
 // NOTE: `TextBlock` currently doesn't treat `\n` as hard line breaks in its wrapping logic
-// (it wraps based on whitespace). For the input demo, we want one event per line.
-// Until `TextBlock` becomes newline-aware, render the log as a vertical `Container` of `Label`s.
+// (it wraps based on whitespace). For input demo, we want one event per line.
+// Until `TextBlock` becomes newline-aware, render log as a vertical `Container` of `Label`s.
 const MAX_EVENTS: usize = 12;
 
 struct InputDemoState {
     event_log: VecDeque<String>,
     mouse_pos: (u16, u16),
+    click_tracker: ClickTracker,
 }
 
 fn main() -> minui::Result<()> {
@@ -24,10 +26,12 @@ fn main() -> minui::Result<()> {
             let mut log = VecDeque::new();
             log.push_back("Welcome to MinUI Input Demo!".to_string());
             log.push_back("Try typing, moving mouse, clicking...".to_string());
+            log.push_back("Double-click quickly to see double-click detection!".to_string());
             log.push_back("Press 'q' to quit".to_string());
             log
         },
         mouse_pos: (0, 0),
+        click_tracker: ClickTracker::new(),
     };
 
     let mut app = App::new(initial_state)?.with_frame_rate(Duration::from_millis(16));
@@ -179,9 +183,18 @@ fn main() -> minui::Result<()> {
                         MouseButton::Middle => "Middle",
                         MouseButton::Other(_) => "Other",
                     };
-                    state
-                        .event_log
-                        .push_back(format!("Mouse: {} click at ({}, {})", button_name, x, y));
+
+                    // Check for double-click
+                    if state.click_tracker.is_double_click(x, y) {
+                        state.event_log.push_back(format!(
+                            "Mouse: DOUBLE-CLICK! {} button at ({}, {})",
+                            button_name, x, y
+                        ));
+                    } else {
+                        state
+                            .event_log
+                            .push_back(format!("Mouse: {} click at ({}, {})", button_name, x, y));
+                    }
                 }
                 Event::MouseDrag { x, y, button } => {
                     state.mouse_pos = (x, y);
