@@ -136,16 +136,20 @@
 mod common;
 mod container;
 pub mod controls;
+#[cfg(feature = "figlet")]
 mod figlet;
 mod input;
 mod layout;
 pub mod scroll;
 mod scrollbox;
+mod spinner;
+mod statusbar;
 mod table;
 mod text;
+mod tooltip;
 mod viewport;
 
-pub use common::{BorderChars, WindowView};
+pub use common::{BorderChars, FocusStyle, WindowView};
 pub use container::{
     BorderSide, Container, ContentAlignment as ContainerContentAlignment, Gap, LayoutDirection,
     Padding as ContainerPadding, TitleAlignment,
@@ -154,14 +158,18 @@ pub use controls::{
     ArrowButton, ArrowDirection, ScrollBar, ScrollBarOptions, ScrollUnit, Slider, SliderOptions,
     SliderOrientation,
 };
+#[cfg(feature = "figlet")]
 pub use figlet::FigletText;
 pub use input::{TextInput, TextInputState};
 pub use scroll::state::{ScrollOffset, ScrollOrientation, ScrollSize, ScrollState};
 pub use scrollbox::{
     LinearScrollAccel, MacOSScrollAccel, ScrollAcceleration, ScrollBox, StickyEdge,
 };
+pub use spinner::Spinner;
+pub use statusbar::{StatusBar, StatusBarPosition};
 pub use table::{Table, TableColumn};
 pub use text::{Alignment, Label, Text, TextBlock, TextWrapMode, VerticalAlignment};
+pub use tooltip::{HoverTracker, Tooltip};
 pub use viewport::Viewport;
 
 use crate::{Error, Result, Window};

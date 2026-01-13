@@ -15,7 +15,13 @@ categories = ["command-line-interface"]
 crossterm = "0.28.1"
 thiserror = "2.0.11"
 crokey = "1.1.0"
-figlet-rs = "0.1.5"
+figlet-rs = { version = "0.1.5", optional = true }
+arboard = { version = "3.5", optional = true }
+
+[features]
+default = []
+clipboard = ["dep:arboard"]
+figlet = ["dep:figlet-rs"]
 
 [lib]
 name = "minui"

@@ -66,13 +66,14 @@ pub use error::{Error, Result};
 pub use event::{Event, KeyKind, KeyModifiers, KeyWithModifiers, MouseButton};
 pub use term::{ColorSupport, TerminalCapabilities};
 pub use text::{
-    TabPolicy, cell_width, cell_width_char, clip_to_cells, clip_to_cells_ellipsis, fit_to_cells,
+    cell_width, cell_width_char, clip_to_cells, clip_to_cells_ellipsis, fit_to_cells, TabPolicy,
 };
 pub use window::{TerminalWindow, Window};
 
 // Input handling
 pub use input::{
-    CombinedInputHandler, KeybindAction, KeyboardHandler, MouseHandler, ScrollDirection, Scroller,
+    ClickTracker, CombinedInputHandler, KeybindAction, KeyboardHandler, MouseHandler,
+    ScrollDirection, Scroller,
 };
 
 // Widget system
@@ -87,9 +88,10 @@ pub use widgets::{
     BorderSide,
     Container,
 
+    FocusStyle,
     // Text widgets
-    FigletText,
     Gap,
+    HoverTracker,
     Label,
     LayoutDirection,
     // Scroll acceleration strategies
@@ -108,11 +110,15 @@ pub use widgets::{
     SliderOptions,
     SliderOrientation,
 
+    Spinner,
+    StatusBar,
+    StatusBarPosition,
     StickyEdge,
     Text,
     TextBlock,
     TextWrapMode,
     TitleAlignment,
+    Tooltip,
     VerticalAlignment,
 
     // Viewport for scrolling
@@ -148,6 +154,11 @@ pub use ui::{
 /// ```
 pub mod prelude {
     pub use crate::{
+        cell_width,
+        cell_width_char,
+        clip_to_cells,
+        clip_to_cells_ellipsis,
+        fit_to_cells,
         Alignment,
         // Core types
         App,
@@ -160,21 +171,25 @@ pub mod prelude {
         BorderChars,
         // Layout system
         BorderSide,
+        // Input handling
+        ClickTracker,
         // Colors
         Color,
         ColorPair,
 
         // Terminal capability utilities
         ColorSupport,
-        // Input handling
         CombinedInputHandler,
 
         Container,
         Error,
         Event,
+        FocusStyle,
         // Text widgets
         Gap,
         HitTestResult,
+        // Hover tracking for tooltips
+        HoverTracker,
         IdAllocator,
         InteractionCache,
         InteractionEntry,
@@ -184,19 +199,21 @@ pub mod prelude {
         KeyKind,
         KeyModifiers,
         KeyWithModifiers,
-
         KeybindAction,
         KeyboardHandler,
         Label,
         LayoutDirection,
         LinearScrollAccel,
         MacOSScrollAccel,
+
+        MouseButton,
         MouseHandler,
 
         OwnerId,
         PolicyEffects,
         Result,
         RouteTarget,
+        // Scroll acceleration and handling
         ScrollAcceleration,
         ScrollBar,
         ScrollBarOptions,
@@ -208,10 +225,16 @@ pub mod prelude {
         ScrollState,
         ScrollUnit,
         Scroller,
+
         Slider,
         SliderOptions,
         SliderOrientation,
 
+        // Spinner widget
+        Spinner,
+        // Status bar widget
+        StatusBar,
+        StatusBarPosition,
         StickyEdge,
 
         // Text utilities (cell-width + clipping)
@@ -226,6 +249,8 @@ pub mod prelude {
         TextBlock,
         TextWrapMode,
         TitleAlignment,
+        // Tooltip widget
+        Tooltip,
         UiScene,
         VerticalAlignment,
 
@@ -235,10 +260,5 @@ pub mod prelude {
         // Core widget trait and utilities
         Widget,
         WidgetArea,
-        cell_width,
-        cell_width_char,
-        clip_to_cells,
-        clip_to_cells_ellipsis,
-        fit_to_cells,
     };
 }

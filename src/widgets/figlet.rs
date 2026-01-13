@@ -3,6 +3,8 @@
 //! A widget for rendering ASCII art text using FIGlet fonts. This widget uses the figlet-rs
 //! library to convert text into stylized ASCII art.
 //!
+//! This feature is optional and requires the `figlet` feature flag.
+//!
 //! ## Features
 //!
 //! - **Multiple fonts**: Use any FIGlet font (standard font by default)
@@ -38,14 +40,18 @@
 //!     .with_alignment(Alignment::Center);
 //! ```
 
+#[cfg(feature = "figlet")]
 use super::{Alignment, Widget};
+#[cfg(feature = "figlet")]
 use crate::{ColorPair, Error, Result, Window};
+#[cfg(feature = "figlet")]
 use figlet_rs::FIGfont;
 
 /// A widget that renders text as ASCII art using FIGlet fonts.
 ///
 /// This widget converts text into stylized ASCII art using FIGlet fonts.
 /// The rendered output can be styled with colors and aligned within the display area.
+#[cfg(feature = "figlet")]
 pub struct FigletText {
     /// The original text to render
     text: String,
@@ -61,16 +67,20 @@ pub struct FigletText {
     alignment: Alignment,
 }
 
+#[cfg(feature = "figlet")]
 impl FigletText {
     /// Creates a new FigletText widget using the standard FIGlet font.
     ///
     /// # Arguments
+    ///
     /// * `text` - The text to render as ASCII art
     ///
     /// # Errors
+    ///
     /// Returns an error if the font fails to load or the text cannot be rendered.
     ///
     /// # Example
+    ///
     /// ```rust
     /// use minui::FigletText;
     ///
@@ -88,13 +98,16 @@ impl FigletText {
     /// Creates a new FigletText widget with a custom FIGlet font.
     ///
     /// # Arguments
+    ///
     /// * `text` - The text to render as ASCII art
     /// * `font` - The FIGfont to use for rendering
     ///
     /// # Errors
+    ///
     /// Returns an error if the text cannot be rendered with the given font.
     ///
     /// # Example
+    ///
     /// ```rust
     /// use minui::FigletText;
     /// use figlet_rs::FIGfont;
@@ -130,6 +143,7 @@ impl FigletText {
     /// Sets foreground and background colors for the ASCII art.
     ///
     /// # Example
+    ///
     /// ```rust
     /// use minui::{FigletText, Color, ColorPair};
     ///
@@ -145,6 +159,7 @@ impl FigletText {
     /// Sets horizontal alignment for the ASCII art.
     ///
     /// # Example
+    ///
     /// ```rust
     /// use minui::{FigletText, Alignment};
     ///
@@ -189,6 +204,7 @@ impl FigletText {
     }
 }
 
+#[cfg(feature = "figlet")]
 impl Widget for FigletText {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
         let (window_width, _) = window.get_size();
