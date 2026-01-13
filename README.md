@@ -47,7 +47,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.6.1"
+minui = "0.6.2"
 ```
 
 ### Basic Example
