@@ -3,13 +3,14 @@
 //! A collection of shared types, utilities, and building blocks used across all MinUI
 //! widgets. This module provides the foundational components that enable consistent
 //! visual styling and drawing operations throughout the widget system, including
-//! comprehensive border character sets and window view management for constrained
-//! rendering within specific areas.
+//! comprehensive border character sets, focus styling, and window view management
+//! for constrained rendering within specific areas.
 //!
 //! ## Features
 //!
 //! - **Rich border styles**: Unicode and ASCII-compatible border character sets
 //! - **Flexible styling**: Support for single-line, double-line, and custom borders
+//! - **Focus indicators**: Visual feedback for widget focus states
 //! - **Window constraints**: Bounded drawing areas for contained widget rendering
 //! - **Cross-platform compatibility**: ASCII fallbacks for terminal compatibility
 //! - **Consistent theming**: Standardized visual elements across all widgets
@@ -20,6 +21,9 @@
 //! ### BorderChars
 //! Comprehensive character sets for drawing borders, frames, and decorative elements.
 //! Provides predefined styles for different visual aesthetics and terminal capabilities.
+//!
+//! ### FocusStyle
+//! Styling configuration for focused vs unfocused widget states.
 //!
 //! ### WindowView
 //! A constrained view system that enables widgets to draw within specific rectangular
@@ -91,6 +95,22 @@
 //!     .with_body_style(custom_border);
 //! ```
 //!
+//! ## Focus Styling
+//!
+//! ```rust
+//! use minui::widgets::FocusStyle;
+//! use minui::{BorderChars, Color};
+//!
+//! // Create focus style with blue double-line border
+//! let focus_style = FocusStyle::new()
+//!     .with_border_chars(BorderChars::double_line())
+//!     .with_border_color(Color::Blue);
+//!
+//! // Use on widgets
+//! let panel = Panel::new(30, 8)
+//!     .with_focus_style(focus_style, true);
+//! ```
+//!
 //! ## Window View Usage
 //! ## Constrained Drawing with WindowView
 //!
@@ -110,7 +130,7 @@
 //! for custom appearances and cross-platform terminal compatibility.
 
 use crate::window::CursorSpec;
-use crate::{ColorPair, Result, Window};
+use crate::{Color, ColorPair, Result, Window};
 
 /// Character sets for drawing borders, boxes, and frames.
 ///
@@ -296,6 +316,101 @@ impl BorderChars {
             intersect_top: '┬',
             intersect_bottom: '┴',
         }
+    }
+}
+
+/// Styling configuration for widget focus states.
+///
+/// `FocusStyle` provides a builder pattern for configuring visual feedback
+/// when widgets are focused. It supports custom border styles, colors, and text
+/// highlighting to make focused widgets visually distinct.
+///
+/// # Examples
+///
+/// ```rust
+/// use minui::widgets::FocusStyle;
+/// use minui::{BorderChars, Color};
+///
+/// // Default focus style
+/// let default = FocusStyle::new();
+///
+/// // Custom focus style with blue double-line border
+/// let custom = FocusStyle::new()
+///     .with_border_chars(BorderChars::double_line())
+///     .with_border_color(Color::Blue);
+///
+/// // Focus style with text highlighting
+/// let highlighted = FocusStyle::new()
+///     .with_text_color(Color::Cyan);
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct FocusStyle {
+    /// Border characters for focused state (None = no border change)
+    pub border_chars: Option<BorderChars>,
+    /// Border color for focused state
+    pub border_color: Option<Color>,
+    /// Text color for focused state
+    pub text_color: Option<Color>,
+    /// Background color for focused state
+    pub bg_color: Option<Color>,
+}
+
+impl FocusStyle {
+    /// Creates a new focus style with defaults.
+    ///
+    /// Defaults: None for all style fields (no visual change when focused).
+    pub fn new() -> Self {
+        Self {
+            border_chars: None,
+            border_color: None,
+            text_color: None,
+            bg_color: None,
+        }
+    }
+
+    /// Sets the border characters for the focused state.
+    pub fn with_border_chars(mut self, chars: BorderChars) -> Self {
+        self.border_chars = Some(chars);
+        self
+    }
+
+    /// Sets the border color for the focused state.
+    pub fn with_border_color(mut self, color: Color) -> Self {
+        self.border_color = Some(color);
+        self
+    }
+
+    /// Sets the text color for the focused state.
+    pub fn with_text_color(mut self, color: Color) -> Self {
+        self.text_color = Some(color);
+        self
+    }
+
+    /// Sets the background color for the focused state.
+    pub fn with_bg_color(mut self, color: Color) -> Self {
+        self.bg_color = Some(color);
+        self
+    }
+
+    /// Creates a standard "focused" style with blue double-line border.
+    pub fn focused() -> Self {
+        Self::new()
+            .with_border_chars(BorderChars::double_line())
+            .with_border_color(Color::Blue)
+            .with_text_color(Color::Cyan)
+    }
+
+    /// Creates a standard "highlighted" style (no border, just colors).
+    pub fn highlighted() -> Self {
+        Self::new()
+            .with_text_color(Color::Yellow)
+            .with_bg_color(Color::DarkGray)
+    }
+}
+
+impl Default for FocusStyle {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
