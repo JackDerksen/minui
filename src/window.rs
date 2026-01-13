@@ -51,7 +51,7 @@ use crossterm::{
     style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
-use std::io::{Stdout, Write, stdout};
+use std::io::{stdout, Stdout, Write};
 use std::time::Duration;
 
 /// A structured cursor request applied at the end of a frame.
@@ -429,7 +429,22 @@ impl TerminalWindow {
     /// When the terminal shrinks, there may be stale content outside the new logical bounds
     /// that our new buffer will never overwrite. To prevent "ghost" borders/text at the edges,
     /// we force a full terminal clear on resize.
-    pub(crate) fn handle_resize(&mut self, width: u16, height: u16) {
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use minui::{App, Event};
+    ///
+    /// // In your update closure:
+    /// match event {
+    ///     Event::Resize { width, height } => {
+    ///         window.handle_resize(width, height);
+    ///         // Optionally reflow layouts or adjust scroll positions
+    ///     }
+    ///     _ => {}
+    /// }
+    /// ```
+    pub fn handle_resize(&mut self, width: u16, height: u16) {
         // Avoid work if nothing changed.
         if self.width == width && self.height == height {
             return;
