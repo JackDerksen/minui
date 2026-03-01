@@ -1,4 +1,4 @@
-# MinUI 🌒
+# MinUI
 
 MinUI is a lightweight terminal UI framework for building terminal applications in Rust. It's designed to be simple to use while providing the essential tools you need for terminal-based interfaces.
 
@@ -8,12 +8,12 @@ I wanted to build rich terminal apps in Rust, but I found existing libraries eit
 
 ## Features
 
-- 🚀 **Fast**: Lightweight and performance-focused 
-- ⏱️ **Timed updates**: Supports event-driven apps and optional fixed frame rates for animations / realtime terminal UIs
-- 🎯 **Simple**: Clean, intuitive API that gets out of your way
-- ⌨️ **Input handling**: Very comprehensive keyboard and mouse event handling
-- 🎨 **Full color support**: RGB, ANSI, and named colors
-- 🧰 **Safe**: Proper error handling and automatic cleanup (with clipping for terminal-edge drawing)
+- **Fast**: Lightweight and performance-focused 
+- **Timed updates**: Supports event-driven apps and optional fixed frame rates for animations / realtime terminal UIs
+- **Simple**: Clean, intuitive API that gets out of your way
+- **Input handling**: Very comprehensive keyboard and mouse event handling
+- **Full color support**: RGB, ANSI, and named colors
+- **Safe**: Proper error handling and automatic cleanup (with clipping for terminal-edge drawing)
 
 ## Current Status
 
@@ -49,7 +49,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.6.3"
+minui = "0.6.4"
 ```
 
 ### Basic Example
@@ -109,8 +109,7 @@ What makes MinUI different:
 
 ## Applications Built with MinUI
 
-- _Coming Soon: [Redox](https://github.com/JackDerksen/redox)_
-- _Coming Soon: [Tet.rs](https://github.com/JackDerksen/tet.rs)_
+- Redox: [Redox](https://github.com/JackDerksen/redox)
 
 ## Acknowledgments
 
