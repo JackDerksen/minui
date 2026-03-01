@@ -759,6 +759,7 @@ impl KeyboardHandler {
         match key_code {
             KeyCode::Char(c) => Event::Character(c),
             KeyCode::Tab => Event::Tab,
+            KeyCode::BackTab => Event::Tab,
             KeyCode::Up => Event::KeyUp,
             KeyCode::Down => Event::KeyDown,
             KeyCode::Left => Event::KeyLeft,
@@ -776,7 +777,7 @@ impl KeyboardHandler {
     ///
     /// Returns `None` if the key cannot be represented by the current `KeyKind` model.
     fn convert_key_event_with_modifiers(&self, key_event: &KeyEvent) -> Option<Event> {
-        let mods = KeyModifiers {
+        let mut mods = KeyModifiers {
             shift: key_event
                 .modifiers
                 .contains(crossterm::event::KeyModifiers::SHIFT),
@@ -794,6 +795,10 @@ impl KeyboardHandler {
         let key = match key_event.code {
             KeyCode::Char(c) => KeyKind::Char(c),
             KeyCode::Tab => KeyKind::Tab,
+            KeyCode::BackTab => {
+                mods.shift = true;
+                KeyKind::Tab
+            }
             KeyCode::Up => KeyKind::Up,
             KeyCode::Down => KeyKind::Down,
             KeyCode::Left => KeyKind::Left,

@@ -2,14 +2,6 @@
 //!
 //! This module provides interactive input widgets for building terminal UIs.
 //!
-//! For the capstone/editor work, the framework's responsibility is:
-//! - event primitives (`Event::Character`, `Event::Paste`, arrows, etc.)
-//! - rendering primitives (`Window`)
-//! - cursor control via **deferred cursor requests** (`Window::request_cursor` + `Window::end_frame`)
-//!
-//! The editor crate should own higher-level editing behavior. These widgets are intended
-//! for form fields and small input areas (e.g. a Vim-like command line).
-//!
 //! ## Implemented (first pass)
 //! - [`TextInput`] single-line input with:
 //!   - cursor movement (left/right)
