@@ -60,15 +60,18 @@ pub mod widgets;
 pub mod window;
 
 // Core types
-pub use app::App;
+pub use app::{App, FrameProfile};
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
 pub use event::{Event, KeyKind, KeyModifiers, KeyWithModifiers, MouseButton};
 pub use term::{ColorSupport, TerminalCapabilities};
 pub use text::{
-    cell_width, cell_width_char, clip_to_cells, clip_to_cells_ellipsis, fit_to_cells, TabPolicy,
+    TabPolicy, byte_index_for_char_index, byte_index_for_grapheme_index,
+    cell_column_for_char_index, cell_column_for_grapheme_index, cell_width, cell_width_char,
+    char_index_from_cell_column, clip_to_cells, clip_to_cells_ellipsis, fit_to_cells,
+    grapheme_count, grapheme_index_from_cell_column,
 };
-pub use window::{TerminalWindow, Window};
+pub use window::{ColoredSpan, TerminalWindow, Window};
 
 // Input handling
 pub use input::{
@@ -154,11 +157,6 @@ pub use ui::{
 /// ```
 pub mod prelude {
     pub use crate::{
-        cell_width,
-        cell_width_char,
-        clip_to_cells,
-        clip_to_cells_ellipsis,
-        fit_to_cells,
         Alignment,
         // Core types
         App,
@@ -179,12 +177,15 @@ pub mod prelude {
 
         // Terminal capability utilities
         ColorSupport,
+        ColoredSpan,
+
         CombinedInputHandler,
 
         Container,
         Error,
         Event,
         FocusStyle,
+        FrameProfile,
         // Text widgets
         Gap,
         HitTestResult,
@@ -244,7 +245,6 @@ pub mod prelude {
         TerminalCapabilities,
 
         TerminalWindow,
-
         Text,
         TextBlock,
         TextWrapMode,
@@ -260,5 +260,17 @@ pub mod prelude {
         // Core widget trait and utilities
         Widget,
         WidgetArea,
+        byte_index_for_char_index,
+        byte_index_for_grapheme_index,
+        cell_column_for_char_index,
+        cell_column_for_grapheme_index,
+        cell_width,
+        cell_width_char,
+        char_index_from_cell_column,
+        clip_to_cells,
+        clip_to_cells_ellipsis,
+        fit_to_cells,
+        grapheme_count,
+        grapheme_index_from_cell_column,
     };
 }

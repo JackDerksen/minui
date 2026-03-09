@@ -49,7 +49,10 @@
 //! ```
 
 use crate::input::KeybindAction;
-use crate::text::{TabPolicy, cell_width_char, clip_to_cells};
+use crate::text::{
+    TabPolicy, byte_index_for_char_index, cell_column_for_char_index, cell_width_char,
+    char_index_from_cell_column, clip_to_cells,
+};
 use crate::widgets::WidgetArea;
 use crate::window::CursorSpec;
 use crate::{Color, ColorPair, Event, InteractionCache, InteractionId, Result, Window};
@@ -478,28 +481,11 @@ impl TextInputState {
     }
 
     fn byte_index_for_char_index(&self, char_idx: usize) -> usize {
-        if char_idx == 0 {
-            return 0;
-        }
-        if char_idx >= self.len_chars() {
-            return self.text.len();
-        }
-        self.text
-            .char_indices()
-            .nth(char_idx)
-            .map(|(i, _)| i)
-            .unwrap_or(self.text.len())
+        byte_index_for_char_index(&self.text, char_idx)
     }
 
     fn cell_column_for_char_index(&self, char_idx: usize) -> u16 {
-        let mut col: u16 = 0;
-        for (i, ch) in self.text.chars().enumerate() {
-            if i >= char_idx {
-                break;
-            }
-            col = col.saturating_add(cell_width_char(ch));
-        }
-        col
+        cell_column_for_char_index(&self.text, char_idx)
     }
 
     /// Best-effort mapping from cell column to char index.
@@ -507,18 +493,7 @@ impl TextInputState {
     /// This walks the string accumulating cell widths. If the target column lands "inside"
     /// a wide char, we place the caret before that char.
     fn char_index_from_cell_column(&self, col: u16) -> usize {
-        let mut acc: u16 = 0;
-        for (i, ch) in self.text.chars().enumerate() {
-            let w = cell_width_char(ch);
-            if w == 0 {
-                continue;
-            }
-            if acc.saturating_add(w) > col {
-                return i;
-            }
-            acc = acc.saturating_add(w);
-        }
-        self.len_chars()
+        char_index_from_cell_column(&self.text, col)
     }
 }
 

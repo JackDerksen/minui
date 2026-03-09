@@ -40,6 +40,7 @@
 use crate::input::{KeyboardHandler, MouseHandler};
 use crate::render::buffer::Buffer;
 use crate::term::TerminalCapabilities;
+use crate::text::{TabPolicy, cell_width};
 use crate::{ColorPair, Error, Event, Result};
 use crossterm::{
     cursor,
@@ -51,7 +52,7 @@ use crossterm::{
     style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
-use std::io::{stdout, Stdout, Write};
+use std::io::{Stdout, Write, stdout};
 use std::time::Duration;
 
 /// A structured cursor request applied at the end of a frame.
@@ -66,6 +67,22 @@ pub struct CursorSpec {
     pub y: u16,
     /// Whether the cursor should be visible at the end of the frame.
     pub visible: bool,
+}
+
+/// A coloured text span for batched rendering.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ColoredSpan<'a> {
+    /// Text for this span.
+    pub text: &'a str,
+    /// Colours for this span.
+    pub colors: ColorPair,
+}
+
+impl<'a> ColoredSpan<'a> {
+    /// Creates a new coloured span.
+    pub const fn new(text: &'a str, colors: ColorPair) -> Self {
+        Self { text, colors }
+    }
 }
 
 /// The core drawing interface for all UI components.
@@ -128,6 +145,22 @@ pub trait Window {
     /// # Ok::<(), minui::Error>(())
     /// ```
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()>;
+
+    /// Writes multiple coloured spans on the same row.
+    ///
+    /// This reduces repetitive `write_str_colored` calls in syntax-highlighting paths.
+    fn write_spans_colored(&mut self, y: u16, x: u16, spans: &[ColoredSpan<'_>]) -> Result<()> {
+        let mut cursor_x = x;
+        for span in spans {
+            if span.text.is_empty() {
+                continue;
+            }
+            self.write_str_colored(y, cursor_x, span.text, span.colors)?;
+            let span_w = cell_width(span.text, TabPolicy::SingleCell);
+            cursor_x = cursor_x.saturating_add(span_w);
+        }
+        Ok(())
+    }
 
     /// Flushes any pending buffered rendering to the underlying terminal/output.
     ///

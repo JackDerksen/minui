@@ -355,6 +355,7 @@ dependencies = [
  "crossterm 0.28.1",
  "figlet-rs",
  "thiserror",
+ "unicode-segmentation",
 ]
 
 [[package]]

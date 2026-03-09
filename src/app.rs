@@ -40,6 +40,25 @@ use crate::{Event, Result, TerminalWindow, Window};
 use crossterm::terminal;
 use std::time::{Duration, Instant};
 
+/// Per-frame timing information emitted by `App` profiling hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameProfile {
+    /// Time spent polling input for this frame.
+    pub input_poll_time: Duration,
+    /// Time spent in update handlers for this frame.
+    pub update_time: Duration,
+    /// Time spent in the draw callback for this frame.
+    pub draw_time: Duration,
+    /// Total frame time from loop start to end.
+    pub frame_time: Duration,
+    /// Number of input events processed this frame.
+    pub events_processed: usize,
+    /// Optional frame budget to compare against.
+    pub budget: Option<Duration>,
+    /// Whether this frame exceeded the configured budget.
+    pub over_budget: bool,
+}
+
 /// Application runner that manages the main loop.
 ///
 /// Handles window setup, input polling, and timing so you can focus on your application logic.
@@ -48,6 +67,8 @@ pub struct App<S> {
     window: TerminalWindow,
     state: S,
     frame_rate: Option<Duration>,
+    frame_budget: Option<Duration>,
+    frame_profile_hook: Option<Box<dyn FnMut(&FrameProfile)>>,
 }
 
 impl<S> App<S> {
@@ -59,6 +80,8 @@ impl<S> App<S> {
             window,
             state: initial_state,
             frame_rate: None, // Default to event-driven TUI mode
+            frame_budget: None,
+            frame_profile_hook: None,
         })
     }
 
@@ -92,6 +115,27 @@ impl<S> App<S> {
         self
     }
 
+    /// Sets a soft frame-time budget used for profiling and pacing.
+    ///
+    /// If the frame finishes early, the runner sleeps the remaining budget time.
+    pub fn with_frame_budget(mut self, budget: Duration) -> Self {
+        self.frame_budget = Some(budget);
+        self
+    }
+
+    /// Installs a per-frame profiling hook.
+    pub fn set_frame_profile_hook<F>(&mut self, hook: F)
+    where
+        F: FnMut(&FrameProfile) + 'static,
+    {
+        self.frame_profile_hook = Some(Box::new(hook));
+    }
+
+    /// Removes the current profiling hook.
+    pub fn clear_frame_profile_hook(&mut self) {
+        self.frame_profile_hook = None;
+    }
+
     /// Runs the main application loop.
     ///
     /// - `update`: Called for each event. Return `false` to exit.
@@ -111,31 +155,42 @@ impl<S> App<S> {
         let mut last_tick = Instant::now();
 
         loop {
+            let frame_start = Instant::now();
+
             // --- Input Handling ---
             // Drain all pending input events before drawing a frame.
             //
             // This prevents input bursts (especially mouse events) from interleaving with rendering,
             // which can cause flicker and unstable behavior.
             const MAX_EVENTS_PER_FRAME: usize = 256;
+            let mut events_processed = 0usize;
+            let input_poll_start = Instant::now();
+            let mut update_time = Duration::ZERO;
             for _ in 0..MAX_EVENTS_PER_FRAME {
                 match self.window.poll_input()? {
                     Some(event) => {
+                        events_processed = events_processed.saturating_add(1);
+                        let update_start = Instant::now();
                         if !update(&mut self.state, event) {
                             return Ok(()); // Exit if the update closure returns false
                         }
+                        update_time = update_time.saturating_add(update_start.elapsed());
                     }
                     None => break, // No more pending input
                 }
             }
+            let input_poll_time = input_poll_start.elapsed();
 
             // --- Ticked Updates ---
             // If using a fixed tick rate, check if it's time to emit a fixed-rate frame event.
             if let Some(frame_rate) = self.frame_rate
                 && last_tick.elapsed() >= frame_rate
             {
+                let update_start = Instant::now();
                 if !update(&mut self.state, Event::Frame) {
                     break; // Exit if the tick update returns false
                 }
+                update_time = update_time.saturating_add(update_start.elapsed());
                 last_tick = Instant::now();
             }
 
@@ -156,10 +211,34 @@ impl<S> App<S> {
             }
 
             self.window.clear_screen()?;
+            let draw_start = Instant::now();
             draw(&mut self.state, &mut self.window)?;
+            let draw_time = draw_start.elapsed();
+
+            let frame_time = frame_start.elapsed();
+            let over_budget = self.frame_budget.is_some_and(|budget| frame_time > budget);
+
+            if let Some(hook) = self.frame_profile_hook.as_mut() {
+                hook(&FrameProfile {
+                    input_poll_time,
+                    update_time,
+                    draw_time,
+                    frame_time,
+                    events_processed,
+                    budget: self.frame_budget,
+                    over_budget,
+                });
+            }
 
             // Yield CPU time to avoid spinning, especially when using a fixed tick rate.
-            std::thread::sleep(Duration::from_millis(1));
+            if let Some(budget) = self.frame_budget {
+                let remaining = budget.saturating_sub(frame_time);
+                if !remaining.is_zero() {
+                    std::thread::sleep(remaining);
+                }
+            } else {
+                std::thread::sleep(Duration::from_millis(1));
+            }
         }
 
         Ok(())

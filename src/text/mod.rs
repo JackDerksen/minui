@@ -22,6 +22,7 @@
 //!
 //! If you later want perfect behavior, consider integrating `unicode-width` and/or
 //! `unicode-segmentation` behind a feature flag.
+use unicode_segmentation::UnicodeSegmentation;
 
 /// How to handle tab characters (`'\t'`) when measuring/clipping text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,4 +218,99 @@ pub fn fit_to_cells(s: &str, target_cells: u16, tab_policy: TabPolicy, ellipsis:
     }
 
     out
+}
+
+/// Converts a character index into a byte index for `s`.
+///
+/// - `0` maps to `0`
+/// - indexes at/after the end map to `s.len()`
+pub fn byte_index_for_char_index(s: &str, char_idx: usize) -> usize {
+    if char_idx == 0 {
+        return 0;
+    }
+
+    s.char_indices()
+        .nth(char_idx)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len())
+}
+
+/// Returns the terminal cell column for a character index in `s`.
+pub fn cell_column_for_char_index(s: &str, char_idx: usize) -> u16 {
+    let mut col: u16 = 0;
+    for (i, ch) in s.chars().enumerate() {
+        if i >= char_idx {
+            break;
+        }
+        col = col.saturating_add(cell_width_char(ch));
+    }
+    col
+}
+
+/// Best-effort mapping from terminal cell column to character index.
+///
+/// If `col` lands inside a wide glyph, this returns the index before that glyph.
+pub fn char_index_from_cell_column(s: &str, col: u16) -> usize {
+    let mut acc: u16 = 0;
+    for (i, ch) in s.chars().enumerate() {
+        let w = cell_width_char(ch);
+        if w == 0 {
+            continue;
+        }
+        if acc.saturating_add(w) > col {
+            return i;
+        }
+        acc = acc.saturating_add(w);
+    }
+    s.chars().count()
+}
+
+/// Returns the number of grapheme clusters in `s`.
+pub fn grapheme_count(s: &str) -> usize {
+    UnicodeSegmentation::graphemes(s, true).count()
+}
+
+/// Converts a grapheme index into a byte index for `s`.
+///
+/// - `0` maps to `0`
+/// - indexes at/after the end map to `s.len()`
+pub fn byte_index_for_grapheme_index(s: &str, grapheme_idx: usize) -> usize {
+    if grapheme_idx == 0 {
+        return 0;
+    }
+
+    UnicodeSegmentation::grapheme_indices(s, true)
+        .nth(grapheme_idx)
+        .map(|(i, _)| i)
+        .unwrap_or(s.len())
+}
+
+/// Returns the terminal cell column for a grapheme index in `s`.
+pub fn cell_column_for_grapheme_index(s: &str, grapheme_idx: usize, tab_policy: TabPolicy) -> u16 {
+    let mut col: u16 = 0;
+    for (i, g) in UnicodeSegmentation::graphemes(s, true).enumerate() {
+        if i >= grapheme_idx {
+            break;
+        }
+        col = col.saturating_add(cell_width(g, tab_policy));
+    }
+    col
+}
+
+/// Best-effort mapping from terminal cell column to grapheme index.
+///
+/// If `col` lands inside a wide grapheme, this returns the index before that grapheme.
+pub fn grapheme_index_from_cell_column(s: &str, col: u16, tab_policy: TabPolicy) -> usize {
+    let mut acc: u16 = 0;
+    for (i, g) in UnicodeSegmentation::graphemes(s, true).enumerate() {
+        let w = cell_width(g, tab_policy);
+        if w == 0 {
+            continue;
+        }
+        if acc.saturating_add(w) > col {
+            return i;
+        }
+        acc = acc.saturating_add(w);
+    }
+    grapheme_count(s)
 }

@@ -3,9 +3,9 @@
 //! This example demonstrates the keyboard and mouse input capabilities of MinUI,
 //! displaying events in a structured panel on the screen.
 
+use minui::MouseButton;
 use minui::input::ClickTracker;
 use minui::prelude::*;
-use minui::MouseButton;
 use std::collections::VecDeque;
 use std::time::Duration;
 
