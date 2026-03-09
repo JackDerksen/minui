@@ -348,7 +348,7 @@ dependencies = [
 
 [[package]]
 name = "minui"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "arboard",
  "crokey",
