@@ -482,20 +482,19 @@ impl Widget for TextBlock {
             }
         };
 
-        // `TextBlock` does not own scroll state.
-        // If you want scrolling, draw into a `WindowView` with `scroll_y` applied (or use ScrollBox).
-        let display_lines: Vec<String> =
-            lines.into_iter().take(available_height as usize).collect();
-
         // Draw each line
-        for (i, line) in display_lines.iter().enumerate() {
+        for (i, line) in lines
+            .into_iter()
+            .take(available_height as usize)
+            .enumerate()
+        {
             let line_y = start_y + i as u16;
             if line_y >= available_height {
                 break;
             }
 
             // NOTE: `String::len()` is bytes; use cell-aware fitting for alignment/clipping.
-            let fitted = fit_to_cells(line, available_width, TabPolicy::SingleCell, true);
+            let fitted = fit_to_cells(&line, available_width, TabPolicy::SingleCell, true);
 
             let line_x = match self.h_align {
                 Alignment::Left => 0,

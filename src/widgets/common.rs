@@ -496,7 +496,7 @@ impl<'a> Window for WindowView<'a> {
             // (especially visible after resizes).
             let max_cells = self.width.saturating_sub(local_x);
             let clipped =
-                crate::text::clip_to_cells(s, max_cells, crate::text::TabPolicy::SingleCell);
+                crate::text::clip_to_cells_cow(s, max_cells, crate::text::TabPolicy::SingleCell);
 
             self.window
                 .write_str(local_y + self.y_offset, local_x + self.x_offset, &clipped)
@@ -523,7 +523,7 @@ impl<'a> Window for WindowView<'a> {
             // IMPORTANT: Clip the string to the view's remaining width.
             let max_cells = self.width.saturating_sub(local_x);
             let clipped =
-                crate::text::clip_to_cells(s, max_cells, crate::text::TabPolicy::SingleCell);
+                crate::text::clip_to_cells_cow(s, max_cells, crate::text::TabPolicy::SingleCell);
 
             self.window.write_str_colored(
                 local_y + self.y_offset,
