@@ -367,10 +367,9 @@ impl Slider {
 
     fn draw_vertical(&self, window: &mut dyn Window) -> Result<()> {
         // Track fill
+        let track = " ".repeat(self.width.max(1) as usize);
         for y in 0..self.height {
-            for x in 0..self.width.max(1) {
-                window.write_str_colored(y, x, " ", self.opts.track_color)?;
-            }
+            window.write_str_colored(y, 0, &track, self.opts.track_color)?;
         }
 
         // Thumb fill with half-cell nuance:
@@ -415,9 +414,9 @@ impl Slider {
             };
 
             if ch != ' ' {
-                for x in 0..self.width.max(1) {
-                    window.write_str_colored(real_y, x, &ch.to_string(), self.opts.thumb_color)?;
-                }
+                let mut buf = String::new();
+                buf.extend(std::iter::repeat(ch).take(self.width.max(1) as usize));
+                window.write_str_colored(real_y, 0, &buf, self.opts.thumb_color)?;
             }
         }
 
@@ -426,10 +425,9 @@ impl Slider {
 
     fn draw_horizontal(&self, window: &mut dyn Window) -> Result<()> {
         // Track fill
+        let track = " ".repeat(self.width as usize);
         for y in 0..self.height.max(1) {
-            for x in 0..self.width {
-                window.write_str_colored(y, x, " ", self.opts.track_color)?;
-            }
+            window.write_str_colored(y, 0, &track, self.opts.track_color)?;
         }
 
         let track_v = self.axis_len_virtual();

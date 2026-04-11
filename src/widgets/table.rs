@@ -466,7 +466,7 @@ impl Table {
         }
 
         for i in 0..w {
-            if sep_positions.contains(&i) {
+            if sep_positions.binary_search(&i).is_ok() {
                 buf.push_str(&sep_ch);
             } else {
                 buf.push_str(&rule_ch);
@@ -499,8 +499,9 @@ impl Table {
         }
 
         // Clear the body region (prevents stale cells when scrolling/shrinking).
+        let clear_line = " ".repeat(bw as usize);
         for row in 0..bh {
-            window.write_str(by + row, bx, &" ".repeat(bw as usize))?;
+            window.write_str(by + row, bx, &clear_line)?;
         }
 
         let start_row = self.scroll_y as usize;
@@ -654,27 +655,31 @@ impl Widget for Table {
 
 fn align_to_width(s: &str, width: u16, align: Alignment) -> String {
     // `s` is expected to already be <= width (cell-based).
-    let text = s.to_string();
-    let text_w = crate::text::cell_width(&text, TabPolicy::SingleCell) as u16;
+    let text_w = crate::text::cell_width(s, TabPolicy::SingleCell) as u16;
     if text_w >= width {
-        return text;
+        return s.to_string();
     }
 
     let pad = width - text_w;
+    let mut out = String::with_capacity(s.len() + pad as usize);
     match align {
-        Alignment::Left => format!("{text}{}", " ".repeat(pad as usize)),
-        Alignment::Right => format!("{}{}", " ".repeat(pad as usize), text),
+        Alignment::Left => {
+            out.push_str(s);
+            out.extend(std::iter::repeat(' ').take(pad as usize));
+        }
+        Alignment::Right => {
+            out.extend(std::iter::repeat(' ').take(pad as usize));
+            out.push_str(s);
+        }
         Alignment::Center => {
             let left = pad / 2;
             let right = pad - left;
-            format!(
-                "{}{}{}",
-                " ".repeat(left as usize),
-                text,
-                " ".repeat(right as usize)
-            )
+            out.extend(std::iter::repeat(' ').take(left as usize));
+            out.push_str(s);
+            out.extend(std::iter::repeat(' ').take(right as usize));
         }
-    }
+    };
+    out
 }
 
 /// Drop `cells` leading terminal cells from a string, using `TabPolicy::SingleCell`.

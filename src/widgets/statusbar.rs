@@ -182,8 +182,8 @@ impl Widget for StatusBar {
         // Fill background if enabled
         if self.fill_background {
             if let Some(colors) = self.colors {
+                let full_line = " ".repeat(width as usize);
                 for i in 0..self.height {
-                    let full_line = " ".repeat(width as usize);
                     window.write_str_colored(y + i, 0, &full_line, colors)?;
                 }
             }
@@ -268,16 +268,6 @@ impl Widget for StatusBar {
                 Some(colors) => window.write_str_colored(y, center_x, &center_text, colors),
                 None => window.write_str(y, center_x, &center_text),
             }?;
-        }
-
-        // Draw additional rows for multi-height status bars
-        for i in 1..self.height {
-            if y + i < height && self.fill_background {
-                if let Some(colors) = self.colors {
-                    let full_line = " ".repeat(width as usize);
-                    window.write_str_colored(y + i, 0, &full_line, colors)?;
-                }
-            }
         }
 
         Ok(())

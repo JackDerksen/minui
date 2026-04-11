@@ -639,16 +639,7 @@ impl TextInput {
             window.write_str(self.y, content_x, &spaces)?;
         }
 
-        // Decide what to render.
-        //
-        // IMPORTANT: do not hold an `&str` borrow into `state.text` across calls that
-        // mutably borrow `state` (like `ensure_cursor_visible`). Use an owned string.
         let has_text = !state.text.is_empty();
-        let display_owned: String = if has_text {
-            state.text.clone()
-        } else {
-            self.placeholder.clone().unwrap_or_default()
-        };
 
         // Apply horizontal scroll so caret stays visible.
         state.ensure_cursor_visible(content_w.saturating_sub(1));
@@ -658,35 +649,35 @@ impl TextInput {
         let left_skip = state.view_col;
         let visible = content_w;
 
-        let after_skip = if left_skip == 0 {
-            display_owned.clone()
-        } else {
-            // Clip to everything after skipping left cells:
-            // This is O(n) but fine for small input fields.
-            let mut acc: u16 = 0;
-            let mut start_char = 0usize;
-            for (i, ch) in display_owned.chars().enumerate() {
-                let w = cell_width_char(ch);
-                if w == 0 {
-                    continue;
-                }
-                if acc.saturating_add(w) > left_skip {
-                    start_char = i;
-                    break;
-                }
-                acc = acc.saturating_add(w);
-                start_char = i + 1;
-            }
-            display_owned.chars().skip(start_char).collect::<String>()
-        };
-
-        let clipped = clip_to_cells(&after_skip, visible, TabPolicy::SingleCell);
-
         // Render placeholder vs text colors.
         if has_text {
             // Render with selection highlighting if present.
             self.draw_with_selection(window, state, content_x, content_w)?;
         } else {
+            let display = self.placeholder.as_deref().unwrap_or_default();
+            let after_skip = if left_skip == 0 {
+                std::borrow::Cow::Borrowed(display)
+            } else {
+                // Clip to everything after skipping left cells:
+                // This is O(n) but fine for small input fields.
+                let mut acc: u16 = 0;
+                let mut start_char = 0usize;
+                for (i, ch) in display.chars().enumerate() {
+                    let w = cell_width_char(ch);
+                    if w == 0 {
+                        continue;
+                    }
+                    if acc.saturating_add(w) > left_skip {
+                        start_char = i;
+                        break;
+                    }
+                    acc = acc.saturating_add(w);
+                    start_char = i + 1;
+                }
+                std::borrow::Cow::Owned(display.chars().skip(start_char).collect::<String>())
+            };
+
+            let clipped = clip_to_cells(&after_skip, visible, TabPolicy::SingleCell);
             window.write_str_colored(self.y, content_x, &clipped, self.placeholder_color)?;
         }
 
@@ -770,8 +761,10 @@ impl TextInput {
         // Render by walking chars and deciding per-cell color.
         // First pass: we render as a string with per-char coloring by individual writes.
         // Not the most efficient, but acceptable for short input lines.
-        let mut col: u16 = 0;
         let mut abs_col: u16 = 0;
+        let mut run = String::new();
+        let mut run_start_x: u16 = content_x;
+        let mut run_color: Option<ColorPair> = None;
 
         for (i, ch) in state.text.chars().enumerate() {
             let w = cell_width_char(ch);
@@ -808,12 +801,24 @@ impl TextInput {
                 self.text_color
             };
 
-            // Write the glyph. For wide chars, we write it once; terminals will occupy 2 cells.
-            window.write_str_colored(state.last_y, content_x + vis_x, &ch.to_string(), colors)?;
+            let draw_x = content_x + vis_x;
+            if run_color != Some(colors) {
+                if let Some(color) = run_color {
+                    window.write_str_colored(state.last_y, run_start_x, &run, color)?;
+                    run.clear();
+                }
+                run_start_x = draw_x;
+                run_color = Some(colors);
+            }
+
+            run.push(ch);
 
             // Advance columns.
             abs_col = ch_end;
-            col = col.saturating_add(w);
+        }
+
+        if let Some(color) = run_color {
+            window.write_str_colored(state.last_y, run_start_x, &run, color)?;
         }
 
         Ok(())

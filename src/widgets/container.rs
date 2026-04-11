@@ -674,6 +674,11 @@ impl Container {
         self.children.iter().map(|c| c.widget.as_ref()).collect()
     }
 
+    /// Iterates over this container's children without allocating a temporary vector.
+    pub fn children_iter(&self) -> impl Iterator<Item = &dyn Widget> {
+        self.children.iter().map(|c| c.widget.as_ref())
+    }
+
     /// Returns this container's layout direction.
     ///
     /// This is primarily intended for higher-level widgets (e.g. `ScrollBox`) that need to
@@ -1000,9 +1005,12 @@ impl Container {
             self.draw_title_in_border(window, title, x, available_width, chars, color)?;
         } else {
             // Just draw a horizontal line
-            for _ in 0..available_width {
-                window.write_str_colored(self.y, x, &chars.horizontal.to_string(), color)?;
-                x += 1;
+            if available_width > 0 {
+                let line = chars
+                    .horizontal
+                    .to_string()
+                    .repeat(available_width as usize);
+                window.write_str_colored(self.y, x, &line, color)?;
             }
         }
 
@@ -1057,9 +1065,10 @@ impl Container {
         let mut x = start_x;
 
         // Draw line before title
-        for _ in 0..left_padding {
-            window.write_str_colored(self.y, x, &chars.horizontal.to_string(), color)?;
-            x += 1;
+        if left_padding > 0 {
+            let line = chars.horizontal.to_string().repeat(left_padding as usize);
+            window.write_str_colored(self.y, x, &line, color)?;
+            x += left_padding;
         }
 
         // Draw title with space before
@@ -1079,9 +1088,10 @@ impl Container {
             x += 1;
         }
 
-        for _ in x..(start_x + available_width) {
-            window.write_str_colored(self.y, x, &chars.horizontal.to_string(), color)?;
-            x += 1;
+        let remaining = start_x.saturating_add(available_width).saturating_sub(x);
+        if remaining > 0 {
+            let line = chars.horizontal.to_string().repeat(remaining as usize);
+            window.write_str_colored(self.y, x, &line, color)?;
         }
 
         Ok(())
@@ -1113,9 +1123,12 @@ impl Container {
 
         // Draw horizontal line
         let end_x = self.x + self.width - if has_right { 1 } else { 0 };
-        while x < end_x {
-            window.write_str_colored(y, x, &chars.horizontal.to_string(), color)?;
-            x += 1;
+        if x < end_x {
+            let line = chars
+                .horizontal
+                .to_string()
+                .repeat(end_x.saturating_sub(x) as usize);
+            window.write_str_colored(y, x, &line, color)?;
         }
 
         // Draw right corner
@@ -1199,11 +1212,13 @@ impl Container {
 
         if let Some(color) = self.background_color {
             let (content_x, content_y, content_width, content_height) = self.get_content_area();
+            if content_width == 0 {
+                return Ok(());
+            }
 
+            let line = " ".repeat(content_width as usize);
             for y in content_y..(content_y + content_height) {
-                for x in content_x..(content_x + content_width) {
-                    window.write_str_colored(y, x, " ", color)?;
-                }
+                window.write_str_colored(y, content_x, &line, color)?;
             }
         }
 

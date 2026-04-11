@@ -923,8 +923,8 @@ impl Widget for ScrollBox {
         let mut content_required_w: u16 = 0;
         let mut content_required_h: u16 = 0;
 
-        let children = self.root.children();
-        if children.is_empty() {
+        let child_count = self.root.child_count();
+        if child_count == 0 {
             content_required_w = viewport_size.width;
             content_required_h = viewport_size.height;
         } else {
@@ -935,21 +935,21 @@ impl Widget for ScrollBox {
 
             match self.root.layout_direction() {
                 super::container::LayoutDirection::Vertical => {
-                    for (idx, child) in children.iter().enumerate() {
+                    for (idx, child) in self.root.children_iter().enumerate() {
                         let (cw, ch) = child.get_size();
                         content_required_w = content_required_w.max(cw);
                         content_required_h = content_required_h.saturating_add(ch);
-                        if idx < children.len() - 1 {
+                        if idx + 1 < child_count {
                             content_required_h = content_required_h.saturating_add(gap_pixels);
                         }
                     }
                 }
                 super::container::LayoutDirection::Horizontal => {
-                    for (idx, child) in children.iter().enumerate() {
+                    for (idx, child) in self.root.children_iter().enumerate() {
                         let (cw, ch) = child.get_size();
                         content_required_w = content_required_w.saturating_add(cw);
                         content_required_h = content_required_h.max(ch);
-                        if idx < children.len() - 1 {
+                        if idx + 1 < child_count {
                             content_required_w = content_required_w.saturating_add(gap_pixels);
                         }
                     }

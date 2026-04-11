@@ -48,7 +48,7 @@ use crossterm::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
         Event as CrosstermEvent,
     },
-    execute,
+    execute, queue,
     style::{self, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
@@ -881,27 +881,32 @@ impl TerminalWindow {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn flush(&mut self) -> Result<()> {
-        let changes = self.buffer.process_changes();
+        let change_count = self.buffer.process_changes();
         let mut last_colors: Option<ColorPair> = None;
+        let mut cursor_after_write: Option<(u16, u16)> = None;
 
         // Hide the cursor while rendering changes to avoid flicker from transient `MoveTo` calls.
         // We track whether we hid it so we know to restore it afterward.
-        let hid_cursor_for_render = !changes.is_empty();
+        let hid_cursor_for_render = change_count > 0;
         if hid_cursor_for_render {
-            execute!(self.out, cursor::Hide)?;
+            queue!(self.out, cursor::Hide)?;
         }
 
-        for change in changes {
-            // Move the cursor to the correct position for the change
-            execute!(self.out, cursor::MoveTo(change.x, change.y))?;
+        for change_idx in 0..change_count {
+            let change = self.buffer.change(change_idx);
+            if cursor_after_write != Some((change.x, change.y)) {
+                queue!(self.out, cursor::MoveTo(change.x, change.y))?;
+            }
 
-            if change.colors != last_colors {
-                if let Some(colors) = change.colors {
-                    // Downgrade requested colors based on terminal capabilities.
-                    let colors = self.capabilities.downgrade_pair(colors);
+            // Downgrade requested colors before comparing with the last applied terminal color.
+            let applied_colors = change
+                .colors
+                .map(|colors| self.capabilities.downgrade_pair(colors));
 
+            if applied_colors != last_colors {
+                if let Some(colors) = applied_colors {
                     // Set the foreground and background colors
-                    execute!(
+                    queue!(
                         self.out,
                         SetForegroundColor(colors.fg.to_crossterm()),
                         SetBackgroundColor(colors.bg.to_crossterm())
@@ -909,18 +914,23 @@ impl TerminalWindow {
 
                     last_colors = Some(colors);
                 } else {
-                    // If there are no colors, reset to the default
-                    execute!(self.out, style::ResetColor)?;
+                    // If there are no colors, reset to the default.
+                    queue!(self.out, style::ResetColor)?;
                     last_colors = None;
                 }
             }
 
-            // Print the text for the change
-            execute!(self.out, style::Print(&change.text))?;
+            for ch in self.buffer.change_chars(change) {
+                write!(self.out, "{ch}")?;
+            }
+
+            cursor_after_write = Some((change.x.saturating_add(change.len as u16), change.y));
         }
 
-        // Reset the color at the end of the flush
-        execute!(self.out, style::ResetColor)?;
+        // Reset the color at the end of the flush only if styled output is still active.
+        if last_colors.is_some() {
+            queue!(self.out, style::ResetColor)?;
+        }
 
         // Apply deferred cursor request after rendering.
         //
@@ -947,10 +957,10 @@ impl TerminalWindow {
         let prev_visible = prev.map(|p| p.visible).unwrap_or(false);
         if desired.visible {
             if !prev_visible || hid_cursor_for_render {
-                execute!(self.out, cursor::Show)?;
+                queue!(self.out, cursor::Show)?;
             }
         } else if prev_visible {
-            execute!(self.out, cursor::Hide)?;
+            queue!(self.out, cursor::Hide)?;
         }
 
         // Move cursor to the desired position if it should be visible.
@@ -965,7 +975,7 @@ impl TerminalWindow {
                 None => true,
             };
             if needs_move || hid_cursor_for_render {
-                execute!(self.out, cursor::MoveTo(desired.x, desired.y))?;
+                queue!(self.out, cursor::MoveTo(desired.x, desired.y))?;
             }
         }
 

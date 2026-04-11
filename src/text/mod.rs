@@ -22,6 +22,7 @@
 //!
 //! If you later want perfect behavior, consider integrating `unicode-width` and/or
 //! `unicode-segmentation` behind a feature flag.
+use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// How to handle tab characters (`'\t'`) when measuring/clipping text.
@@ -117,17 +118,26 @@ pub fn cell_width(s: &str, tab_policy: TabPolicy) -> u16 {
 ///
 /// Tabs are expanded according to `tab_policy`.
 pub fn clip_to_cells(s: &str, max_cells: u16, tab_policy: TabPolicy) -> String {
+    clip_to_cells_cow(s, max_cells, tab_policy).into_owned()
+}
+
+/// Clips `s` to at most `max_cells` terminal cells, borrowing `s` when no clipping or
+/// character normalization is required.
+pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<'_, str> {
     if max_cells == 0 {
-        return String::new();
+        return Cow::Borrowed(&s[..0]);
     }
 
-    let mut out = String::new();
+    let mut out: Option<String> = None;
     let mut used: u16 = 0;
 
-    for ch in s.chars() {
+    for (byte_idx, ch) in s.char_indices() {
         if ch == '\n' || ch == '\r' {
             // Stop at newline in "single line" contexts.
-            break;
+            return match out {
+                Some(out) => Cow::Owned(out),
+                None => Cow::Borrowed(&s[..byte_idx]),
+            };
         }
 
         if ch == '\t' {
@@ -137,12 +147,16 @@ pub fn clip_to_cells(s: &str, max_cells: u16, tab_policy: TabPolicy) -> String {
             };
 
             if used.saturating_add(tab_w) > max_cells {
-                break;
+                return match out {
+                    Some(out) => Cow::Owned(out),
+                    None => Cow::Borrowed(&s[..byte_idx]),
+                };
             }
 
             // Expand tab to spaces so the result is render-stable.
             let spaces = tab_w as usize;
-            out.extend(std::iter::repeat(' ').take(spaces));
+            out.get_or_insert_with(|| s[..byte_idx].to_string())
+                .extend(std::iter::repeat(' ').take(spaces));
             used = used.saturating_add(tab_w);
             continue;
         }
@@ -150,18 +164,33 @@ pub fn clip_to_cells(s: &str, max_cells: u16, tab_policy: TabPolicy) -> String {
         let w = cell_width_char(ch);
         if w == 0 {
             // Skip zero-width / control-ish glyphs.
+            out.get_or_insert_with(|| s[..byte_idx].to_string());
             continue;
         }
 
         if used.saturating_add(w) > max_cells {
-            break;
+            return match out {
+                Some(out) => Cow::Owned(out),
+                None => Cow::Borrowed(&s[..byte_idx]),
+            };
         }
 
-        out.push(ch);
+        if let Some(out) = &mut out {
+            out.push(ch);
+        }
         used = used.saturating_add(w);
     }
 
-    out
+    match out {
+        Some(out) => Cow::Owned(out),
+        None => Cow::Borrowed(s),
+    }
+}
+
+/// Clips `s` into an existing string buffer, reusing the allocation.
+pub fn clip_to_cells_into(out: &mut String, s: &str, max_cells: u16, tab_policy: TabPolicy) {
+    out.clear();
+    out.push_str(&clip_to_cells_cow(s, max_cells, tab_policy));
 }
 
 /// Clips `s` to `max_cells` like [`clip_to_cells`], but appends an ellipsis if clipped.
