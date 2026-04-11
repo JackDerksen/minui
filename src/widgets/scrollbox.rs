@@ -984,7 +984,13 @@ impl Widget for ScrollBox {
             height: content_h,
         };
 
-        self.root.draw_contents(&mut content_view)?;
+        self.root.draw_contents_culled(
+            &mut content_view,
+            content_x.saturating_add(if self.scroll_x_enabled { offset.x } else { 0 }),
+            content_y.saturating_add(if self.scroll_y_enabled { offset.y } else { 0 }),
+            content_w,
+            content_h,
+        )?;
 
         // NOTE: `px/py/pw/ph` are kept in scope for clarity; the frame draw used them implicitly
         // via the container's stored position/size.

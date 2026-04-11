@@ -42,6 +42,7 @@
 use super::Widget;
 use crate::text::{TabPolicy, cell_width, clip_to_cells, fit_to_cells};
 use crate::{Color, ColorPair, Result, Window};
+use std::cell::{Ref, RefCell};
 
 /// How to align text horizontally
 #[derive(Debug, Clone, Copy)]
@@ -66,7 +67,7 @@ pub enum VerticalAlignment {
 }
 
 /// How TextBlock should wrap long lines
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextWrapMode {
     /// No text wrapping - content extending beyond width is clipped
     None,
@@ -308,6 +309,17 @@ pub struct TextBlock {
     h_align: Alignment,
     /// Vertical text alignment
     v_align: VerticalAlignment,
+    text_revision: u64,
+    wrap_cache: RefCell<TextBlockWrapCache>,
+}
+
+#[derive(Default)]
+struct TextBlockWrapCache {
+    text_revision: u64,
+    width: u16,
+    wrap_mode: Option<TextWrapMode>,
+    lines: Vec<String>,
+    valid: bool,
 }
 
 impl TextBlock {
@@ -321,6 +333,8 @@ impl TextBlock {
             wrap_mode: TextWrapMode::Wrap,
             h_align: Alignment::Left,
             v_align: VerticalAlignment::Top,
+            text_revision: 0,
+            wrap_cache: RefCell::new(TextBlockWrapCache::default()),
         }
     }
 
@@ -389,12 +403,14 @@ impl TextBlock {
     /// Sets how text should wrap
     pub fn with_wrap_mode(mut self, mode: TextWrapMode) -> Self {
         self.wrap_mode = mode;
+        self.wrap_cache.get_mut().valid = false;
         self
     }
 
     /// Enables word wrapping
     pub fn with_word_wrap(mut self) -> Self {
         self.wrap_mode = TextWrapMode::WrapWords;
+        self.wrap_cache.get_mut().valid = false;
         self
     }
 
@@ -408,6 +424,8 @@ impl TextBlock {
     /// Changes the text content.
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
+        self.text_revision = self.text_revision.wrapping_add(1);
+        self.wrap_cache.get_mut().valid = false;
     }
 
     /// Returns the current text
@@ -415,7 +433,7 @@ impl TextBlock {
         &self.text
     }
 
-    fn get_wrapped_lines(&self) -> Vec<String> {
+    fn rebuild_wrapped_lines(&self) -> Vec<String> {
         match self.wrap_mode {
             TextWrapMode::None => self.text.lines().map(String::from).collect(),
             TextWrapMode::Wrap => self
@@ -451,11 +469,35 @@ impl TextBlock {
             }
         }
     }
+
+    fn wrapped_lines(&self) -> Ref<'_, Vec<String>> {
+        {
+            let cache = self.wrap_cache.borrow();
+            if cache.valid
+                && cache.text_revision == self.text_revision
+                && cache.width == self.width
+                && cache.wrap_mode == Some(self.wrap_mode)
+            {
+                return Ref::map(cache, |cache| &cache.lines);
+            }
+        }
+
+        let lines = self.rebuild_wrapped_lines();
+        let mut cache = self.wrap_cache.borrow_mut();
+        cache.text_revision = self.text_revision;
+        cache.width = self.width;
+        cache.wrap_mode = Some(self.wrap_mode);
+        cache.lines = lines;
+        cache.valid = true;
+        drop(cache);
+
+        Ref::map(RefCell::borrow(&self.wrap_cache), |cache| &cache.lines)
+    }
 }
 
 impl Widget for TextBlock {
     fn draw(&self, window: &mut dyn Window) -> Result<()> {
-        let lines = self.get_wrapped_lines();
+        let lines = self.wrapped_lines();
         let (window_width, window_height) = window.get_size();
 
         // Calculate available dimensions (min of widget size and window size)
@@ -483,18 +525,14 @@ impl Widget for TextBlock {
         };
 
         // Draw each line
-        for (i, line) in lines
-            .into_iter()
-            .take(available_height as usize)
-            .enumerate()
-        {
+        for (i, line) in lines.iter().take(available_height as usize).enumerate() {
             let line_y = start_y + i as u16;
             if line_y >= available_height {
                 break;
             }
 
             // NOTE: `String::len()` is bytes; use cell-aware fitting for alignment/clipping.
-            let fitted = fit_to_cells(&line, available_width, TabPolicy::SingleCell, true);
+            let fitted = fit_to_cells(line, available_width, TabPolicy::SingleCell, true);
 
             let line_x = match self.h_align {
                 Alignment::Left => 0,

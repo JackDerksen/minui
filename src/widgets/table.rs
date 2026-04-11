@@ -50,7 +50,7 @@
 //! - configure columns
 //! - provide `row_count` and `cell_at(row, col)` via callbacks
 
-use crate::text::{TabPolicy, clip_to_cells, fit_to_cells};
+use crate::text::{TabPolicy, clip_to_cells_cow, fit_to_cells};
 use crate::widgets::{BorderChars, Widget};
 use crate::{Alignment, Color, ColorPair, Result, Window};
 
@@ -344,20 +344,6 @@ impl Table {
         }
     }
 
-    /// Compute each column's starting x offset (in content coordinates, before horizontal scroll).
-    fn column_starts(&self) -> Vec<u16> {
-        let mut starts = Vec::with_capacity(self.columns.len());
-        let mut x: u16 = 0;
-        for (i, c) in self.columns.iter().enumerate() {
-            starts.push(x);
-            x = x.saturating_add(c.width);
-            if self.show_column_separators && i + 1 < self.columns.len() {
-                x = x.saturating_add(1);
-            }
-        }
-        starts
-    }
-
     fn draw_border(&self, window: &mut dyn Window) -> Result<()> {
         if !self.show_border || self.width == 0 || self.height == 0 {
             return Ok(());
@@ -448,45 +434,55 @@ impl Table {
             bc.horizontal.to_string()
         };
 
-        // Build a cell-accurate string at width w, then clip by scroll_x.
-        let mut buf = String::new();
-        buf.reserve(w as usize);
+        let mut buf = String::with_capacity(w as usize);
+        let visible_start = self.scroll_x;
+        let visible_end = self.scroll_x.saturating_add(w);
 
-        // Map separator positions in content coordinates.
-        let starts = self.column_starts();
-        let mut sep_positions: Vec<u16> = Vec::new();
-        if self.show_column_separators {
-            for (i, c) in self.columns.iter().enumerate() {
-                if i + 1 == self.columns.len() {
-                    break;
-                }
-                let pos = starts[i].saturating_add(c.width); // right edge of col
-                sep_positions.push(pos);
-            }
+        let mut next_separator = if self.show_column_separators {
+            self.visible_separator_positions(visible_start, visible_end)
+        } else {
+            Vec::new().into_iter()
         }
+        .peekable();
 
-        for i in 0..w {
-            if sep_positions.binary_search(&i).is_ok() {
+        for content_col in visible_start..visible_end {
+            if next_separator.peek().copied() == Some(content_col) {
                 buf.push_str(&sep_ch);
+                next_separator.next();
             } else {
                 buf.push_str(&rule_ch);
             }
         }
 
-        // Apply horizontal scrolling.
-        let visible = clip_to_cells(&buf, w, TabPolicy::SingleCell);
-        let clipped = if self.scroll_x == 0 {
-            visible
-        } else {
-            // Skip scroll_x cells by clipping after skipping.
-            // We can reuse fit_to_cells by rendering the substring with leading skip removed.
-            // For simplicity: create a shifted string by dropping first scroll_x cells.
-            let shifted = drop_leading_cells(&buf, self.scroll_x);
-            clip_to_cells(&shifted, w, TabPolicy::SingleCell)
-        };
-
-        window.write_str_colored(y, x, &clipped, self.grid_color)?;
+        window.write_str_colored(y, x, &buf, self.grid_color)?;
         Ok(())
+    }
+
+    fn visible_separator_positions(
+        &self,
+        visible_start: u16,
+        visible_end: u16,
+    ) -> std::vec::IntoIter<u16> {
+        let mut positions = Vec::new();
+        if !self.show_column_separators {
+            return positions.into_iter();
+        }
+
+        let mut col_start: u16 = 0;
+        for (i, col) in self.columns.iter().enumerate() {
+            let col_end = col_start.saturating_add(col.width);
+            if i + 1 >= self.columns.len() {
+                break;
+            }
+
+            if col_end >= visible_start && col_end < visible_end {
+                positions.push(col_end);
+            }
+
+            col_start = col_end.saturating_add(1);
+        }
+
+        positions.into_iter()
     }
 
     fn draw_body(&self, window: &mut dyn Window) -> Result<()> {
@@ -548,77 +544,72 @@ impl Table {
             return Ok(());
         }
 
-        let starts = self.column_starts();
         let total_w = self.total_table_content_width();
 
         if total_w == 0 {
             return Ok(());
         }
 
-        // We render the full row into an owned string at the table's content width,
-        // then apply horizontal scroll and clip to visible width.
-        let mut row_buf = String::new();
-        row_buf.reserve(total_w as usize);
-
-        for (i, col) in self.columns.iter().enumerate() {
-            let raw = cell_text(i).unwrap_or("");
-
-            let align = if is_header {
-                col.header_alignment.unwrap_or(col.alignment)
-            } else {
-                col.alignment
-            };
-
-            let s = fit_to_cells(raw, col.width, TabPolicy::SingleCell, true);
-            let cell = align_to_width(&s, col.width, align);
-
-            row_buf.push_str(&cell);
-
-            if self.show_column_separators && i + 1 < self.columns.len() {
-                row_buf.push_str(self.column_separator);
-            }
-        }
-
-        // Apply horizontal scroll.
-        let shifted = if self.scroll_x == 0 {
-            row_buf
-        } else {
-            drop_leading_cells(&row_buf, self.scroll_x)
-        };
-
-        let clipped = clip_to_cells(&shifted, content_w, TabPolicy::SingleCell);
-
-        // Determine colors.
-        // For simplicity, we write the row in one color; per-column colors are supported by
-        // writing segments (not done here to keep it small).
         let base_color = if is_header {
             self.header_color
         } else {
             self.cell_color
         };
 
-        window.write_str_colored(y, content_x, &clipped, base_color)?;
+        // Clear the visible row in the base row color, then draw only columns intersecting
+        // the horizontal viewport. This avoids building the full logical table row.
+        let clear_line = " ".repeat(content_w as usize);
+        window.write_str_colored(y, content_x, &clear_line, base_color)?;
 
-        // Re-draw column separators with grid color for contrast, if enabled.
-        // We do this by computing separator x positions *in visible coordinates*.
-        if self.show_column_separators {
-            for (i, col) in self.columns.iter().enumerate() {
-                if i + 1 == self.columns.len() {
-                    break;
+        let visible_start = self.scroll_x;
+        let visible_end = self.scroll_x.saturating_add(content_w);
+        let mut col_start: u16 = 0;
+
+        for (i, col) in self.columns.iter().enumerate() {
+            let col_end = col_start.saturating_add(col.width);
+            if col_end > visible_start && col_start < visible_end {
+                let raw = cell_text(i).unwrap_or("");
+
+                let align = if is_header {
+                    col.header_alignment.unwrap_or(col.alignment)
+                } else {
+                    col.alignment
+                };
+
+                let s = fit_to_cells(raw, col.width, TabPolicy::SingleCell, true);
+                let cell = align_to_width(&s, col.width, align);
+                let start_skip = visible_start.saturating_sub(col_start);
+                let draw_x = content_x + col_start.saturating_sub(visible_start);
+                let draw_w = col_end
+                    .min(visible_end)
+                    .saturating_sub(visible_start.max(col_start));
+
+                let visible_cell = if start_skip == 0 {
+                    clip_to_cells_cow(&cell, draw_w, TabPolicy::SingleCell)
+                } else {
+                    let shifted = drop_leading_cells(&cell, start_skip);
+                    std::borrow::Cow::Owned(
+                        clip_to_cells_cow(&shifted, draw_w, TabPolicy::SingleCell).into_owned(),
+                    )
+                };
+
+                window.write_str_colored(y, draw_x, &visible_cell, base_color)?;
+            }
+
+            if self.show_column_separators && i + 1 < self.columns.len() {
+                let sep_x_in_row = col_end;
+                if sep_x_in_row >= visible_start && sep_x_in_row < visible_end {
+                    let vx = sep_x_in_row - visible_start;
+                    window.write_str_colored(
+                        y,
+                        content_x + vx,
+                        self.column_separator,
+                        self.grid_color,
+                    )?;
                 }
-                let sep_x_in_row = starts[i].saturating_add(col.width);
-                // Convert to visible by subtracting scroll_x and adding content_x.
-                if sep_x_in_row >= self.scroll_x {
-                    let vx = sep_x_in_row - self.scroll_x;
-                    if vx < content_w {
-                        window.write_str_colored(
-                            y,
-                            content_x + vx,
-                            self.column_separator,
-                            self.grid_color,
-                        )?;
-                    }
-                }
+                col_start = col_end.saturating_add(1);
+            } else {
+                col_start = col_end;
             }
         }
 
@@ -681,7 +672,6 @@ fn align_to_width(s: &str, width: u16, align: Alignment) -> String {
     };
     out
 }
-
 /// Drop `cells` leading terminal cells from a string, using `TabPolicy::SingleCell`.
 ///
 /// This is used to implement horizontal scrolling.

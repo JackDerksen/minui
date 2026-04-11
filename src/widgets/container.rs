@@ -725,6 +725,23 @@ impl Container {
         Ok(())
     }
 
+    /// Draws container contents, skipping children whose resolved layout rect is outside
+    /// `visible_*` bounds. The visible rectangle uses the same coordinate space as this
+    /// container's stored content area.
+    pub fn draw_contents_culled(
+        &self,
+        window: &mut dyn Window,
+        visible_x: u16,
+        visible_y: u16,
+        visible_width: u16,
+        visible_height: u16,
+    ) -> Result<()> {
+        self.draw_children_with_cull(
+            window,
+            Some((visible_x, visible_y, visible_width, visible_height)),
+        )
+    }
+
     // Helper methods
 
     /// Gets the width of the left border if present
@@ -1227,6 +1244,14 @@ impl Container {
 
     /// Draws all children
     fn draw_children(&self, window: &mut dyn Window) -> Result<()> {
+        self.draw_children_with_cull(window, None)
+    }
+
+    fn draw_children_with_cull(
+        &self,
+        window: &mut dyn Window,
+        cull: Option<(u16, u16, u16, u16)>,
+    ) -> Result<()> {
         let (content_x, content_y, content_width, content_height) = self.get_content_area();
 
         let gap = self.resolve_gap(match self.layout_direction {
@@ -1440,17 +1465,35 @@ impl Container {
                 .clamp(resolved_h)
                 .min(remaining_height);
 
-            let mut child_view = WindowView {
-                window,
-                x_offset: current_x,
-                y_offset: current_y,
-                scroll_x: 0,
-                scroll_y: 0,
-                width: resolved_w,
-                height: resolved_h,
-            };
+            let should_draw = resolved_w > 0
+                && resolved_h > 0
+                && cull
+                    .map(|(vx, vy, vw, vh)| {
+                        let child_right = current_x.saturating_add(resolved_w);
+                        let child_bottom = current_y.saturating_add(resolved_h);
+                        let visible_right = vx.saturating_add(vw);
+                        let visible_bottom = vy.saturating_add(vh);
 
-            child.widget.draw(&mut child_view)?;
+                        current_x < visible_right
+                            && child_right > vx
+                            && current_y < visible_bottom
+                            && child_bottom > vy
+                    })
+                    .unwrap_or(true);
+
+            if should_draw {
+                let mut child_view = WindowView {
+                    window,
+                    x_offset: current_x,
+                    y_offset: current_y,
+                    scroll_x: 0,
+                    scroll_y: 0,
+                    width: resolved_w,
+                    height: resolved_h,
+                };
+
+                child.widget.draw(&mut child_view)?;
+            }
 
             match self.layout_direction {
                 LayoutDirection::Vertical => {
