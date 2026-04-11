@@ -93,6 +93,32 @@ fn main() -> minui::Result<()> {
 
 Run the examples: `cargo run --example basic_usage`
 
+### Import Bundles
+
+For examples and small apps, the broad compatibility prelude is still the easiest starting point:
+
+```rust
+use minui::prelude::*;
+```
+
+For narrower applications, especially editor-like apps that draw directly and do not use the widget stack, MinUI also exposes focused prelude bundles:
+
+```rust
+use minui::prelude::render::*;      // Window, TerminalWindow, colours, text helpers, errors
+use minui::prelude::app::*;         // App loop types plus core rendering traits
+use minui::prelude::input::*;       // Events, keyboard/mouse types, keybinds, scroll helpers
+use minui::prelude::widgets::*;     // Widget trait, WindowView, built-in widgets
+use minui::prelude::interaction::*; // Hit testing, focus, routing, interaction scene helpers
+use minui::prelude::all::*;         // Same broad bundle re-exported by minui::prelude::*
+```
+
+In practice:
+
+- use `minui::prelude::render::*` when you only need low-level drawing
+- add `minui::prelude::input::*` when handling keyboard or mouse input yourself
+- add `minui::prelude::widgets::*` only when using MinUI widgets
+- add `minui::prelude::interaction::*` when using hit-testing or event routing
+
 ## Perfect for Terminal UIs (and optionally realtime/animated apps)
 
 **TUI Apps**: The widget system makes it easy to build traditional terminal interfaces with `Container`-based layout + styling (borders/titles/padding/background), along with scrollable content (`ScrollBox` / `Viewport`) and interactive scroll controls (`ScrollBar`, `Slider`).
