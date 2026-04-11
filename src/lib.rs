@@ -142,135 +142,86 @@ pub use ui::{
     InteractionId, OwnerId, PolicyEffects, RouteTarget, UiScene,
 };
 
-/// Common imports for MinUI applications.
+/// Common import bundles for MinUI applications.
 ///
-/// This module contains the most frequently used types and traits.
-/// Import everything with `use minui::prelude::*;` to get started quickly:
+/// `use minui::prelude::*;` keeps the broad, backwards-compatible import set.
+/// For smaller applications, prefer one of the focused bundles:
 ///
-/// ```rust
-/// use minui::prelude::*;
+/// - `use minui::prelude::render::*;` for low-level terminal rendering.
+/// - `use minui::prelude::input::*;` for events and input handlers.
+/// - `use minui::prelude::widgets::*;` for widget drawing.
+/// - `use minui::prelude::interaction::*;` for hit-testing and focus helpers.
 ///
-/// let label = Label::new("Hello");
+/// ```rust,no_run
+/// use minui::prelude::render::*;
+///
 /// let color = Color::rgb(255, 0, 0);
-/// let app = App::new(())?;
+/// let mut window = TerminalWindow::new()?;
+/// window.write_str_colored(0, 0, "Hello", ColorPair::fg(color))?;
 /// # Ok::<(), minui::Error>(())
 /// ```
 pub mod prelude {
-    pub use crate::{
-        Alignment,
-        // Core types
-        App,
-        // Controls widgets
-        ArrowButton,
-        ArrowDirection,
-        // UI utilities (hit-testing, focus helpers, etc.)
-        AutoHide,
-        // Utilities
-        BorderChars,
-        // Layout system
-        BorderSide,
-        // Input handling
-        ClickTracker,
-        // Colors
-        Color,
-        ColorPair,
+    /// Low-level terminal rendering types, colours, errors, and text cell helpers.
+    ///
+    /// This is the lightest useful bundle for apps that draw directly into a
+    /// [`TerminalWindow`](crate::TerminalWindow) without using MinUI widgets.
+    pub mod render {
+        pub use crate::{
+            Color, ColorPair, ColorSupport, ColoredSpan, Error, Result, TabPolicy,
+            TerminalCapabilities, TerminalWindow, Window, byte_index_for_char_index,
+            byte_index_for_grapheme_index, cell_column_for_char_index,
+            cell_column_for_grapheme_index, cell_width, cell_width_char,
+            char_index_from_cell_column, clip_to_cells, clip_to_cells_ellipsis, fit_to_cells,
+            grapheme_count, grapheme_index_from_cell_column,
+        };
+    }
 
-        // Terminal capability utilities
-        ColorSupport,
-        ColoredSpan,
+    /// Application runner and frame-loop helpers.
+    pub mod app {
+        pub use crate::{App, Event, FrameProfile, Result, TerminalWindow, Window};
+    }
 
-        CombinedInputHandler,
+    /// Input events, keyboard/mouse handlers, keybinds, and scrolling helpers.
+    pub mod input {
+        pub use crate::{
+            ClickTracker, CombinedInputHandler, Event, KeyKind, KeyModifiers, KeyWithModifiers,
+            KeybindAction, KeyboardHandler, MouseButton, MouseHandler, ScrollDirection, Scroller,
+        };
+    }
 
-        Container,
-        Error,
-        Event,
-        FocusStyle,
-        FrameProfile,
-        // Text widgets
-        Gap,
-        HitTestResult,
-        // Hover tracking for tooltips
-        HoverTracker,
-        IdAllocator,
-        InteractionCache,
-        InteractionEntry,
-        InteractionFlags,
-        InteractionId,
+    /// Widget drawing primitives and built-in widgets.
+    pub mod widgets {
+        pub use crate::{
+            Alignment, ArrowButton, ArrowDirection, BorderChars, BorderSide, Container, FocusStyle,
+            Gap, HoverTracker, Label, LayoutDirection, LinearScrollAccel, MacOSScrollAccel,
+            ScrollAcceleration, ScrollBar, ScrollBarOptions, ScrollBox, ScrollOffset,
+            ScrollOrientation, ScrollSize, ScrollState, ScrollUnit, Slider, SliderOptions,
+            SliderOrientation, Spinner, StatusBar, StatusBarPosition, StickyEdge, Table,
+            TableColumn, Text, TextBlock, TextWrapMode, TitleAlignment, Tooltip, VerticalAlignment,
+            Viewport, Widget, WidgetArea,
+        };
 
-        KeyKind,
-        KeyModifiers,
-        KeyWithModifiers,
-        KeybindAction,
-        KeyboardHandler,
-        Label,
-        LayoutDirection,
-        LinearScrollAccel,
-        MacOSScrollAccel,
+        pub use crate::widgets::{
+            ContainerContentAlignment, ContainerPadding, TextInput, TextInputState, WindowView,
+        };
+    }
 
-        MouseButton,
-        MouseHandler,
+    /// Hit-testing, focus, and interaction routing helpers.
+    pub mod interaction {
+        pub use crate::{
+            AutoHide, HitTestResult, IdAllocator, InteractionCache, InteractionEntry,
+            InteractionFlags, InteractionId, OwnerId, PolicyEffects, RouteTarget, UiScene,
+        };
+    }
 
-        OwnerId,
-        PolicyEffects,
-        Result,
-        RouteTarget,
-        // Scroll acceleration and handling
-        ScrollAcceleration,
-        ScrollBar,
-        ScrollBarOptions,
-        ScrollBox,
-        ScrollDirection,
-        ScrollOffset,
-        ScrollOrientation,
-        ScrollSize,
-        ScrollState,
-        ScrollUnit,
-        Scroller,
+    /// The broad compatibility bundle used by `use minui::prelude::*`.
+    pub mod all {
+        pub use super::app::*;
+        pub use super::input::*;
+        pub use super::interaction::*;
+        pub use super::render::*;
+        pub use super::widgets::*;
+    }
 
-        Slider,
-        SliderOptions,
-        SliderOrientation,
-
-        // Spinner widget
-        Spinner,
-        // Status bar widget
-        StatusBar,
-        StatusBarPosition,
-        StickyEdge,
-
-        // Text utilities (cell-width + clipping)
-        TabPolicy,
-        Table,
-        TableColumn,
-        TerminalCapabilities,
-
-        TerminalWindow,
-        Text,
-        TextBlock,
-        TextWrapMode,
-        TitleAlignment,
-        // Tooltip widget
-        Tooltip,
-        UiScene,
-        VerticalAlignment,
-
-        // Viewport for scrolling
-        Viewport,
-
-        // Core widget trait and utilities
-        Widget,
-        WidgetArea,
-        byte_index_for_char_index,
-        byte_index_for_grapheme_index,
-        cell_column_for_char_index,
-        cell_column_for_grapheme_index,
-        cell_width,
-        cell_width_char,
-        char_index_from_cell_column,
-        clip_to_cells,
-        clip_to_cells_ellipsis,
-        fit_to_cells,
-        grapheme_count,
-        grapheme_index_from_cell_column,
-    };
+    pub use all::*;
 }
