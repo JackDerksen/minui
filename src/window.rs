@@ -42,6 +42,10 @@ use crate::render::buffer::Buffer;
 use crate::term::TerminalCapabilities;
 use crate::text::{TabPolicy, cell_width};
 use crate::{ColorPair, Error, Event, Result};
+#[cfg(not(windows))]
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use crossterm::{
     cursor,
     event::{
@@ -54,6 +58,81 @@ use crossterm::{
 };
 use std::io::{Stdout, Write, stdout};
 use std::time::Duration;
+
+#[cfg(not(windows))]
+fn keyboard_enhancement_flags() -> KeyboardEnhancementFlags {
+    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+}
+
+#[derive(Debug, Default)]
+struct TerminalSession {
+    active: bool,
+}
+
+impl TerminalSession {
+    fn enter(out: &mut Stdout) -> Result<Self> {
+        enable_raw_mode()?;
+
+        let mut session = Self { active: true };
+        if let Err(err) = Self::write_enter_commands(out) {
+            session.restore(out);
+            return Err(err);
+        }
+
+        Ok(session)
+    }
+
+    fn write_enter_commands(out: &mut impl Write) -> Result<()> {
+        execute!(
+            out,
+            terminal::EnterAlternateScreen,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::Hide,
+            cursor::MoveTo(0, 0),
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )?;
+
+        #[cfg(not(windows))]
+        execute!(
+            out,
+            PushKeyboardEnhancementFlags(keyboard_enhancement_flags())
+        )?;
+
+        Ok(())
+    }
+
+    fn write_exit_commands(out: &mut impl Write) -> Result<()> {
+        #[cfg(not(windows))]
+        execute!(out, PopKeyboardEnhancementFlags)?;
+
+        execute!(
+            out,
+            DisableBracketedPaste,
+            DisableMouseCapture,
+            style::ResetColor,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0),
+            terminal::LeaveAlternateScreen,
+            cursor::Show
+        )?;
+
+        Ok(())
+    }
+
+    fn restore(&mut self, out: &mut Stdout) {
+        if !self.active {
+            return;
+        }
+
+        self.active = false;
+
+        let _ = Self::write_exit_commands(out);
+        let _ = disable_raw_mode();
+        let _ = out.flush();
+    }
+}
 
 /// A structured cursor request applied at the end of a frame.
 ///
@@ -386,6 +465,7 @@ pub struct TerminalWindow {
     /// Keeping a single handle avoids interleaving/flicker caused by repeatedly creating
     /// new stdout handles and issuing `execute!` calls on them.
     out: Stdout,
+    session: TerminalSession,
 
     keyboard: KeyboardHandler,
     mouse: MouseHandler,
@@ -418,22 +498,11 @@ impl TerminalWindow {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn new() -> Result<Self> {
-        enable_raw_mode()?;
-
         let (cols, rows) = terminal::size()?;
 
         // Create a single stdout handle and keep it for the lifetime of the window.
         let mut out = stdout();
-
-        execute!(
-            out,
-            terminal::EnterAlternateScreen, // Use separate screen buffer
-            terminal::Clear(terminal::ClearType::All),
-            cursor::Hide,
-            cursor::MoveTo(0, 0),
-            EnableMouseCapture,   // Enable mouse event capture
-            EnableBracketedPaste  // Enable paste as a distinct input mode (editor-friendly)
-        )?;
+        let session = TerminalSession::enter(&mut out)?;
 
         Ok(Self {
             width: cols,
@@ -447,6 +516,7 @@ impl TerminalWindow {
             last_cursor: None,
 
             out,
+            session,
 
             keyboard: KeyboardHandler::new(),
             mouse: MouseHandler::new(),
@@ -1114,29 +1184,37 @@ impl Window for TerminalWindow {
 
 impl Drop for TerminalWindow {
     fn drop(&mut self) {
-        // Best-effort restore of terminal state.
-        let _ = disable_raw_mode();
-
-        // IMPORTANT:
-        // `self.flush()` hides the cursor at the start of flush and will hide it again
-        // if no deferred cursor request exists. During drop we want to guarantee the
-        // user's terminal cursor is visible after we restore the normal screen.
-        //
-        // So: flush any pending buffered changes first (while we're still in the alt screen),
-        // then restore terminal modes, then explicitly show the cursor.
+        // Flush pending buffered changes while the session is still active, then restore all
+        // terminal modes in one place so keyboard enhancements, paste mode, mouse capture,
+        // raw mode, and the alternate screen are unwound together.
         let _ = self.flush();
+        self.session.restore(&mut self.out);
+    }
+}
 
-        let _ = execute!(
-            self.out,
-            DisableBracketedPaste, // Restore terminal paste mode
-            DisableMouseCapture,   // Disable mouse event capture
-            style::ResetColor,
-            terminal::Clear(terminal::ClearType::All),
-            cursor::MoveTo(0, 0),
-            terminal::LeaveAlternateScreen,
-            cursor::Show
-        );
+#[cfg(test)]
+mod tests {
+    use super::TerminalSession;
 
-        let _ = self.out.flush();
+    #[test]
+    fn shutdown_restores_terminal_modes() {
+        let mut bytes = Vec::new();
+        TerminalSession::write_enter_commands(&mut bytes).unwrap();
+        TerminalSession::write_exit_commands(&mut bytes).unwrap();
+
+        let output = String::from_utf8(bytes).unwrap();
+
+        #[cfg(not(windows))]
+        {
+            assert!(output.contains("\u{1b}[>9u"));
+            assert!(output.contains("\u{1b}[<1u"));
+        }
+
+        assert!(output.contains("\u{1b}[?1049h"));
+        assert!(output.contains("\u{1b}[?1049l"));
+        assert!(output.contains("\u{1b}[?1000h"));
+        assert!(output.contains("\u{1b}[?1000l"));
+        assert!(output.contains("\u{1b}[?2004h"));
+        assert!(output.contains("\u{1b}[?2004l"));
     }
 }

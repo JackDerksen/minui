@@ -7,6 +7,8 @@
 mod tests {
 
     use crate::input::{KeybindAction, KeyboardHandler, MouseHandler};
+    use crate::{Event, KeyKind, KeyModifiers, KeyWithModifiers};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers as CrosstermKeyModifiers};
     use std::time::Duration;
 
     #[test]
@@ -84,6 +86,63 @@ mod tests {
 
         keyboard.set_poll_rate(1);
         assert_eq!(keyboard.poll_rate(), Duration::from_millis(1));
+    }
+
+    #[test]
+    fn test_ctrl_number_shortcuts_stay_distinct() {
+        let keyboard = KeyboardHandler::new();
+
+        for digit in ['1', '2', '3', '4', '5'] {
+            let event = keyboard.process_key_event(KeyEvent::new(
+                KeyCode::Char(digit),
+                CrosstermKeyModifiers::CONTROL,
+            ));
+
+            assert_eq!(
+                event,
+                Event::KeyWithModifiers(KeyWithModifiers {
+                    key: KeyKind::Char(digit),
+                    mods: KeyModifiers::ctrl(),
+                })
+            );
+            assert_eq!(event.as_legacy_key_event(), Some(Event::Character(digit)));
+        }
+    }
+
+    #[test]
+    fn test_shift_semicolon_stays_colon() {
+        let keyboard = KeyboardHandler::new();
+        let event = keyboard.process_key_event(KeyEvent::new(
+            KeyCode::Char(':'),
+            CrosstermKeyModifiers::SHIFT,
+        ));
+
+        assert_eq!(
+            event,
+            Event::KeyWithModifiers(KeyWithModifiers {
+                key: KeyKind::Char(':'),
+                mods: KeyModifiers::shift(),
+            })
+        );
+        assert_eq!(event.as_legacy_key_event(), Some(Event::Character(':')));
+    }
+
+    #[test]
+    fn test_shift_four_stays_dollar() {
+        let keyboard = KeyboardHandler::new();
+        let event = keyboard.process_key_event(KeyEvent::new(
+            KeyCode::Char('$'),
+            CrosstermKeyModifiers::SHIFT,
+        ));
+
+        assert_eq!(
+            event,
+            Event::KeyWithModifiers(KeyWithModifiers {
+                key: KeyKind::Char('$'),
+                mods: KeyModifiers::shift(),
+            })
+        );
+        assert_eq!(event.as_legacy_key_event(), Some(Event::Character('$')));
     }
 
     #[test]
