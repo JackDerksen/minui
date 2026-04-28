@@ -108,6 +108,8 @@ pub enum Event {
     Enter,
     /// Escape key was pressed
     Escape,
+    /// Caps Lock key was pressed
+    CapsLock,
     /// Function key was pressed (F1-F12, etc.)
     /// The u8 value represents the function key number (1 for F1, 2 for F2, etc.)
     FunctionKey(u8),
@@ -166,6 +168,7 @@ impl Event {
                     KeyKind::Tab => Event::Tab,
                     KeyKind::Enter => Event::Enter,
                     KeyKind::Escape => Event::Escape,
+                    KeyKind::CapsLock => Event::CapsLock,
                     KeyKind::Function(n) => Event::FunctionKey(n),
                 };
                 Some(legacy)
@@ -239,6 +242,7 @@ pub enum KeyKind {
     Tab,
     Enter,
     Escape,
+    CapsLock,
     Function(u8),
 }
 

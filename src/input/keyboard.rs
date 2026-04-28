@@ -767,6 +767,7 @@ impl KeyboardHandler {
             KeyCode::Delete => Event::Delete,
             KeyCode::Backspace => Event::Backspace,
             KeyCode::Enter => Event::Enter,
+            KeyCode::CapsLock => Event::CapsLock,
             KeyCode::F(n) => Event::FunctionKey(n),
             KeyCode::Esc => Event::Escape,
             _ => Event::Unknown,
@@ -807,6 +808,7 @@ impl KeyboardHandler {
             KeyCode::Backspace => KeyKind::Backspace,
             KeyCode::Enter => KeyKind::Enter,
             KeyCode::Esc => KeyKind::Escape,
+            KeyCode::CapsLock => KeyKind::CapsLock,
             KeyCode::F(n) => KeyKind::Function(n),
             _ => return None,
         };

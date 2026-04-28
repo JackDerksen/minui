@@ -577,6 +577,7 @@ fn is_key_event(event: &Event) -> bool {
             | Event::Tab
             | Event::Enter
             | Event::Escape
+            | Event::CapsLock
             | Event::FunctionKey(_)
             | Event::Keybind(_)
     )
