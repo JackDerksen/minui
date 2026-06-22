@@ -37,8 +37,23 @@
 //! ```
 
 use crate::{Event, Result, TerminalWindow, Window};
-use crossterm::terminal;
 use std::time::{Duration, Instant};
+
+const MAX_EVENTS_PER_FRAME: usize = 256;
+const MAX_SKIPPED_TICKS: usize = 4;
+
+fn advance_tick_deadline(deadline: Instant, interval: Duration, now: Instant) -> Instant {
+    let mut next = deadline + interval;
+
+    for _ in 0..MAX_SKIPPED_TICKS {
+        if next > now {
+            return next;
+        }
+        next += interval;
+    }
+
+    if next <= now { now + interval } else { next }
+}
 
 /// Per-frame timing information emitted by `App` profiling hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,18 +121,18 @@ impl<S> App<S> {
     ///
     /// Your update function will receive `Event::Frame` at regular intervals.
     ///
-    /// Note: this currently does not change the overall loop structure — the runner still
-    /// iterates continuously and draws every pass. A future improvement would be to make
-    /// the "event-driven" mode block efficiently (only waking for input / resize /
-    /// invalidation), while "ticked" mode redraws on a schedule.
     pub fn with_frame_rate(mut self, frame_rate: Duration) -> Self {
+        assert!(
+            !frame_rate.is_zero(),
+            "frame rate interval must be non-zero"
+        );
         self.frame_rate = Some(frame_rate);
         self
     }
 
-    /// Sets a soft frame-time budget used for profiling and pacing.
+    /// Sets a soft frame-time budget used for profiling.
     ///
-    /// If the frame finishes early, the runner sleeps the remaining budget time.
+    /// Frame pacing is controlled by [`App::with_frame_rate`].
     pub fn with_frame_budget(mut self, budget: Duration) -> Self {
         self.frame_budget = Some(budget);
         self
@@ -152,62 +167,91 @@ impl<S> App<S> {
         // 5) show cursor
         D: FnMut(&mut S, &mut dyn Window) -> Result<()>,
     {
-        let mut last_tick = Instant::now();
+        // Render once before blocking so event-driven applications appear immediately.
+        let frame_start = Instant::now();
+        self.window.clear_screen()?;
+        let draw_start = Instant::now();
+        draw(&mut self.state, &mut self.window)?;
+        let draw_time = draw_start.elapsed();
+        let frame_time = frame_start.elapsed();
+
+        if let Some(hook) = self.frame_profile_hook.as_mut() {
+            hook(&FrameProfile {
+                input_poll_time: Duration::ZERO,
+                update_time: Duration::ZERO,
+                draw_time,
+                frame_time,
+                events_processed: 0,
+                budget: self.frame_budget,
+                over_budget: self.frame_budget.is_some_and(|budget| frame_time > budget),
+            });
+        }
+
+        let mut next_tick = self.frame_rate.map(|interval| Instant::now() + interval);
 
         loop {
-            let frame_start = Instant::now();
-
-            // --- Input Handling ---
-            // Drain all pending input events before drawing a frame.
-            //
-            // This prevents input bursts (especially mouse events) from interleaving with rendering,
-            // which can cause flicker and unstable behavior.
-            const MAX_EVENTS_PER_FRAME: usize = 256;
-            let mut events_processed = 0usize;
+            // Event-driven mode blocks indefinitely. Ticked mode blocks only until its deadline,
+            // while still waking immediately for input.
             let input_poll_start = Instant::now();
-            let mut update_time = Duration::ZERO;
-            for _ in 0..MAX_EVENTS_PER_FRAME {
-                match self.window.poll_input()? {
-                    Some(event) => {
-                        events_processed = events_processed.saturating_add(1);
-                        let update_start = Instant::now();
-                        if !update(&mut self.state, event) {
-                            return Ok(()); // Exit if the update closure returns false
-                        }
-                        update_time = update_time.saturating_add(update_start.elapsed());
-                    }
-                    None => break, // No more pending input
+            let first_event = match next_tick {
+                Some(deadline) => {
+                    let timeout = deadline.saturating_duration_since(Instant::now());
+                    self.window.poll_input_timeout(timeout)?
                 }
-            }
-            let input_poll_time = input_poll_start.elapsed();
+                None => Some(self.window.wait_for_input()?),
+            };
+            let mut input_poll_time = input_poll_start.elapsed();
 
-            // --- Ticked Updates ---
-            // If using a fixed tick rate, check if it's time to emit a fixed-rate frame event.
-            if let Some(frame_rate) = self.frame_rate
-                && last_tick.elapsed() >= frame_rate
-            {
+            let frame_start = Instant::now();
+            let mut events_processed = 0usize;
+            let mut update_time = Duration::ZERO;
+
+            if let Some(event) = first_event {
+                events_processed = 1;
                 let update_start = Instant::now();
-                if !update(&mut self.state, Event::Frame) {
-                    break; // Exit if the tick update returns false
+                if !update(&mut self.state, event) {
+                    return Ok(());
+                }
+                update_time = update_start.elapsed();
+            }
+
+            while events_processed < MAX_EVENTS_PER_FRAME {
+                let poll_start = Instant::now();
+                let event = self.window.poll_input()?;
+                input_poll_time = input_poll_time.saturating_add(poll_start.elapsed());
+
+                let Some(event) = event else {
+                    break;
+                };
+
+                events_processed += 1;
+                let update_start = Instant::now();
+                if !update(&mut self.state, event) {
+                    return Ok(());
                 }
                 update_time = update_time.saturating_add(update_start.elapsed());
-                last_tick = Instant::now();
             }
 
-            // --- Drawing ---
-            // Always draw the current state of the application.
-            //
-            // Important: we intentionally do NOT flush here.
-            // The draw closure should flush once per frame, and can optionally place the cursor
-            // after flushing (editor-style).
-            //
-            // Resizes: terminal resize events can be missed when the app is idle (common when the
-            // user resizes the terminal using the window manager, not by interacting inside the
-            // terminal). To prevent edge artifacts and "ghost" UI, sync the cached size every
-            // frame before drawing.
-            if let Ok((cols, rows)) = terminal::size() {
-                // This method is crate-visible on `TerminalWindow` and performs a safe buffer reset.
-                self.window.handle_resize(cols, rows);
+            let now = Instant::now();
+            let tick_due = next_tick.is_some_and(|deadline| now >= deadline);
+            if tick_due {
+                let update_start = Instant::now();
+                if !update(&mut self.state, Event::Frame) {
+                    return Ok(());
+                }
+                update_time = update_time.saturating_add(update_start.elapsed());
+
+                let interval = self
+                    .frame_rate
+                    .expect("tick deadline requires a frame rate");
+                let deadline = next_tick.expect("tick deadline must exist");
+                next_tick = Some(advance_tick_deadline(deadline, interval, now));
+            }
+
+            // A timeout may wake slightly before its deadline. In that case, wait again rather
+            // than drawing a frame with no input and no scheduled update.
+            if events_processed == 0 && !tick_due {
+                continue;
             }
 
             self.window.clear_screen()?;
@@ -228,16 +272,6 @@ impl<S> App<S> {
                     budget: self.frame_budget,
                     over_budget,
                 });
-            }
-
-            // Yield CPU time to avoid spinning, especially when using a fixed tick rate.
-            if let Some(budget) = self.frame_budget {
-                let remaining = budget.saturating_sub(frame_time);
-                if !remaining.is_zero() {
-                    std::thread::sleep(remaining);
-                }
-            } else {
-                std::thread::sleep(Duration::from_millis(1));
             }
         }
 

@@ -118,6 +118,7 @@ fn main() -> minui::Result<()> {
                             n, k.mods.shift, k.mods.ctrl, k.mods.alt, k.mods.super_key
                         ));
                     }
+                    KeyKind::CapsLock => todo!(),
                 },
 
                 // Legacy fallback keyboard events (some backends may still emit these).

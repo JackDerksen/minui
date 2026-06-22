@@ -653,29 +653,7 @@ impl TerminalWindow {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn get_input_timeout(&mut self, timeout: Duration) -> Result<Event> {
-        // Use crossterm's unified event system to handle both keyboard and mouse
-        if event::poll(timeout)? {
-            match event::read()? {
-                CrosstermEvent::Key(key_event) => Ok(self.keyboard.process_key_event(key_event)),
-                CrosstermEvent::Mouse(mouse_event) => {
-                    Ok(self.mouse.process_mouse_event(mouse_event))
-                }
-                CrosstermEvent::Paste(text) => Ok(Event::Paste(text)),
-                CrosstermEvent::Resize(cols, rows) => {
-                    // Keep our internal buffer dimensions in sync with the terminal.
-                    // If we don't do this, drawing after a resize can clip incorrectly and/or
-                    // leave stale content at the edges.
-                    self.handle_resize(cols, rows);
-                    Ok(Event::Resize {
-                        width: cols,
-                        height: rows,
-                    })
-                }
-                _ => Ok(Event::Unknown),
-            }
-        } else {
-            Ok(Event::Unknown)
-        }
+        Ok(self.poll_input_timeout(timeout)?.unwrap_or(Event::Unknown))
     }
 
     /// Waits indefinitely for user input.
@@ -700,28 +678,38 @@ impl TerminalWindow {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn wait_for_input(&mut self) -> Result<Event> {
-        // Use crossterm's unified event system to handle both keyboard and mouse
         loop {
-            match event::read()? {
-                CrosstermEvent::Key(key_event) => {
-                    return Ok(self.keyboard.process_key_event(key_event));
-                }
-                CrosstermEvent::Mouse(mouse_event) => {
-                    return Ok(self.mouse.process_mouse_event(mouse_event));
-                }
-                CrosstermEvent::Paste(text) => {
-                    return Ok(Event::Paste(text));
-                }
-                CrosstermEvent::Resize(cols, rows) => {
-                    // Keep our internal buffer dimensions in sync with the terminal.
-                    self.handle_resize(cols, rows);
-                    return Ok(Event::Resize {
-                        width: cols,
-                        height: rows,
-                    });
-                }
-                _ => continue,
+            if let Some(event) = self.decode_input_event(event::read()?) {
+                return Ok(event);
             }
+        }
+    }
+
+    /// Waits up to `timeout` for input.
+    ///
+    /// Unlike [`TerminalWindow::get_input_timeout`], a timeout is represented as `None`,
+    /// keeping it distinct from an unsupported terminal event.
+    pub fn poll_input_timeout(&mut self, timeout: Duration) -> Result<Option<Event>> {
+        if !event::poll(timeout)? {
+            return Ok(None);
+        }
+
+        Ok(self.decode_input_event(event::read()?))
+    }
+
+    fn decode_input_event(&mut self, input: CrosstermEvent) -> Option<Event> {
+        match input {
+            CrosstermEvent::Key(key_event) => Some(self.keyboard.process_key_event(key_event)),
+            CrosstermEvent::Mouse(mouse_event) => Some(self.mouse.process_mouse_event(mouse_event)),
+            CrosstermEvent::Paste(text) => Some(Event::Paste(text)),
+            CrosstermEvent::Resize(cols, rows) => {
+                self.handle_resize(cols, rows);
+                Some(Event::Resize {
+                    width: cols,
+                    height: rows,
+                })
+            }
+            _ => None,
         }
     }
 
@@ -753,29 +741,7 @@ impl TerminalWindow {
     /// # Ok::<(), minui::Error>(())
     /// ```
     pub fn poll_input(&mut self) -> Result<Option<Event>> {
-        // Use a minimal poll timeout to check for any events
-        if event::poll(Duration::from_millis(0))? {
-            match event::read()? {
-                CrosstermEvent::Key(key_event) => {
-                    Ok(Some(self.keyboard.process_key_event(key_event)))
-                }
-                CrosstermEvent::Mouse(mouse_event) => {
-                    Ok(Some(self.mouse.process_mouse_event(mouse_event)))
-                }
-                CrosstermEvent::Paste(text) => Ok(Some(Event::Paste(text))),
-                CrosstermEvent::Resize(cols, rows) => {
-                    // Keep our internal buffer dimensions in sync with the terminal.
-                    self.handle_resize(cols, rows);
-                    Ok(Some(Event::Resize {
-                        width: cols,
-                        height: rows,
-                    }))
-                }
-                _ => Ok(None),
-            }
-        } else {
-            Ok(None)
-        }
+        self.poll_input_timeout(Duration::ZERO)
     }
 
     /// Gets a reference to the keyboard handler for advanced configuration.
