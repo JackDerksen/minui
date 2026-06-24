@@ -8,21 +8,12 @@ use crate::{ColorPair, Result};
 
 /// Represents a single character cell in the terminal buffer.
 ///
-/// Each cell stores a character, optional color information, and a modification flag
-/// used for change tracking. Cells are the basic unit of the rendering system.
-///
-/// # Memory Layout
-///
-/// Cells are designed to be compact and efficient:
-/// - `char`: 4 bytes (Unicode character)
-/// - `Option<ColorPair>`: ~9 bytes (color information)
-/// - `bool`: 1 byte (modification flag)
-/// - Total: ~14 bytes per cell (plus padding)
-#[derive(Clone, Debug, PartialEq)]
+/// Each cell stores a character and optional color information. Dirty row ranges provide
+/// change tracking without adding per-cell bookkeeping.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Cell {
     pub(crate) ch: char,
     pub(crate) colors: Option<ColorPair>,
-    pub(crate) modified: bool,
 }
 
 /// Represents a batched change to the terminal buffer.
@@ -53,28 +44,11 @@ struct DirtyRange {
 }
 
 impl Cell {
-    /// Creates a new cell with the specified character and colors.
-    ///
-    /// New cells are automatically marked as modified to ensure they
-    /// are included in the next rendering pass.
-    #[allow(dead_code)] // Currently unused but still a necessary constructor
-    pub fn new(ch: char, colors: Option<ColorPair>) -> Self {
-        Self {
-            ch,
-            colors,
-            modified: true, // New cells start as modified
-        }
-    }
-
     /// Creates an empty cell (space character with no colors).
-    ///
-    /// Empty cells are not marked as modified by default, as they
-    /// represent the initial state of the buffer.
     pub fn empty() -> Self {
         Self {
             ch: ' ',
             colors: None,
-            modified: false,
         }
     }
 }
@@ -91,7 +65,7 @@ impl Cell {
 ///
 /// ## Double Buffering
 /// - **Current Buffer**: The desired state of the screen
-/// - **Previous Buffer**: The last rendered state  
+/// - **Previous Buffer**: The last rendered state
 /// - **Change Detection**: Only cells that differ between buffers are updated
 ///
 /// ## Dirty Region Tracking
@@ -106,7 +80,7 @@ impl Cell {
 ///
 /// # Performance Characteristics
 ///
-/// - **Memory**: 2 × (width × height × ~14 bytes per cell)
+/// - **Memory**: Two compact cell buffers plus one dirty range per row
 /// - **Time Complexity**: O(changed_cells) for processing
 /// - **Terminal I/O**: Minimized through batching and change detection
 ///
@@ -189,11 +163,9 @@ impl Buffer {
         let idx = self.coords_to_index(x, y);
         let cell = &mut self.current[idx];
 
-        // Only mark as modified if something changed
         if cell.ch != ch || cell.colors != colors {
             cell.ch = ch;
             cell.colors = colors;
-            cell.modified = true;
             self.mark_dirty_span(y, x, x);
         }
 
@@ -231,7 +203,6 @@ impl Buffer {
             if cell.ch != ch || cell.colors != colors {
                 cell.ch = ch;
                 cell.colors = colors;
-                cell.modified = true;
 
                 if min_changed.is_none() {
                     min_changed = Some(x_pos);
@@ -250,15 +221,22 @@ impl Buffer {
     }
 
     pub(crate) fn clear(&mut self) {
-        for cell in &mut self.current {
-            if cell.ch != ' ' || cell.colors.is_some() {
-                *cell = Cell::empty();
-                cell.modified = true;
+        for y in 0..self.height {
+            let row_start = self.coords_to_index(0, y);
+            let mut min_changed = None;
+            let mut max_changed = 0;
+
+            for x in 0..self.width {
+                let cell = &mut self.current[row_start + x as usize];
+                if cell.ch != ' ' || cell.colors.is_some() {
+                    *cell = Cell::empty();
+                    min_changed.get_or_insert(x);
+                    max_changed = x;
+                }
             }
-        }
-        if self.width > 0 {
-            for y in 0..self.height {
-                self.mark_dirty_span(y, 0, self.width - 1);
+
+            if let Some(min_x) = min_changed {
+                self.mark_dirty_span(y, min_x, max_changed);
             }
         }
     }
@@ -272,17 +250,19 @@ impl Buffer {
         }
 
         let start_idx = self.coords_to_index(0, y);
-        let end_idx = start_idx + self.width as usize;
-
-        for cell in &mut self.current[start_idx..end_idx] {
+        let mut min_changed = None;
+        let mut max_changed = 0;
+        for x in 0..self.width {
+            let cell = &mut self.current[start_idx + x as usize];
             if cell.ch != ' ' || cell.colors.is_some() {
                 *cell = Cell::empty();
-                cell.modified = true;
+                min_changed.get_or_insert(x);
+                max_changed = x;
             }
         }
 
-        if self.width > 0 {
-            self.mark_dirty_span(y, 0, self.width - 1);
+        if let Some(min_x) = min_changed {
+            self.mark_dirty_span(y, min_x, max_changed);
         }
 
         Ok(())
@@ -297,21 +277,21 @@ impl Buffer {
             };
 
             let row_start = self.coords_to_index(0, y);
-            let mut x = range.min_x;
-            while x <= range.max_x {
-                let idx = row_start + x as usize;
+            let mut x = range.min_x as usize;
+            let max_x = range.max_x as usize;
+            while x <= max_x {
+                let idx = row_start + x;
                 let current = &self.current[idx];
                 let previous = &self.previous[idx];
 
-                // Skip unchanged cells and any modified cell that ended up visually identical.
                 if current == previous {
-                    x = x.saturating_add(1);
+                    x += 1;
                     continue;
                 }
 
                 // Find run of consecutive changed cells with same colors.
                 let mut run_length = 1usize;
-                while x as usize + run_length <= range.max_x as usize {
+                while x + run_length <= max_x {
                     let next_idx = idx + run_length;
                     let next_cell = &self.current[next_idx];
                     let next_prev = &self.previous[next_idx];
@@ -323,36 +303,38 @@ impl Buffer {
                     run_length += 1;
                 }
 
-                // Always create change for modified content, including spaces
+                // Always create a change for updated content, including spaces
                 // (spaces are important for clearing previously occupied cells).
                 self.changes.push(BufferChange {
                     y,
-                    x,
+                    x: x as u16,
                     start_idx: idx,
                     len: run_length,
                     colors: current.colors,
                 });
 
-                x = x.saturating_add(run_length as u16);
+                x += run_length;
             }
         }
 
-        // Swap buffers and reset state. After the swap, `previous` holds the desired frame
-        // that the returned change descriptors point into.
-        std::mem::swap(&mut self.current, &mut self.previous);
+        self.changes.len()
+    }
 
+    /// Marks the pending changes as successfully rendered.
+    ///
+    /// Keeping this separate from `process_changes` means a failed terminal write can be retried,
+    /// and the desired buffer remains authoritative for incremental drawing.
+    pub(crate) fn commit_changes(&mut self) {
         for (y, row) in self.dirty_rows.iter_mut().enumerate() {
             if let Some(range) = row.take() {
                 let row_start = y * self.width as usize;
                 let start_idx = row_start + range.min_x as usize;
                 let end_idx = row_start + range.max_x as usize + 1;
-                for cell in &mut self.current[start_idx..end_idx] {
-                    cell.modified = false;
-                }
+                self.previous[start_idx..end_idx]
+                    .copy_from_slice(&self.current[start_idx..end_idx]);
             }
         }
-
-        self.changes.len()
+        self.changes.clear();
     }
 
     pub(crate) fn change(&self, index: usize) -> BufferChange {
@@ -360,7 +342,7 @@ impl Buffer {
     }
 
     pub(crate) fn change_chars(&self, change: BufferChange) -> impl Iterator<Item = char> + '_ {
-        self.previous[change.start_idx..change.start_idx + change.len]
+        self.current[change.start_idx..change.start_idx + change.len]
             .iter()
             .map(|cell| cell.ch)
     }
@@ -375,14 +357,12 @@ impl Buffer {
             .filter_map(|row| row.map(|range| (range.max_x - range.min_x + 1) as usize))
             .sum();
 
-        let modified_cells = self.current.iter().filter(|c| c.modified).count();
-
         BufferStats {
             width: self.width,
             height: self.height,
             dirty_rows,
             dirty_cols,
-            modified_cells,
+            modified_cells: todo!(),
         }
     }
 }

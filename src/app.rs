@@ -55,6 +55,57 @@ fn advance_tick_deadline(deadline: Instant, interval: Duration, now: Instant) ->
     if next <= now { now + interval } else { next }
 }
 
+fn push_coalesced_event(events: &mut Vec<Event>, event: Event) {
+    match event {
+        Event::Unknown => {}
+        Event::MouseMove { x, y } => {
+            if let Some(Event::MouseMove {
+                x: previous_x,
+                y: previous_y,
+            }) = events.last_mut()
+            {
+                *previous_x = x;
+                *previous_y = y;
+            } else {
+                events.push(Event::MouseMove { x, y });
+            }
+        }
+        Event::Resize { width, height } => {
+            if let Some(Event::Resize {
+                width: previous_width,
+                height: previous_height,
+            }) = events.last_mut()
+            {
+                *previous_width = width;
+                *previous_height = height;
+            } else {
+                events.push(Event::Resize { width, height });
+            }
+        }
+        Event::MouseScroll { delta } => {
+            if let Some(Event::MouseScroll {
+                delta: previous_delta,
+            }) = events.last_mut()
+            {
+                *previous_delta = previous_delta.saturating_add(delta);
+            } else {
+                events.push(Event::MouseScroll { delta });
+            }
+        }
+        Event::MouseScrollHorizontal { delta } => {
+            if let Some(Event::MouseScrollHorizontal {
+                delta: previous_delta,
+            }) = events.last_mut()
+            {
+                *previous_delta = previous_delta.saturating_add(delta);
+            } else {
+                events.push(Event::MouseScrollHorizontal { delta });
+            }
+        }
+        event => events.push(event),
+    }
+}
+
 /// Per-frame timing information emitted by `App` profiling hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameProfile {
@@ -188,6 +239,7 @@ impl<S> App<S> {
         }
 
         let mut next_tick = self.frame_rate.map(|interval| Instant::now() + interval);
+        let mut pending_events = Vec::with_capacity(MAX_EVENTS_PER_FRAME);
 
         loop {
             // Event-driven mode blocks indefinitely. Ticked mode blocks only until its deadline,
@@ -203,19 +255,15 @@ impl<S> App<S> {
             let mut input_poll_time = input_poll_start.elapsed();
 
             let frame_start = Instant::now();
-            let mut events_processed = 0usize;
-            let mut update_time = Duration::ZERO;
+            pending_events.clear();
+            let mut raw_events_read = 0usize;
 
             if let Some(event) = first_event {
-                events_processed = 1;
-                let update_start = Instant::now();
-                if !update(&mut self.state, event) {
-                    return Ok(());
-                }
-                update_time = update_start.elapsed();
+                raw_events_read = 1;
+                push_coalesced_event(&mut pending_events, event);
             }
 
-            while events_processed < MAX_EVENTS_PER_FRAME {
+            while raw_events_read < MAX_EVENTS_PER_FRAME {
                 let poll_start = Instant::now();
                 let event = self.window.poll_input()?;
                 input_poll_time = input_poll_time.saturating_add(poll_start.elapsed());
@@ -224,7 +272,13 @@ impl<S> App<S> {
                     break;
                 };
 
-                events_processed += 1;
+                raw_events_read += 1;
+                push_coalesced_event(&mut pending_events, event);
+            }
+
+            let events_processed = pending_events.len();
+            let mut update_time = Duration::ZERO;
+            for event in pending_events.drain(..) {
                 let update_start = Instant::now();
                 if !update(&mut self.state, event) {
                     return Ok(());

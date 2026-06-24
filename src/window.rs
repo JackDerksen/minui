@@ -593,6 +593,7 @@ impl TerminalWindow {
             cursor::MoveTo(0, 0)
         )?;
         self.out.flush()?;
+        self.buffer = Buffer::new(self.width, self.height);
         Ok(())
     }
 
@@ -1018,6 +1019,7 @@ impl TerminalWindow {
         self.last_cursor = Some(desired);
 
         self.out.flush()?;
+        self.buffer.commit_changes();
         Ok(())
     }
 }

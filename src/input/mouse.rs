@@ -501,14 +501,7 @@ impl MouseHandler {
     pub fn poll(&mut self) -> Result<Option<Event>> {
         if event::poll(self.poll_rate)? {
             if let CrosstermEvent::Mouse(mouse_event) = event::read()? {
-                let converted_event = self.convert_mouse_event(mouse_event);
-
-                // Coalesce scroll events to handle fast scroll wheels
-                if self.is_scroll_event(&converted_event) {
-                    return Ok(Some(self.coalesce_scroll_events(converted_event)?));
-                }
-
-                return Ok(Some(converted_event));
+                return Ok(Some(self.convert_mouse_event(mouse_event)));
             }
         }
         Ok(None)
@@ -747,63 +740,6 @@ impl MouseHandler {
         }
     }
 
-    /// Checks if an event is a scroll event.
-    fn is_scroll_event(&self, event: &Event) -> bool {
-        matches!(
-            event,
-            Event::MouseScroll { .. } | Event::MouseScrollHorizontal { .. }
-        )
-    }
-
-    /// Coalesces multiple rapid scroll events into a single event.
-    ///
-    /// This drains the event queue of any additional scroll events in the same
-    /// direction, preventing scroll buffer buildup on fast scroll wheels.
-    fn coalesce_scroll_events(&mut self, initial_event: Event) -> Result<Event> {
-        let mut total_delta = match initial_event {
-            Event::MouseScroll { delta } => (delta, 0),
-            Event::MouseScrollHorizontal { delta } => (0, delta),
-            _ => return Ok(initial_event),
-        };
-
-        // Drain any additional pending scroll events
-        while event::poll(Duration::from_millis(0))? {
-            if let Ok(CrosstermEvent::Mouse(mouse_event)) = event::read() {
-                let next_event = self.convert_mouse_event(mouse_event);
-                match next_event {
-                    Event::MouseScroll { delta } => {
-                        total_delta.0 += delta;
-                    }
-                    Event::MouseScrollHorizontal { delta } => {
-                        total_delta.1 += delta;
-                    }
-                    _ => {
-                        // Not a scroll event, we're done coalescing
-                        // Note: This event is lost, but that's acceptable for the
-                        // improved scroll experience
-                        break;
-                    }
-                }
-            } else {
-                break;
-            }
-        }
-
-        // Return the coalesced event
-        // Prioritize vertical scroll if both are present
-        if total_delta.0 != 0 {
-            Ok(Event::MouseScroll {
-                delta: total_delta.0,
-            })
-        } else if total_delta.1 != 0 {
-            Ok(Event::MouseScrollHorizontal {
-                delta: total_delta.1,
-            })
-        } else {
-            Ok(initial_event)
-        }
-    }
-
     /// Converts a crossterm MouseEvent to a MinUI Event.
     ///
     /// This public method allows external code to process mouse events through
@@ -857,6 +793,16 @@ pub struct CombinedInputHandler {
 }
 
 impl CombinedInputHandler {
+    fn process_input_event(&mut self, input: CrosstermEvent) -> Option<Event> {
+        match input {
+            CrosstermEvent::Key(key_event) => Some(self.keyboard.process_key_event(key_event)),
+            CrosstermEvent::Mouse(mouse_event) => Some(self.mouse.process_mouse_event(mouse_event)),
+            CrosstermEvent::Paste(text) => Some(Event::Paste(text)),
+            CrosstermEvent::Resize(width, height) => Some(Event::Resize { width, height }),
+            _ => None,
+        }
+    }
+
     /// Creates a new combined input handler.
     ///
     /// Both keyboard and mouse handlers are initialized with their default settings.
@@ -894,8 +840,8 @@ impl CombinedInputHandler {
 
     /// Polls for any input (keyboard or mouse) without blocking.
     ///
-    /// This method checks both keyboard and mouse input sources and returns
-    /// the first available event, prioritizing keyboard input.
+    /// This method reads the shared terminal event queue once and dispatches the event to the
+    /// appropriate handler.
     ///
     /// # Returns
     ///
@@ -903,16 +849,11 @@ impl CombinedInputHandler {
     /// - `Ok(None)` - No input is currently available
     /// - `Err(...)` - An error occurred while checking for input
     pub fn poll(&mut self) -> Result<Option<Event>> {
-        // Check keyboard first
-        if let Some(event) = self.keyboard.poll_with_keybinds()? {
-            return Ok(Some(event));
+        if !event::poll(Duration::ZERO)? {
+            return Ok(None);
         }
 
-        // Then check mouse
-        if let Ok(Some(event)) = self.mouse.poll() {
-            return Ok(Some(event));
-        }
-        Ok(None)
+        Ok(self.process_input_event(event::read()?))
     }
 
     /// Waits for any input (keyboard or mouse) with a timeout.
@@ -930,14 +871,11 @@ impl CombinedInputHandler {
     /// - `Ok(None)` - Timeout expired without input
     /// - `Err(...)` - An error occurred while waiting for input
     pub fn get_input(&mut self, timeout: Duration) -> Result<Option<Event>> {
-        // Check keyboard first with the timeout
-        let keyboard_event = self.keyboard.get_input(timeout)?;
-        if keyboard_event != Event::Unknown {
-            return Ok(Some(keyboard_event));
+        if !event::poll(timeout)? {
+            return Ok(None);
         }
 
-        // If keyboard timed out, try mouse with remaining time (simplified to same timeout)
-        self.mouse.get_input(timeout)
+        Ok(self.process_input_event(event::read()?))
     }
 }
 
