@@ -465,6 +465,7 @@ pub struct TerminalWindow {
     /// Keeping a single handle avoids interleaving/flicker caused by repeatedly creating
     /// new stdout handles and issuing `execute!` calls on them.
     out: Stdout,
+    render_text: String,
     session: TerminalSession,
 
     keyboard: KeyboardHandler,
@@ -516,6 +517,7 @@ impl TerminalWindow {
             last_cursor: None,
 
             out,
+            render_text: String::new(),
             session,
 
             keyboard: KeyboardHandler::new(),
@@ -925,6 +927,47 @@ impl TerminalWindow {
         // Hide the cursor while rendering changes to avoid flicker from transient `MoveTo` calls.
         // We track whether we hid it so we know to restore it afterward.
         let hid_cursor_for_render = change_count > 0;
+
+        // Apply deferred cursor request after rendering.
+        //
+        // We track the last cursor state we applied to avoid redundant Show/Hide toggles
+        // and redundant MoveTo calls, which can cause flicker on some terminals.
+        //
+        // Important behavior: if nobody requested a cursor state this frame, we preserve the
+        // previous cursor visibility instead of forcing it hidden. This avoids "cursor disappears"
+        // bugs when an app doesn't call `clear_cursor_request()` every frame.
+        let desired = match self.pending_cursor.take() {
+            Some(spec) => spec,
+            None => self.last_cursor.unwrap_or(CursorSpec {
+                x: 0,
+                y: 0,
+                visible: false,
+            }),
+        };
+
+        let prev = self.last_cursor;
+
+        // Show the cursor BEFORE moving it.
+        // This is important on some terminals where Show + MoveTo in quick succession can cause flicker.
+        // By showing first, we ensure the cursor is visible when it moves to the final position.
+        let prev_visible = prev.map(|p| p.visible).unwrap_or(false);
+        let cursor_visibility_changed = if desired.visible {
+            !prev_visible || hid_cursor_for_render
+        } else {
+            prev_visible
+        };
+        let cursor_position_changed = desired.visible
+            && (prev
+                .map(|p| p.x != desired.x || p.y != desired.y)
+                .unwrap_or(true)
+                || hid_cursor_for_render);
+
+        if change_count == 0 && !cursor_visibility_changed && !cursor_position_changed {
+            self.last_cursor = Some(desired);
+            self.buffer.commit_changes();
+            return Ok(());
+        }
+
         if hid_cursor_for_render {
             queue!(self.out, cursor::Hide)?;
         }
@@ -957,9 +1000,8 @@ impl TerminalWindow {
                 }
             }
 
-            for ch in self.buffer.change_chars(change) {
-                write!(self.out, "{ch}")?;
-            }
+            self.buffer.change_text(change, &mut self.render_text);
+            self.out.write_all(self.render_text.as_bytes())?;
 
             cursor_after_write = Some((change.x.saturating_add(change.len as u16), change.y));
         }
@@ -969,31 +1011,8 @@ impl TerminalWindow {
             queue!(self.out, style::ResetColor)?;
         }
 
-        // Apply deferred cursor request after rendering.
-        //
-        // We track the last cursor state we applied to avoid redundant Show/Hide toggles
-        // and redundant MoveTo calls, which can cause flicker on some terminals.
-        //
-        // Important behavior: if nobody requested a cursor state this frame, we preserve the
-        // previous cursor visibility instead of forcing it hidden. This avoids "cursor disappears"
-        // bugs when an app doesn't call `clear_cursor_request()` every frame.
-        let desired = match self.pending_cursor.take() {
-            Some(spec) => spec,
-            None => self.last_cursor.unwrap_or(CursorSpec {
-                x: 0,
-                y: 0,
-                visible: false,
-            }),
-        };
-
-        let prev = self.last_cursor;
-
-        // Show the cursor BEFORE moving it.
-        // This is important on some terminals where Show + MoveTo in quick succession can cause flicker.
-        // By showing first, we ensure the cursor is visible when it moves to the final position.
-        let prev_visible = prev.map(|p| p.visible).unwrap_or(false);
         if desired.visible {
-            if !prev_visible || hid_cursor_for_render {
+            if cursor_visibility_changed {
                 queue!(self.out, cursor::Show)?;
             }
         } else if prev_visible {
@@ -1006,14 +1025,8 @@ impl TerminalWindow {
         // uses MoveTo for each change and leaves the terminal cursor at the last printed
         // character position. Without this, the cursor would appear at the end of the last
         // rendered text instead of the requested position.
-        if desired.visible {
-            let needs_move = match prev {
-                Some(p) => p.x != desired.x || p.y != desired.y,
-                None => true,
-            };
-            if needs_move || hid_cursor_for_render {
-                queue!(self.out, cursor::MoveTo(desired.x, desired.y))?;
-            }
+        if cursor_position_changed {
+            queue!(self.out, cursor::MoveTo(desired.x, desired.y))?;
         }
 
         self.last_cursor = Some(desired);

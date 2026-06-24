@@ -34,6 +34,13 @@ pub enum TabPolicy {
     SingleCell,
 }
 
+fn printable_ascii_len(s: &str) -> Option<usize> {
+    s.as_bytes()
+        .iter()
+        .all(|byte| matches!(byte, b' '..=b'~'))
+        .then_some(s.len())
+}
+
 /// Returns the display width of a single Unicode scalar value in terminal cells.
 ///
 /// This is a best-effort heuristic suitable for lightweight TUIs.
@@ -90,6 +97,10 @@ pub fn cell_width_char(ch: char) -> u16 {
 ///
 /// Tabs are handled according to `tab_policy`.
 pub fn cell_width(s: &str, tab_policy: TabPolicy) -> u16 {
+    if let Some(len) = printable_ascii_len(s) {
+        return len.min(u16::MAX as usize) as u16;
+    }
+
     let mut width: u16 = 0;
 
     for ch in s.chars() {
@@ -126,6 +137,15 @@ pub fn clip_to_cells(s: &str, max_cells: u16, tab_policy: TabPolicy) -> String {
 pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<'_, str> {
     if max_cells == 0 {
         return Cow::Borrowed(&s[..0]);
+    }
+
+    if let Some(len) = printable_ascii_len(s) {
+        let max_cells = max_cells as usize;
+        return if len <= max_cells {
+            Cow::Borrowed(s)
+        } else {
+            Cow::Borrowed(&s[..max_cells])
+        };
     }
 
     let mut out: Option<String> = None;
@@ -342,4 +362,36 @@ pub fn grapheme_index_from_cell_column(s: &str, col: u16, tab_policy: TabPolicy)
         acc = acc.saturating_add(w);
     }
     grapheme_count(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TabPolicy, cell_width, clip_to_cells_cow};
+    use std::borrow::Cow;
+
+    #[test]
+    fn printable_ascii_width_uses_byte_length() {
+        assert_eq!(cell_width("plain ascii", TabPolicy::SingleCell), 11);
+    }
+
+    #[test]
+    fn printable_ascii_clip_borrows_when_it_fits() {
+        let clipped = clip_to_cells_cow("plain ascii", 20, TabPolicy::SingleCell);
+
+        assert!(matches!(clipped, Cow::Borrowed("plain ascii")));
+    }
+
+    #[test]
+    fn printable_ascii_clip_borrows_prefix_when_clipped() {
+        let clipped = clip_to_cells_cow("plain ascii", 5, TabPolicy::SingleCell);
+
+        assert!(matches!(clipped, Cow::Borrowed("plain")));
+    }
+
+    #[test]
+    fn non_printable_ascii_still_uses_general_clipping_path() {
+        let clipped = clip_to_cells_cow("a\tb", 3, TabPolicy::Fixed(2));
+
+        assert_eq!(clipped, "a  ");
+    }
 }

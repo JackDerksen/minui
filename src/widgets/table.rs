@@ -50,7 +50,7 @@
 //! - configure columns
 //! - provide `row_count` and `cell_at(row, col)` via callbacks
 
-use crate::text::{TabPolicy, clip_to_cells_cow, fit_to_cells};
+use crate::text::{TabPolicy, clip_to_cells_cow, clip_to_cells_ellipsis};
 use crate::widgets::{BorderChars, Widget};
 use crate::{Alignment, Color, ColorPair, Result, Window};
 
@@ -576,8 +576,8 @@ impl Table {
                     col.alignment
                 };
 
-                let s = fit_to_cells(raw, col.width, TabPolicy::SingleCell, true);
-                let cell = align_to_width(&s, col.width, align);
+                let clipped = clip_to_cells_ellipsis(raw, col.width, TabPolicy::SingleCell);
+                let cell = align_to_width(&clipped, col.width, align);
                 let start_skip = visible_start.saturating_sub(col_start);
                 let draw_x = content_x + col_start.saturating_sub(visible_start);
                 let draw_w = col_end
@@ -699,4 +699,27 @@ fn drop_leading_cells(s: &str, cells: u16) -> String {
     }
 
     s.chars().skip(start_char).collect::<String>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{align_to_width, drop_leading_cells};
+    use crate::Alignment;
+
+    #[test]
+    fn alignment_pads_only_after_clipping() {
+        assert_eq!(align_to_width("ab", 5, Alignment::Left), "ab   ");
+        assert_eq!(align_to_width("ab", 5, Alignment::Right), "   ab");
+        assert_eq!(align_to_width("ab", 5, Alignment::Center), " ab  ");
+    }
+
+    #[test]
+    fn alignment_leaves_full_width_text_unchanged() {
+        assert_eq!(align_to_width("abcde", 5, Alignment::Right), "abcde");
+    }
+
+    #[test]
+    fn dropping_leading_cells_keeps_remaining_text() {
+        assert_eq!(drop_leading_cells("abcdef", 2), "cdef");
+    }
 }

@@ -341,10 +341,14 @@ impl Buffer {
         self.changes[index]
     }
 
-    pub(crate) fn change_chars(&self, change: BufferChange) -> impl Iterator<Item = char> + '_ {
-        self.current[change.start_idx..change.start_idx + change.len]
-            .iter()
-            .map(|cell| cell.ch)
+    pub(crate) fn change_text(&self, change: BufferChange, output: &mut String) {
+        output.clear();
+        output.reserve(change.len);
+        output.extend(
+            self.current[change.start_idx..change.start_idx + change.len]
+                .iter()
+                .map(|cell| cell.ch),
+        );
     }
 
     /// Get buffer statistics for debugging/profiling
@@ -356,13 +360,33 @@ impl Buffer {
             .iter()
             .filter_map(|row| row.map(|range| (range.max_x - range.min_x + 1) as usize))
             .sum();
+        let modified_cells = self
+            .dirty_rows
+            .iter()
+            .enumerate()
+            .map(|(y, row)| {
+                let Some(range) = row else {
+                    return 0;
+                };
+
+                let row_start = y * self.width as usize;
+                let start_idx = row_start + range.min_x as usize;
+                let end_idx = row_start + range.max_x as usize + 1;
+
+                self.current[start_idx..end_idx]
+                    .iter()
+                    .zip(&self.previous[start_idx..end_idx])
+                    .filter(|(current, previous)| current != previous)
+                    .count()
+            })
+            .sum();
 
         BufferStats {
             width: self.width,
             height: self.height,
             dirty_rows,
             dirty_cols,
-            modified_cells: todo!(),
+            modified_cells,
         }
     }
 }
