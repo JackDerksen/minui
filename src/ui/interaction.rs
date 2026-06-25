@@ -152,6 +152,14 @@ impl InteractionFlags {
     pub const fn draggable() -> Self {
         Self::new(false, false, true)
     }
+
+    pub const fn union(self, other: Self) -> Self {
+        Self::new(
+            self.focusable || other.focusable,
+            self.scrollable || other.scrollable,
+            self.draggable || other.draggable,
+        )
+    }
 }
 
 /// An entry registered for hit testing.
@@ -369,6 +377,12 @@ impl InteractionCache {
 
     /// Register an entry with full metadata.
     pub fn register_entry(&mut self, entry: InteractionEntry) {
+        let entry = if let Some(previous) = self.latest_by_id.get(&entry.id) {
+            entry.with_flags(previous.flags.union(entry.flags))
+        } else {
+            entry
+        };
+
         self.entries.push(entry);
         self.latest_by_id.insert(entry.id, entry);
     }

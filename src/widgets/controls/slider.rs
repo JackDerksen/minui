@@ -238,10 +238,12 @@ impl Slider {
                 }
 
                 // Click inside: jump to position and begin dragging.
+                let was_dragging = self.is_dragging;
+                let old_drag_offset = self.drag_offset_virtual;
                 let changed = self.update_value_from_mouse_direct(x, y, area);
                 self.is_dragging = true;
                 self.drag_offset_virtual = self.calculate_drag_offset_virtual(x, y, area);
-                true || changed
+                changed || !was_dragging || self.drag_offset_virtual != old_drag_offset
             }
             Event::MouseDrag { x, y, button } => {
                 if button != MouseButton::Left {
