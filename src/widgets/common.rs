@@ -129,7 +129,11 @@
 //! enabling widgets to share styling elements while maintaining flexibility
 //! for custom appearances and cross-platform terminal compatibility.
 
-use crate::window::CursorSpec;
+use crate::text::{
+    TabPolicy, byte_index_for_char_index, cell_width, char_index_from_cell_column,
+    clip_to_cells_cow,
+};
+use crate::window::{ColoredSpan, CursorSpec};
 use crate::{Color, ColorPair, Result, Window};
 
 /// Character sets for drawing borders, boxes, and frames.
@@ -473,67 +477,131 @@ pub struct WindowView<'a> {
     pub height: u16,
 }
 
-impl<'a> Window for WindowView<'a> {
-    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
-        if y >= self.height || x >= self.width {
-            return Ok(()); // Silently skip out-of-bounds writes
+fn clip_view_text<'a>(
+    s: &'a str,
+    x: u16,
+    scroll_x: u16,
+    width: u16,
+) -> Option<(u16, std::borrow::Cow<'a, str>)> {
+    if width == 0 {
+        return None;
+    }
+
+    if x >= scroll_x {
+        let local_x = x - scroll_x;
+        if local_x >= width {
+            return None;
         }
 
-        // Apply scroll by shifting the content origin.
-        // If the caller draws into scrolled-off space, skip safely.
-        let local_x = match x.checked_sub(self.scroll_x) {
-            Some(v) => v,
-            None => return Ok(()),
-        };
+        let max_cells = width.saturating_sub(local_x);
+        return Some((
+            local_x,
+            clip_to_cells_cow(s, max_cells, TabPolicy::SingleCell),
+        ));
+    }
+
+    let text_w = cell_width(s, TabPolicy::SingleCell);
+    let text_end = x.saturating_add(text_w);
+    if text_end <= scroll_x {
+        return None;
+    }
+
+    let visible_end = scroll_x.saturating_add(width);
+    let draw_cells = text_end.min(visible_end).saturating_sub(scroll_x);
+    let skip_cells = scroll_x - x;
+    let start_char = char_index_from_cell_column(s, skip_cells);
+    let start_byte = byte_index_for_char_index(s, start_char);
+    Some((
+        0,
+        clip_to_cells_cow(&s[start_byte..], draw_cells, TabPolicy::SingleCell),
+    ))
+}
+
+impl<'a> Window for WindowView<'a> {
+    fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
         let local_y = match y.checked_sub(self.scroll_y) {
             Some(v) => v,
             None => return Ok(()),
         };
 
-        if local_y < self.height && local_x < self.width {
-            // IMPORTANT: Clip the string to the view's remaining width.
-            // Without this, writes can spill outside the view and corrupt neighboring UI
-            // (especially visible after resizes).
-            let max_cells = self.width.saturating_sub(local_x);
-            let clipped =
-                crate::text::clip_to_cells_cow(s, max_cells, crate::text::TabPolicy::SingleCell);
-
-            self.window
-                .write_str(local_y + self.y_offset, local_x + self.x_offset, &clipped)
-        } else {
-            Ok(())
+        if local_y >= self.height {
+            return Ok(());
         }
+
+        let Some((local_x, clipped)) = clip_view_text(s, x, self.scroll_x, self.width) else {
+            return Ok(());
+        };
+
+        self.window
+            .write_str(local_y + self.y_offset, local_x + self.x_offset, &clipped)
     }
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
-        if y >= self.height || x >= self.width {
-            return Ok(()); // Silently skip out-of-bounds writes
-        }
-
-        let local_x = match x.checked_sub(self.scroll_x) {
-            Some(v) => v,
-            None => return Ok(()),
-        };
         let local_y = match y.checked_sub(self.scroll_y) {
             Some(v) => v,
             None => return Ok(()),
         };
 
-        if local_y < self.height && local_x < self.width {
-            // IMPORTANT: Clip the string to the view's remaining width.
-            let max_cells = self.width.saturating_sub(local_x);
-            let clipped =
-                crate::text::clip_to_cells_cow(s, max_cells, crate::text::TabPolicy::SingleCell);
-
-            self.window.write_str_colored(
-                local_y + self.y_offset,
-                local_x + self.x_offset,
-                &clipped,
-                colors,
-            )
-        } else {
-            Ok(())
+        if local_y >= self.height {
+            return Ok(());
         }
+
+        let Some((local_x, clipped)) = clip_view_text(s, x, self.scroll_x, self.width) else {
+            return Ok(());
+        };
+
+        self.window.write_str_colored(
+            local_y + self.y_offset,
+            local_x + self.x_offset,
+            &clipped,
+            colors,
+        )
+    }
+
+    fn write_spans_colored(&mut self, y: u16, x: u16, spans: &[ColoredSpan<'_>]) -> Result<()> {
+        let local_y = match y.checked_sub(self.scroll_y) {
+            Some(v) if v < self.height => v,
+            _ => return Ok(()),
+        };
+
+        if self.width == 0 {
+            return Ok(());
+        }
+
+        let visible_start = self.scroll_x;
+        let visible_end = self.scroll_x.saturating_add(self.width);
+        let parent_y = local_y + self.y_offset;
+        let mut span_start = x;
+
+        for span in spans {
+            let span_w = cell_width(span.text, TabPolicy::SingleCell);
+            let span_end = span_start.saturating_add(span_w);
+
+            if !span.text.is_empty() && span_end > visible_start && span_start < visible_end {
+                let skip_cells = visible_start.saturating_sub(span_start);
+                let draw_cells = span_end
+                    .min(visible_end)
+                    .saturating_sub(visible_start.max(span_start));
+                let start_char = char_index_from_cell_column(span.text, skip_cells);
+                let start_byte = byte_index_for_char_index(span.text, start_char);
+                let clipped =
+                    clip_to_cells_cow(&span.text[start_byte..], draw_cells, TabPolicy::SingleCell);
+
+                if !clipped.is_empty() {
+                    let local_x = visible_start.max(span_start) - visible_start;
+                    self.window.write_str_colored(
+                        parent_y,
+                        self.x_offset + local_x,
+                        &clipped,
+                        span.colors,
+                    )?;
+                }
+            }
+
+            span_start = span_end;
+        }
+
+        Ok(())
     }
 
     fn flush(&mut self) -> Result<()> {
@@ -621,5 +689,148 @@ impl<'a> Window for WindowView<'a> {
 
         self.window
             .clear_area(parent_y1, parent_x1, parent_y2, parent_x2)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WindowView;
+    use crate::{Color, ColorPair, ColoredSpan, Result, Window};
+
+    #[derive(Debug, PartialEq)]
+    struct Write {
+        y: u16,
+        x: u16,
+        text: String,
+        colors: Option<ColorPair>,
+    }
+
+    #[derive(Default)]
+    struct CaptureWindow {
+        writes: Vec<Write>,
+    }
+
+    impl Window for CaptureWindow {
+        fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
+            self.writes.push(Write {
+                y,
+                x,
+                text: s.to_string(),
+                colors: None,
+            });
+            Ok(())
+        }
+
+        fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
+            self.writes.push(Write {
+                y,
+                x,
+                text: s.to_string(),
+                colors: Some(colors),
+            });
+            Ok(())
+        }
+
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+
+        fn set_cursor_position(&mut self, _x: u16, _y: u16) -> Result<()> {
+            Ok(())
+        }
+
+        fn show_cursor(&mut self, _show: bool) -> Result<()> {
+            Ok(())
+        }
+
+        fn get_size(&self) -> (u16, u16) {
+            (80, 24)
+        }
+
+        fn clear_screen(&mut self) -> Result<()> {
+            Ok(())
+        }
+
+        fn clear_line(&mut self, _y: u16) -> Result<()> {
+            Ok(())
+        }
+
+        fn clear_area(&mut self, _y1: u16, _x1: u16, _y2: u16, _x2: u16) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    fn colors() -> ColorPair {
+        ColorPair::new(Color::White, Color::Black)
+    }
+
+    #[test]
+    fn window_view_clips_plain_text_that_starts_before_scroll_x() {
+        let mut parent = CaptureWindow::default();
+        let mut view = WindowView {
+            window: &mut parent,
+            x_offset: 10,
+            y_offset: 5,
+            scroll_x: 2,
+            scroll_y: 0,
+            width: 4,
+            height: 1,
+        };
+
+        view.write_str(0, 0, "abcdef").unwrap();
+
+        assert_eq!(
+            parent.writes,
+            vec![Write {
+                y: 5,
+                x: 10,
+                text: "cdef".to_string(),
+                colors: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn window_view_clips_colored_spans_across_scroll_x() {
+        let mut parent = CaptureWindow::default();
+        let first = colors();
+        let second = ColorPair::new(Color::Yellow, Color::Black);
+        let mut view = WindowView {
+            window: &mut parent,
+            x_offset: 3,
+            y_offset: 2,
+            scroll_x: 2,
+            scroll_y: 0,
+            width: 5,
+            height: 1,
+        };
+
+        view.write_spans_colored(
+            0,
+            0,
+            &[
+                ColoredSpan::new("abcd", first),
+                ColoredSpan::new("efgh", second),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            parent.writes,
+            vec![
+                Write {
+                    y: 2,
+                    x: 3,
+                    text: "cd".to_string(),
+                    colors: Some(first),
+                },
+                Write {
+                    y: 2,
+                    x: 5,
+                    text: "efg".to_string(),
+                    colors: Some(second),
+                },
+            ]
+        );
     }
 }

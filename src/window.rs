@@ -1072,6 +1072,32 @@ impl Window for TerminalWindow {
         Ok(())
     }
 
+    fn write_spans_colored(&mut self, y: u16, x: u16, spans: &[ColoredSpan<'_>]) -> Result<()> {
+        if y >= self.height || x >= self.width {
+            return Ok(());
+        }
+
+        let mut cursor_x = x;
+        for span in spans {
+            if span.text.is_empty() {
+                continue;
+            }
+            if cursor_x >= self.width {
+                break;
+            }
+
+            self.buffer
+                .write_str(y, cursor_x, span.text, Some(span.colors))?;
+            let span_w = cell_width(span.text, TabPolicy::SingleCell);
+            cursor_x = cursor_x.saturating_add(span_w);
+        }
+
+        if self.auto_flush {
+            self.end_frame()?;
+        }
+        Ok(())
+    }
+
     fn flush(&mut self) -> Result<()> {
         TerminalWindow::flush(self)
     }
@@ -1150,11 +1176,7 @@ impl Window for TerminalWindow {
         let (start_y, end_y) = if y1 <= y2 { (y1, y2) } else { (y2, y1) };
         let (start_x, end_x) = if x1 <= x2 { (x1, x2) } else { (x2, x1) };
 
-        // Clear the area in the buffer
-        for y in start_y..=end_y {
-            let spaces = " ".repeat((end_x - start_x + 1) as usize);
-            self.buffer.write_str(y, start_x, &spaces, None)?;
-        }
+        self.buffer.clear_area(start_y, start_x, end_y, end_x);
 
         if self.auto_flush {
             self.flush()?;

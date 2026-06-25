@@ -268,6 +268,27 @@ impl Buffer {
         Ok(())
     }
 
+    pub(crate) fn clear_area(&mut self, start_y: u16, start_x: u16, end_y: u16, end_x: u16) {
+        for y in start_y..=end_y {
+            let row_start = self.coords_to_index(0, y);
+            let mut min_changed = None;
+            let mut max_changed = 0;
+
+            for x in start_x..=end_x {
+                let cell = &mut self.current[row_start + x as usize];
+                if cell.ch != ' ' || cell.colors.is_some() {
+                    *cell = Cell::empty();
+                    min_changed.get_or_insert(x);
+                    max_changed = x;
+                }
+            }
+
+            if let Some(min_x) = min_changed {
+                self.mark_dirty_span(y, min_x, max_changed);
+            }
+        }
+    }
+
     pub(crate) fn process_changes(&mut self) -> usize {
         self.changes.clear();
 
@@ -399,4 +420,85 @@ pub struct BufferStats {
     pub dirty_rows: usize,
     pub dirty_cols: usize,
     pub modified_cells: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Buffer;
+
+    #[test]
+    fn clear_area_marks_only_changed_cells() {
+        let mut buffer = Buffer::new(5, 2);
+
+        buffer.write_str(0, 0, "abcde", None).unwrap();
+        buffer.commit_changes();
+        buffer.clear_area(0, 1, 0, 3);
+
+        let stats = buffer.get_stats();
+        assert_eq!(stats.dirty_rows, 1);
+        assert_eq!(stats.dirty_cols, 3);
+        assert_eq!(stats.modified_cells, 3);
+        assert_eq!(buffer.process_changes(), 1);
+
+        let mut output = String::new();
+        buffer.change_text(buffer.change(0), &mut output);
+        assert_eq!(output, "   ");
+    }
+
+    #[test]
+    fn clear_area_ignores_cells_that_are_already_clear() {
+        let mut buffer = Buffer::new(5, 2);
+
+        buffer.clear_area(0, 1, 1, 3);
+
+        let stats = buffer.get_stats();
+        assert_eq!(stats.dirty_rows, 0);
+        assert_eq!(stats.dirty_cols, 0);
+        assert_eq!(stats.modified_cells, 0);
+        assert_eq!(buffer.process_changes(), 0);
+    }
+
+    #[test]
+    fn stats_count_dirty_cells_that_still_differ_from_previous_frame() {
+        let mut buffer = Buffer::new(5, 2);
+
+        buffer.write_str(0, 1, "ab", None).unwrap();
+        let stats = buffer.get_stats();
+
+        assert_eq!(stats.dirty_rows, 1);
+        assert_eq!(stats.dirty_cols, 2);
+        assert_eq!(stats.modified_cells, 2);
+    }
+
+    #[test]
+    fn reverted_dirty_cells_produce_no_terminal_changes() {
+        let mut buffer = Buffer::new(5, 2);
+
+        buffer.write_str(0, 1, "a", None).unwrap();
+        buffer.write_str(0, 1, " ", None).unwrap();
+
+        let stats = buffer.get_stats();
+        assert_eq!(stats.dirty_rows, 1);
+        assert_eq!(stats.dirty_cols, 1);
+        assert_eq!(stats.modified_cells, 0);
+        assert_eq!(buffer.process_changes(), 0);
+
+        buffer.commit_changes();
+        let stats = buffer.get_stats();
+        assert_eq!(stats.dirty_rows, 0);
+        assert_eq!(stats.dirty_cols, 0);
+        assert_eq!(stats.modified_cells, 0);
+    }
+
+    #[test]
+    fn change_text_reuses_output_storage() {
+        let mut buffer = Buffer::new(5, 1);
+        let mut output = String::from("stale text");
+
+        buffer.write_str(0, 0, "hey", None).unwrap();
+        assert_eq!(buffer.process_changes(), 1);
+        buffer.change_text(buffer.change(0), &mut output);
+
+        assert_eq!(output, "hey");
+    }
 }
