@@ -52,14 +52,19 @@ pub fn wrap_ranges_to_cells(
         let line = source_line
             .strip_suffix('\n')
             .map_or(source_line, |line| line.strip_suffix('\r').unwrap_or(line));
-        match mode {
-            TextWrapMode::None => ranges.push(offset..offset + line.len()),
-            TextWrapMode::Wrap => {
-                wrap_graphemes(line, offset, max_cells, tab_policy, &mut ranges);
+        let mut segment_offset = offset;
+        for source_segment in line.split_inclusive('\r') {
+            let segment = source_segment.strip_suffix('\r').unwrap_or(source_segment);
+            match mode {
+                TextWrapMode::None => ranges.push(segment_offset..segment_offset + segment.len()),
+                TextWrapMode::Wrap => {
+                    wrap_graphemes(segment, segment_offset, max_cells, tab_policy, &mut ranges);
+                }
+                TextWrapMode::WrapWords => {
+                    wrap_words(segment, segment_offset, max_cells, tab_policy, &mut ranges);
+                }
             }
-            TextWrapMode::WrapWords => {
-                wrap_words(line, offset, max_cells, tab_policy, &mut ranges);
-            }
+            segment_offset += source_segment.len();
         }
         offset += source_line.len();
     }

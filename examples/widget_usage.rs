@@ -115,7 +115,8 @@ fn create_app_layout(term_w: u16, term_h: u16) -> Container {
                 text_h,
                 "This demonstrates how Containers can be arranged side-by-side. \
  They support borders, titles, padding, and child layout. \
- Resize the terminal to see how clipping behaves.",
+ Resize the terminal to see how clipping behaves.\
+ \r\rThis is a hard carriage returned line.",
             )
             .with_word_wrap(),
         );
