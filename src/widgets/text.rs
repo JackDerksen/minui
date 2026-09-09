@@ -40,7 +40,8 @@
 //! ```
 
 use super::Widget;
-use crate::text::{TabPolicy, cell_width, clip_to_cells, fit_to_cells};
+pub use crate::text::TextWrapMode;
+use crate::text::{TabPolicy, cell_width, clip_to_cells, fit_to_cells, wrap_to_cells};
 use crate::{Color, ColorPair, Result, Window};
 use std::cell::{Ref, RefCell};
 
@@ -64,17 +65,6 @@ pub enum VerticalAlignment {
     Middle,
     /// Align text to the bottom of the widget area
     Bottom,
-}
-
-/// How TextBlock should wrap long lines
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextWrapMode {
-    /// No text wrapping - content extending beyond width is clipped
-    None,
-    /// Character-level wrapping - text wraps at any character
-    Wrap,
-    /// Word-aware wrapping - text wraps at word boundaries
-    WrapWords,
 }
 
 /// A simple label widget for titles, captions, and labeling other widgets.
@@ -342,8 +332,12 @@ impl TextBlock {
     pub fn auto_sized(text: impl Into<String>) -> Self {
         let text = text.into();
         let lines: Vec<&str> = text.lines().collect();
-        let width = lines.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
-        let height = lines.len() as u16;
+        let width = lines
+            .iter()
+            .map(|line| cell_width(line, TabPolicy::SingleCell))
+            .max()
+            .unwrap_or(0);
+        let height = lines.len().min(u16::MAX as usize) as u16;
 
         Self::new(width, height, text)
     }
@@ -353,35 +347,18 @@ impl TextBlock {
     /// Wraps text at word boundaries, then sizes the widget to fit the wrapped content.
     pub fn auto_sized_with_word_wrap(text: impl Into<String>, max_width: u16) -> Self {
         let text = text.into();
-        let mut lines = Vec::new();
-        let mut current_line = String::new();
-
-        for word in text.split_whitespace() {
-            let needed_space = if current_line.is_empty() {
-                word.len()
-            } else {
-                current_line.len() + 1 + word.len()
-            };
-
-            if needed_space <= max_width as usize {
-                if !current_line.is_empty() {
-                    current_line.push(' ');
-                }
-                current_line.push_str(word);
-            } else {
-                if !current_line.is_empty() {
-                    lines.push(current_line);
-                }
-                current_line = word.to_string();
-            }
-        }
-
-        if !current_line.is_empty() {
-            lines.push(current_line);
-        }
-
-        let actual_width = lines.iter().map(|line| line.len()).max().unwrap_or(0) as u16;
-        let height = lines.len() as u16;
+        let lines = wrap_to_cells(
+            &text,
+            max_width,
+            TextWrapMode::WrapWords,
+            TabPolicy::SingleCell,
+        );
+        let actual_width = lines
+            .iter()
+            .map(|line| cell_width(line, TabPolicy::SingleCell))
+            .max()
+            .unwrap_or(0);
+        let height = lines.len().min(u16::MAX as usize) as u16;
 
         let mut text_block = Self::new(actual_width, height, lines.join("\n"));
         text_block.wrap_mode = TextWrapMode::None; // Already wrapped, no need to re-wrap
@@ -436,37 +413,7 @@ impl TextBlock {
     fn rebuild_wrapped_lines(&self) -> Vec<String> {
         match self.wrap_mode {
             TextWrapMode::None => self.text.lines().map(String::from).collect(),
-            TextWrapMode::Wrap => self
-                .text
-                .chars()
-                .collect::<Vec<_>>()
-                .chunks(self.width as usize)
-                .map(|chunk| chunk.iter().collect::<String>())
-                .collect(),
-            TextWrapMode::WrapWords => {
-                let mut lines = Vec::new();
-                let mut current_line = String::new();
-
-                for word in self.text.split_whitespace() {
-                    if current_line.len() + word.len() + 1 <= self.width as usize {
-                        if !current_line.is_empty() {
-                            current_line.push(' ');
-                        }
-                        current_line.push_str(word);
-                    } else {
-                        if !current_line.is_empty() {
-                            lines.push(current_line);
-                        }
-                        current_line = word.to_string();
-                    }
-                }
-
-                if !current_line.is_empty() {
-                    lines.push(current_line);
-                }
-
-                lines
-            }
+            mode => wrap_to_cells(&self.text, self.width, mode, TabPolicy::SingleCell),
         }
     }
 
@@ -570,5 +517,26 @@ impl Widget for TextBlock {
 
     fn get_position(&self) -> (u16, u16) {
         (0, 0) // Position is managed by parent container
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_block_uses_cell_layout_for_wrapping_and_auto_size() {
+        let block = TextBlock::new(2, 4, "🧑‍💻e\u{301}界");
+        assert_eq!(&*block.wrapped_lines(), &["🧑‍💻", "e\u{301}", "界"]);
+        assert!(TextBlock::new(0, 1, "text").wrapped_lines().is_empty());
+        let mut block = TextBlock::auto_sized_with_word_wrap("界 x\n\nnext", 3);
+        assert_eq!(block.get_size(), (3, 5));
+        assert_eq!(&*block.wrapped_lines(), &["界", "x", "", "nex", "t"]);
+        block.set_text("e\u{301} 🧑‍💻");
+        assert_eq!(
+            &*block.with_word_wrap().wrapped_lines(),
+            &["e\u{301}", "🧑‍💻"]
+        );
+        assert_eq!(TextBlock::auto_sized("界🧑‍💻").get_size(), (4, 1));
     }
 }

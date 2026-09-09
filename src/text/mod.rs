@@ -11,6 +11,10 @@
 //!
 //! Width and clipping use complete grapheme clusters and Unicode width tables,
 //! including emoji sequences, combining marks, and wide CJK characters.
+mod wrap;
+
+pub use wrap::{TextWrapMode, wrap_ranges_to_cells, wrap_to_cells};
+
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
