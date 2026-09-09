@@ -1,6 +1,6 @@
 [package]
 name = "minui"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2024"
 description = "A minimalist framework for building terminal UIs in Rust."
 authors = ["Jack Derksen <jmderksen9@gmail.com>"]
@@ -18,6 +18,7 @@ crokey = "1.1.0"
 figlet-rs = { version = "0.1.5", optional = true }
 arboard = { version = "3.5", optional = true }
 unicode-segmentation = "1.12"
+unicode-width = { version = "0.2.2", default-features = false }
 
 [features]
 default = []

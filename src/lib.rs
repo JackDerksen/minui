@@ -70,6 +70,7 @@ pub use text::{
     cell_column_for_char_index, cell_column_for_grapheme_index, cell_width, cell_width_char,
     char_index_from_cell_column, clip_to_cells, clip_to_cells_cow, clip_to_cells_ellipsis,
     clip_to_cells_into, fit_to_cells, grapheme_count, grapheme_index_from_cell_column,
+    wrap_ranges_to_cells, wrap_to_cells,
 };
 pub use window::{ColoredSpan, TerminalWindow, Window};
 
@@ -168,11 +169,12 @@ pub mod prelude {
     pub mod render {
         pub use crate::{
             Color, ColorPair, ColorSupport, ColoredSpan, Error, Result, TabPolicy,
-            TerminalCapabilities, TerminalWindow, Window, byte_index_for_char_index,
+            TerminalCapabilities, TerminalWindow, TextWrapMode, Window, byte_index_for_char_index,
             byte_index_for_grapheme_index, cell_column_for_char_index,
             cell_column_for_grapheme_index, cell_width, cell_width_char,
             char_index_from_cell_column, clip_to_cells, clip_to_cells_cow, clip_to_cells_ellipsis,
             clip_to_cells_into, fit_to_cells, grapheme_count, grapheme_index_from_cell_column,
+            wrap_ranges_to_cells, wrap_to_cells,
         };
     }
 
