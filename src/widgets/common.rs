@@ -129,12 +129,10 @@
 //! enabling widgets to share styling elements while maintaining flexibility
 //! for custom appearances and cross-platform terminal compatibility.
 
-use crate::text::{
-    TabPolicy, byte_index_for_char_index, cell_width, char_index_from_cell_column,
-    clip_to_cells_cow,
-};
-use crate::window::{ColoredSpan, CursorSpec};
+use crate::text::{TabPolicy, cell_width, clip_to_cells_cow};
+use crate::window::CursorSpec;
 use crate::{Color, ColorPair, Result, Window};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Character sets for drawing borders, boxes, and frames.
 ///
@@ -509,12 +507,28 @@ fn clip_view_text<'a>(
     let visible_end = scroll_x.saturating_add(width);
     let draw_cells = text_end.min(visible_end).saturating_sub(scroll_x);
     let skip_cells = scroll_x - x;
-    let start_char = char_index_from_cell_column(s, skip_cells);
-    let start_byte = byte_index_for_char_index(s, start_char);
-    Some((
-        0,
-        clip_to_cells_cow(&s[start_byte..], draw_cells, TabPolicy::SingleCell),
-    ))
+    let mut consumed = 0_u16;
+    let mut start_byte = 0;
+    for (byte, grapheme) in s.grapheme_indices(true) {
+        if consumed >= skip_cells {
+            break;
+        }
+        consumed = consumed.saturating_add(cell_width(grapheme, TabPolicy::SingleCell));
+        start_byte = byte + grapheme.len();
+    }
+    let padding = consumed.saturating_sub(skip_cells).min(draw_cells);
+    let clipped = clip_to_cells_cow(
+        &s[start_byte..],
+        draw_cells - padding,
+        TabPolicy::SingleCell,
+    );
+    if padding == 0 {
+        Some((0, clipped))
+    } else {
+        let mut text = " ".repeat(padding as usize);
+        text.push_str(&clipped);
+        Some((0, std::borrow::Cow::Owned(text)))
+    }
 }
 
 impl<'a> Window for WindowView<'a> {
@@ -556,52 +570,6 @@ impl<'a> Window for WindowView<'a> {
             &clipped,
             colors,
         )
-    }
-
-    fn write_spans_colored(&mut self, y: u16, x: u16, spans: &[ColoredSpan<'_>]) -> Result<()> {
-        let local_y = match y.checked_sub(self.scroll_y) {
-            Some(v) if v < self.height => v,
-            _ => return Ok(()),
-        };
-
-        if self.width == 0 {
-            return Ok(());
-        }
-
-        let visible_start = self.scroll_x;
-        let visible_end = self.scroll_x.saturating_add(self.width);
-        let parent_y = local_y + self.y_offset;
-        let mut span_start = x;
-
-        for span in spans {
-            let span_w = cell_width(span.text, TabPolicy::SingleCell);
-            let span_end = span_start.saturating_add(span_w);
-
-            if !span.text.is_empty() && span_end > visible_start && span_start < visible_end {
-                let skip_cells = visible_start.saturating_sub(span_start);
-                let draw_cells = span_end
-                    .min(visible_end)
-                    .saturating_sub(visible_start.max(span_start));
-                let start_char = char_index_from_cell_column(span.text, skip_cells);
-                let start_byte = byte_index_for_char_index(span.text, start_char);
-                let clipped =
-                    clip_to_cells_cow(&span.text[start_byte..], draw_cells, TabPolicy::SingleCell);
-
-                if !clipped.is_empty() {
-                    let local_x = visible_start.max(span_start) - visible_start;
-                    self.window.write_str_colored(
-                        parent_y,
-                        self.x_offset + local_x,
-                        &clipped,
-                        span.colors,
-                    )?;
-                }
-            }
-
-            span_start = span_end;
-        }
-
-        Ok(())
     }
 
     fn flush(&mut self) -> Result<()> {
@@ -762,6 +730,13 @@ mod tests {
 
     fn colors() -> ColorPair {
         ColorPair::new(Color::White, Color::Black)
+    }
+
+    #[test]
+    fn window_view_preserves_columns_when_scroll_splits_an_emoji() {
+        let (column, text) = super::clip_view_text("🧑‍💻xy", 0, 1, 3).expect("visible text");
+        assert_eq!(column, 0);
+        assert_eq!(text, " xy");
     }
 
     #[test]

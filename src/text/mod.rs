@@ -9,21 +9,11 @@
 //! - horizontal clipping / truncation
 //! - "fit this string into N terminal columns"
 //!
-//! ## Unicode / width policy
-//! Terminal rendering is cell-based, but Unicode is not. For a lightweight framework,
-//! we implement a pragmatic policy:
-//! - ASCII control characters are treated as width 0 (and usually skipped)
-//! - Combining marks are treated as width 0
-//! - Some common full-width CJK ranges are treated as width 2
-//! - Everything else defaults to width 1
-//!
-//! This is not perfect for all terminals or ambiguous-width glyphs (emoji), but it
-//! is a big step up from `chars().count()` and is "good enough" for many TUIs.
-//!
-//! If you later want perfect behavior, consider integrating `unicode-width` and/or
-//! `unicode-segmentation` behind a feature flag.
+//! Width and clipping use complete grapheme clusters and Unicode width tables,
+//! including emoji sequences, combining marks, and wide CJK characters.
 use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 /// How to handle tab characters (`'\t'`) when measuring/clipping text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,82 +31,29 @@ fn printable_ascii_len(s: &str) -> Option<usize> {
         .then_some(s.len())
 }
 
-/// Returns the display width of a single Unicode scalar value in terminal cells.
-///
-/// This is a best-effort heuristic suitable for lightweight TUIs.
-///
-/// Notes:
-/// - `'\n'` is treated as width 0 (not renderable as a cell)
-/// - Combining marks are treated as width 0
-/// - Common East Asian wide/full-width ranges are treated as width 2
+/// Returns the width of a Unicode scalar. Use [`cell_width`] for grapheme clusters.
 pub fn cell_width_char(ch: char) -> u16 {
-    // Control characters (including DEL) are non-printable as cells.
-    if ch.is_control() {
-        return 0;
-    }
-
-    // Treat combining marks as zero-width.
-    // This is a heuristic (many combining marks live in these ranges).
-    let u = ch as u32;
-    if matches!(
-        u,
-        0x0300..=0x036F  // Combining Diacritical Marks
-        | 0x1AB0..=0x1AFF // Combining Diacritical Marks Extended
-        | 0x1DC0..=0x1DFF // Combining Diacritical Marks Supplement
-        | 0x20D0..=0x20FF // Combining Diacritical Marks for Symbols
-        | 0xFE20..=0xFE2F // Combining Half Marks
-    ) {
-        return 0;
-    }
-
-    // Best-effort wide character detection.
-    // This covers many common CJK/full-width ranges.
-    if matches!(
-        u,
-        0x1100..=0x115F // Hangul Jamo init. consonants
-        | 0x2329..=0x232A
-        | 0x2E80..=0xA4CF // CJK Radicals Supplement..Yi Radicals
-        | 0xAC00..=0xD7A3 // Hangul Syllables
-        | 0xF900..=0xFAFF // CJK Compatibility Ideographs
-        | 0xFE10..=0xFE19 // Vertical forms
-        | 0xFE30..=0xFE6F // CJK Compatibility Forms
-        | 0xFF00..=0xFF60 // Fullwidth Forms
-        | 0xFFE0..=0xFFE6
-    ) {
-        return 2;
-    }
-
-    // Default: assume 1 cell.
-    1
+    ch.width().unwrap_or(0) as u16
 }
 
-/// Returns the display width of `s` in terminal cells.
-///
-/// This is intended for single-line contexts (status bars, command lines).
-/// Newlines are treated as width 0 and not counted.
-///
-/// Tabs are handled according to `tab_policy`.
+/// Returns the terminal width of complete grapheme clusters, ignoring controls.
 pub fn cell_width(s: &str, tab_policy: TabPolicy) -> u16 {
     if let Some(len) = printable_ascii_len(s) {
         return len.min(u16::MAX as usize) as u16;
     }
-
-    let mut width: u16 = 0;
-
-    for ch in s.chars() {
-        match ch {
-            '\t' => match tab_policy {
-                TabPolicy::Fixed(n) => width = width.saturating_add(n),
-                TabPolicy::SingleCell => width = width.saturating_add(1),
-            },
-            '\n' | '\r' => {
-                // Single-line policy: ignore hard line breaks.
+    s.graphemes(true).fold(0_u16, |width, grapheme| {
+        let cells = if grapheme == "\t" {
+            match tab_policy {
+                TabPolicy::Fixed(cells) => cells,
+                TabPolicy::SingleCell => 1,
             }
-            _ => width = width.saturating_add(cell_width_char(ch)),
-        }
-    }
-
-    width
+        } else if grapheme.chars().any(char::is_control) {
+            0
+        } else {
+            grapheme.width().min(u16::MAX as usize) as u16
+        };
+        width.saturating_add(cells)
+    })
 }
 
 /// Clips `s` to at most `max_cells` terminal cells.
@@ -151,8 +88,8 @@ pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<
     let mut out: Option<String> = None;
     let mut used: u16 = 0;
 
-    for (byte_idx, ch) in s.char_indices() {
-        if ch == '\n' || ch == '\r' {
+    for (byte_idx, grapheme) in s.grapheme_indices(true) {
+        if matches!(grapheme, "\n" | "\r" | "\r\n") {
             // Stop at newline in "single line" contexts.
             return match out {
                 Some(out) => Cow::Owned(out),
@@ -160,7 +97,7 @@ pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<
             };
         }
 
-        if ch == '\t' {
+        if grapheme == "\t" {
             let tab_w = match tab_policy {
                 TabPolicy::Fixed(n) => n,
                 TabPolicy::SingleCell => 1,
@@ -181,7 +118,7 @@ pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<
             continue;
         }
 
-        let w = cell_width_char(ch);
+        let w = cell_width(grapheme, tab_policy);
         if w == 0 {
             // Skip zero-width / control-ish glyphs.
             out.get_or_insert_with(|| s[..byte_idx].to_string());
@@ -196,7 +133,7 @@ pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<
         }
 
         if let Some(out) = &mut out {
-            out.push(ch);
+            out.push_str(grapheme);
         }
         used = used.saturating_add(w);
     }
@@ -286,32 +223,31 @@ pub fn byte_index_for_char_index(s: &str, char_idx: usize) -> usize {
 
 /// Returns the terminal cell column for a character index in `s`.
 pub fn cell_column_for_char_index(s: &str, char_idx: usize) -> u16 {
-    let mut col: u16 = 0;
-    for (i, ch) in s.chars().enumerate() {
-        if i >= char_idx {
+    let mut characters = 0;
+    let mut column = 0_u16;
+    for grapheme in s.graphemes(true) {
+        characters += grapheme.chars().count();
+        if characters > char_idx {
             break;
         }
-        col = col.saturating_add(cell_width_char(ch));
+        column = column.saturating_add(cell_width(grapheme, TabPolicy::SingleCell));
     }
-    col
+    column
 }
 
-/// Best-effort mapping from terminal cell column to character index.
-///
-/// If `col` lands inside a wide glyph, this returns the index before that glyph.
+/// Maps a terminal column to the start of its grapheme, in character indices.
 pub fn char_index_from_cell_column(s: &str, col: u16) -> usize {
-    let mut acc: u16 = 0;
-    for (i, ch) in s.chars().enumerate() {
-        let w = cell_width_char(ch);
-        if w == 0 {
-            continue;
+    let mut characters = 0;
+    let mut column = 0_u16;
+    for grapheme in s.graphemes(true) {
+        let width = cell_width(grapheme, TabPolicy::SingleCell);
+        if column.saturating_add(width) > col {
+            break;
         }
-        if acc.saturating_add(w) > col {
-            return i;
-        }
-        acc = acc.saturating_add(w);
+        characters += grapheme.chars().count();
+        column = column.saturating_add(width);
     }
-    s.chars().count()
+    characters
 }
 
 /// Returns the number of grapheme clusters in `s`.
@@ -368,6 +304,45 @@ pub fn grapheme_index_from_cell_column(s: &str, col: u16, tab_policy: TabPolicy)
 mod tests {
     use super::{TabPolicy, cell_width, clip_to_cells_cow};
     use std::borrow::Cow;
+
+    #[test]
+    fn grapheme_width_clipping_and_positions_agree() {
+        for (grapheme, width) in [
+            ("😁", 2),
+            ("🧑‍💻", 2),
+            ("👨‍👩‍👧‍👦", 2),
+            ("🇨🇦", 2),
+            ("❤️", 2),
+            ("1️⃣", 2),
+            ("e\u{301}", 1),
+            ("界", 2),
+            ("\u{e7a8}", 1),
+        ] {
+            let text = format!("{grapheme}!");
+            assert_eq!(
+                cell_width(&text, TabPolicy::SingleCell),
+                width + 1,
+                "{text}"
+            );
+            assert_eq!(
+                clip_to_cells_cow(&text, width, TabPolicy::SingleCell),
+                grapheme
+            );
+            assert_eq!(
+                clip_to_cells_cow(&text, width - 1, TabPolicy::SingleCell),
+                ""
+            );
+            assert_eq!(
+                super::cell_column_for_char_index(&text, grapheme.chars().count()),
+                width
+            );
+            assert_eq!(super::char_index_from_cell_column(&text, width - 1), 0);
+            assert_eq!(
+                super::char_index_from_cell_column(&text, width),
+                grapheme.chars().count()
+            );
+        }
+    }
 
     #[test]
     fn printable_ascii_width_uses_byte_length() {

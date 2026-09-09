@@ -18,6 +18,7 @@ crokey = "1.1.0"
 figlet-rs = { version = "0.1.5", optional = true }
 arboard = { version = "3.5", optional = true }
 unicode-segmentation = "1.12"
+unicode-width = { version = "0.2.2", default-features = false }
 
 [features]
 default = []
