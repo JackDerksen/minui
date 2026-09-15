@@ -19,6 +19,17 @@
 //! `Event::as_legacy_key_event()` at your event-handling boundary. This lets you keep old
 //! match statements working while MinUI defaults to modifier-aware key events.
 //!
+//! ## Caps Lock and text input
+//!
+//! MinUI requests terminal-provided shifted characters and resolves unshifted letters
+//! using each key event's Shift and Caps Lock flags. Windows console text is already
+//! translated by the OS. Apps should insert MinUI characters as-is, without maintaining
+//! a local toggle from `Event::CapsLock`. Per-event state also handles Caps Lock enabled
+//! before launch or while another window has focus.
+//! Terminals do not consistently report the Caps Lock key itself, and an uppercase
+//! character does not necessarily mean the physical Shift key is held. Crossterm may
+//! also consume the Shift flag when it substitutes the terminal's shifted character.
+//!
 //! ## Usage
 //!
 //! Handle events in your main loop:
@@ -108,7 +119,10 @@ pub enum Event {
     Enter,
     /// Escape key was pressed
     Escape,
-    /// Caps Lock key was pressed
+    /// Caps Lock key was reported by the terminal.
+    ///
+    /// This is not a reliable notification of lock state changes. Text input already
+    /// reflects the terminal's Caps Lock state, even when this event is not reported.
     CapsLock,
     /// Function key was pressed (F1-F12, etc.)
     /// The u8 value represents the function key number (1 for F1, 2 for F2, etc.)

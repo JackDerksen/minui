@@ -197,13 +197,13 @@ fn main() -> minui::Result<()> {
             }
 
             // Route remaining events to the focused field.
-            let consumed = match state.focus {
+            match state.focus {
                 Focus::Plain => state.plain.handle_event(event),
                 Focus::Wrapped => state.wrapped.handle_event(event),
             };
 
-            // If the input didn't consume it, ignore
-            consumed
+            // An unhandled key, such as Caps Lock, must not end the app loop.
+            true
         },
         // ============================
         // Draw

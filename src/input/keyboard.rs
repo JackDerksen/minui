@@ -389,7 +389,7 @@ impl KeyboardHandler {
                 }
 
                 // Fall back to standard event conversion
-                return Ok(Some(self.convert_key_event(key.code)));
+                return Ok(Some(self.convert_key_event(key)));
             }
         }
         Ok(None)
@@ -429,7 +429,7 @@ impl KeyboardHandler {
     pub fn poll(&self) -> Result<Option<Event>> {
         if event::poll(self.poll_rate)? {
             if let CrosstermEvent::Key(key) = event::read()? {
-                return Ok(Some(self.convert_key_event(key.code)));
+                return Ok(Some(self.convert_key_event(key)));
             }
         }
         Ok(None)
@@ -480,7 +480,7 @@ impl KeyboardHandler {
                     return Ok(Event::Keybind(action));
                 }
 
-                return Ok(self.convert_key_event(key.code));
+                return Ok(self.convert_key_event(key));
             }
         }
         Ok(Event::Unknown)
@@ -522,18 +522,7 @@ impl KeyboardHandler {
     pub fn wait_for_input(&self) -> Result<Event> {
         loop {
             if let CrosstermEvent::Key(key) = event::read()? {
-                // Check for keybind matches first (higher priority than raw modifier events).
-                if let Some(action) = self.check_keybind_match(&key) {
-                    return Ok(Event::Keybind(action));
-                }
-
-                // Emit a modifier-aware event when possible. If we can't represent this key in our
-                // current KeyKind model, fall back to legacy conversion.
-                if let Some(e) = self.convert_key_event_with_modifiers(&key) {
-                    return Ok(e);
-                }
-
-                return Ok(self.convert_key_event(key.code));
+                return Ok(self.process_key_event(key));
             }
         }
     }
@@ -743,35 +732,11 @@ impl KeyboardHandler {
         crokey::parse(&key_str).ok()
     }
 
-    /// Converts a crossterm KeyCode to a MinUI Event.
-    ///
-    /// This internal method handles the standard conversion from crossterm's
-    /// key codes to MinUI's event types.
-    ///
-    /// # Arguments
-    ///
-    /// * `key_code` - The crossterm key code to convert
-    ///
-    /// # Returns
-    ///
-    /// The corresponding MinUI Event.
-    fn convert_key_event(&self, key_code: KeyCode) -> Event {
-        match key_code {
-            KeyCode::Char(c) => Event::Character(c),
-            KeyCode::Tab => Event::Tab,
-            KeyCode::BackTab => Event::Tab,
-            KeyCode::Up => Event::KeyUp,
-            KeyCode::Down => Event::KeyDown,
-            KeyCode::Left => Event::KeyLeft,
-            KeyCode::Right => Event::KeyRight,
-            KeyCode::Delete => Event::Delete,
-            KeyCode::Backspace => Event::Backspace,
-            KeyCode::Enter => Event::Enter,
-            KeyCode::CapsLock => Event::CapsLock,
-            KeyCode::F(n) => Event::FunctionKey(n),
-            KeyCode::Esc => Event::Escape,
-            _ => Event::Unknown,
-        }
+    /// Uses the same text conversion for the legacy polling methods.
+    fn convert_key_event(&self, key_event: KeyEvent) -> Event {
+        self.convert_key_event_with_modifiers(&key_event)
+            .and_then(|event| event.as_legacy_key_event())
+            .unwrap_or(Event::Unknown)
     }
 
     /// Converts a crossterm KeyEvent to a MinUI modifier-aware key event.
@@ -794,7 +759,7 @@ impl KeyboardHandler {
         };
 
         let key = match key_event.code {
-            KeyCode::Char(c) => KeyKind::Char(c),
+            KeyCode::Char(character) => KeyKind::Char(text_character(character, key_event)),
             KeyCode::Tab => KeyKind::Tab,
             KeyCode::BackTab => {
                 mods.shift = true;
@@ -839,9 +804,44 @@ impl KeyboardHandler {
             return e;
         }
 
-        // Fall back to standard event conversion
-        self.convert_key_event(key_event.code)
+        Event::Unknown
     }
+}
+
+/// Resolve an unshifted letter reported with Shift or Caps Lock, without changing
+/// characters already translated by the terminal or characters used in shortcuts.
+fn text_character(character: char, key_event: &KeyEvent) -> char {
+    // Windows console events already contain the OS-translated text. In particular,
+    // lowercase text with Shift can be the result of Shift + Caps Lock.
+    #[cfg(windows)]
+    let _ = key_event;
+
+    #[cfg(not(windows))]
+    {
+        use crossterm::event::{KeyEventState, KeyModifiers};
+
+        let shift = key_event.modifiers.contains(KeyModifiers::SHIFT);
+        let caps_lock = key_event.state.contains(KeyEventState::CAPS_LOCK);
+        let shortcut = key_event.modifiers.intersects(
+            KeyModifiers::CONTROL
+                | KeyModifiers::ALT
+                | KeyModifiers::SUPER
+                | KeyModifiers::HYPER
+                | KeyModifiers::META,
+        );
+        if !shortcut && shift != caps_lock && character.is_lowercase() {
+            let mut uppercase = character.to_uppercase();
+            if let Some(uppercase_character) = uppercase.next()
+                && uppercase.next().is_none()
+            {
+                return uppercase_character;
+            }
+            // A Char event cannot represent expansions such as ß -> SS. Preserve
+            // those rather than dropping part of the text or guessing a layout.
+        }
+    }
+
+    character
 }
 
 impl Default for KeyboardHandler {

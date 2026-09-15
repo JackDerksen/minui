@@ -146,6 +146,65 @@ mod tests {
     }
 
     #[test]
+    fn text_input_resolves_unshifted_letters_from_each_key_event() {
+        use crate::widgets::TextInputState;
+        use crossterm::event::{KeyEventKind, KeyEventState};
+
+        let keyboard = KeyboardHandler::new();
+        let mut input = TextInputState::new();
+        input.set_focused(true);
+
+        let shift = CrosstermKeyModifiers::SHIFT;
+        let plain = CrosstermKeyModifiers::NONE;
+        let caps = KeyEventState::CAPS_LOCK;
+        let unlocked = KeyEventState::NONE;
+        // Start with Caps Lock already enabled, then vary the state without a lock
+        // key press. These are unshifted CSI-u letters, not pre-capitalised fixtures.
+        for (character, modifiers, state, expected) in [
+            ('a', plain, caps, 'A'),
+            ('a', plain, unlocked, 'a'),
+            ('a', shift, unlocked, 'A'),
+            ('a', shift, caps, 'a'),
+            ('A', plain, caps, 'A'),
+            ('A', shift, caps, 'A'),
+            ('é', plain, caps, 'É'),
+            ('ж', shift, unlocked, 'Ж'),
+            ('ß', plain, caps, 'ß'),
+            ('1', plain, caps, '1'),
+            ('$', plain, unlocked, '$'),
+            (':', shift, unlocked, ':'),
+            ('a', CrosstermKeyModifiers::CONTROL | shift, caps, 'a'),
+        ] {
+            // Native Windows console characters have already been translated.
+            let expected = if cfg!(windows) { character } else { expected };
+            input.clear();
+            for kind in [
+                KeyEventKind::Press,
+                KeyEventKind::Repeat,
+                KeyEventKind::Press,
+            ] {
+                let event = keyboard.process_key_event(KeyEvent::new_with_kind_and_state(
+                    KeyCode::Char(character),
+                    modifiers,
+                    kind,
+                    state,
+                ));
+                input.handle_event(event);
+            }
+            assert_eq!(input.text(), expected.to_string().repeat(3));
+        }
+
+        input.clear();
+        input.handle_event(keyboard.process_key_event(KeyEvent::new(KeyCode::CapsLock, plain)));
+        input.handle_event(keyboard.process_key_event(KeyEvent::new(KeyCode::Char('a'), plain)));
+        assert_eq!(
+            input.text(),
+            "a",
+            "Caps Lock presses must not create a local toggle"
+        );
+    }
+
+    #[test]
     fn test_mouse_handler_creation() {
         let mouse = MouseHandler::new();
         assert_eq!(mouse.poll_rate(), Duration::from_millis(1));
