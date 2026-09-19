@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use unicode_segmentation::UnicodeSegmentation;
 
-use super::{TabPolicy, cell_width, clip_to_cells};
+use super::{TabPolicy, clip_to_cells, grapheme_width};
 
 /// Where to break text that exceeds the available terminal cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,7 +101,7 @@ fn wrap_graphemes(
     let mut start = 0;
     let mut used = 0_usize;
     for (index, grapheme) in line.grapheme_indices(true) {
-        let width = usize::from(cell_width(grapheme, tab_policy));
+        let width = usize::from(grapheme_width(grapheme, tab_policy));
         if used + width > usize::from(max_cells) && index > start {
             ranges.push(offset + start..offset + index);
             start = index;
@@ -121,7 +121,7 @@ fn wrap_words(
 ) {
     let width = |text: &str| -> usize {
         text.graphemes(true)
-            .map(|grapheme| usize::from(cell_width(grapheme, tab_policy)))
+            .map(|grapheme| usize::from(grapheme_width(grapheme, tab_policy)))
             .sum()
     };
     let mut current = 0..0;

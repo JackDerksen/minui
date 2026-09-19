@@ -40,23 +40,26 @@ pub fn cell_width_char(ch: char) -> u16 {
     ch.width().unwrap_or(0) as u16
 }
 
+/// Measures one already-segmented extended grapheme cluster.
+pub(crate) fn grapheme_width(grapheme: &str, tab_policy: TabPolicy) -> u16 {
+    match grapheme.as_bytes() {
+        [b' '..=b'~'] => 1,
+        [b'\t'] => match tab_policy {
+            TabPolicy::Fixed(cells) => cells,
+            TabPolicy::SingleCell => 1,
+        },
+        _ if grapheme.chars().any(char::is_control) => 0,
+        _ => grapheme.width().min(u16::MAX as usize) as u16,
+    }
+}
+
 /// Returns the terminal width of complete grapheme clusters, ignoring controls.
 pub fn cell_width(s: &str, tab_policy: TabPolicy) -> u16 {
     if let Some(len) = printable_ascii_len(s) {
         return len.min(u16::MAX as usize) as u16;
     }
     s.graphemes(true).fold(0_u16, |width, grapheme| {
-        let cells = if grapheme == "\t" {
-            match tab_policy {
-                TabPolicy::Fixed(cells) => cells,
-                TabPolicy::SingleCell => 1,
-            }
-        } else if grapheme.chars().any(char::is_control) {
-            0
-        } else {
-            grapheme.width().min(u16::MAX as usize) as u16
-        };
-        width.saturating_add(cells)
+        width.saturating_add(grapheme_width(grapheme, tab_policy))
     })
 }
 
@@ -122,7 +125,7 @@ pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<
             continue;
         }
 
-        let w = cell_width(grapheme, tab_policy);
+        let w = grapheme_width(grapheme, tab_policy);
         if w == 0 {
             // Skip zero-width / control-ish glyphs.
             out.get_or_insert_with(|| s[..byte_idx].to_string());
@@ -234,7 +237,7 @@ pub fn cell_column_for_char_index(s: &str, char_idx: usize) -> u16 {
         if characters > char_idx {
             break;
         }
-        column = column.saturating_add(cell_width(grapheme, TabPolicy::SingleCell));
+        column = column.saturating_add(grapheme_width(grapheme, TabPolicy::SingleCell));
     }
     column
 }
@@ -244,7 +247,7 @@ pub fn char_index_from_cell_column(s: &str, col: u16) -> usize {
     let mut characters = 0;
     let mut column = 0_u16;
     for grapheme in s.graphemes(true) {
-        let width = cell_width(grapheme, TabPolicy::SingleCell);
+        let width = grapheme_width(grapheme, TabPolicy::SingleCell);
         if column.saturating_add(width) > col {
             break;
         }
@@ -281,7 +284,7 @@ pub fn cell_column_for_grapheme_index(s: &str, grapheme_idx: usize, tab_policy: 
         if i >= grapheme_idx {
             break;
         }
-        col = col.saturating_add(cell_width(g, tab_policy));
+        col = col.saturating_add(grapheme_width(g, tab_policy));
     }
     col
 }
@@ -292,7 +295,7 @@ pub fn cell_column_for_grapheme_index(s: &str, grapheme_idx: usize, tab_policy: 
 pub fn grapheme_index_from_cell_column(s: &str, col: u16, tab_policy: TabPolicy) -> usize {
     let mut acc: u16 = 0;
     for (i, g) in UnicodeSegmentation::graphemes(s, true).enumerate() {
-        let w = cell_width(g, tab_policy);
+        let w = grapheme_width(g, tab_policy);
         if w == 0 {
             continue;
         }
@@ -312,6 +315,8 @@ mod tests {
     #[test]
     fn grapheme_width_clipping_and_positions_agree() {
         for (grapheme, width) in [
+            ("a", 1),
+            (" ", 1),
             ("😁", 2),
             ("🧑‍💻", 2),
             ("👨‍👩‍👧‍👦", 2),
@@ -369,8 +374,17 @@ mod tests {
 
     #[test]
     fn non_printable_ascii_still_uses_general_clipping_path() {
-        let clipped = clip_to_cells_cow("a\tb", 3, TabPolicy::Fixed(2));
-
-        assert_eq!(clipped, "a  ");
+        for (text, policy, width, clipped) in [
+            ("a\tb", TabPolicy::Fixed(2), 4, "a  "),
+            ("a\tb", TabPolicy::Fixed(0), 2, "ab"),
+            ("a\tb", TabPolicy::SingleCell, 3, "a b"),
+            ("\u{7}a\u{1b}", TabPolicy::SingleCell, 1, "a"),
+            ("\u{301}x", TabPolicy::SingleCell, 1, "x"),
+            ("a\r\nb", TabPolicy::SingleCell, 2, "a"),
+        ] {
+            assert_eq!(cell_width(text, policy), width);
+            assert_eq!(clip_to_cells_cow(text, 3, policy), clipped);
+        }
+        assert_eq!(cell_width("a\tb", TabPolicy::Fixed(u16::MAX)), u16::MAX);
     }
 }

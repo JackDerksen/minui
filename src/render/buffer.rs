@@ -4,7 +4,8 @@
 //! rendering system. It implements a double-buffered approach with intelligent change
 //! detection and optimization.
 
-use crate::{ColorPair, Result, TabPolicy, cell_width, cell_width_char};
+use crate::text::grapheme_width;
+use crate::{ColorPair, Result, TabPolicy, cell_width_char};
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -29,7 +30,7 @@ impl CellText {
     fn width(&self) -> u16 {
         match self {
             Self::Character(character) => cell_width_char(*character),
-            Self::Grapheme(text) => cell_width(text, TabPolicy::SingleCell),
+            Self::Grapheme(text) => grapheme_width(text, TabPolicy::SingleCell),
             Self::Continuation => 0,
         }
     }
@@ -195,8 +196,14 @@ impl Buffer {
         }
     }
 
-    fn write_glyph(&mut self, y: u16, x: u16, text: CellText, colors: Option<ColorPair>) {
-        let width = text.width();
+    fn write_glyph(
+        &mut self,
+        y: u16,
+        x: u16,
+        text: CellText,
+        width: u16,
+        colors: Option<ColorPair>,
+    ) {
         let cell = Cell { text, colors };
         if self.current[self.coords_to_index(x, y)] == cell {
             return;
@@ -239,13 +246,13 @@ impl Buffer {
             }
             // Raw tabs are normalised to a space, matching SingleCell span layout.
             let grapheme = if grapheme == "\t" { " " } else { grapheme };
-            let width = cell_width(grapheme, TabPolicy::SingleCell);
+            let width = grapheme_width(grapheme, TabPolicy::SingleCell);
             if width == 0 {
                 continue;
             }
             if width > self.width - column {
                 while column < self.width {
-                    self.write_glyph(y, column, CellText::Character(' '), colors);
+                    self.write_glyph(y, column, CellText::Character(' '), 1, colors);
                     column += 1;
                 }
                 break;
@@ -273,7 +280,7 @@ impl Buffer {
                 };
                 CellText::Grapheme(text)
             };
-            self.write_glyph(y, column, text, colors);
+            self.write_glyph(y, column, text, width, colors);
             column += width;
         }
         Ok(())
@@ -345,9 +352,13 @@ impl Buffer {
                 let current = &self.current[idx];
                 let previous = &self.previous[idx];
 
+                if current == previous {
+                    x += 1;
+                    continue;
+                }
                 let width = current.text.width() as usize;
-                if width == 0 || current == previous {
-                    x += width.max(1);
+                if width == 0 {
+                    x += 1;
                     continue;
                 }
 
@@ -358,11 +369,11 @@ impl Buffer {
                     let next_idx = idx + run_length;
                     let next_cell = &self.current[next_idx];
                     let next_prev = &self.previous[next_idx];
+                    if next_cell.colors != current.colors || next_cell == next_prev {
+                        break;
+                    }
                     let next_width = next_cell.text.width() as usize;
-                    if next_width == 0
-                        || next_cell.colors != current.colors
-                        || next_cell == next_prev
-                    {
+                    if next_width == 0 {
                         break;
                     }
                     run_length += next_width;
