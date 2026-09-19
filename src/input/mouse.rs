@@ -300,8 +300,11 @@ impl MouseHandler {
     /// Enables or disables mouse movement tracking.
     ///
     /// When enabled, the handler will generate `MouseMove` events whenever
-    /// the cursor position changes. When disabled, only clicks and scrolls
-    /// are tracked, which can reduce event volume.
+    /// the cursor position changes. When disabled, clicks, drags, and scrolls
+    /// are still tracked. `TerminalWindow` applies this setting before its next
+    /// input read, requesting click-and-drag reporting on Unix terminals so
+    /// unused hover events are suppressed at the source. Standalone handlers
+    /// and Windows console input filter movement after receiving it.
     ///
     /// # Arguments
     ///

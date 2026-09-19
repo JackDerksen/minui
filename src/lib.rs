@@ -60,7 +60,7 @@ pub mod widgets;
 pub mod window;
 
 // Core types
-pub use app::{App, FrameProfile};
+pub use app::{App, FrameProfile, UpdateAction};
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
 pub use event::{Event, KeyKind, KeyModifiers, KeyWithModifiers, MouseButton};
@@ -180,7 +180,7 @@ pub mod prelude {
 
     /// Application runner and frame-loop helpers.
     pub mod app {
-        pub use crate::{App, Event, FrameProfile, Result, TerminalWindow, Window};
+        pub use crate::{App, Event, FrameProfile, Result, TerminalWindow, UpdateAction, Window};
     }
 
     /// Input events, keyboard/mouse handlers, keybinds, and scrolling helpers.
