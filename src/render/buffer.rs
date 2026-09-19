@@ -299,10 +299,33 @@ impl Buffer {
     }
 
     pub(crate) fn clear_area(&mut self, start_y: u16, start_x: u16, end_y: u16, end_x: u16) {
+        if start_x > end_x {
+            return;
+        }
+        let empty = Cell::empty();
         for y in start_y..=end_y {
-            for x in start_x..=end_x {
-                self.erase_glyph(y, x);
+            let row_start = self.coords_to_index(0, y);
+            let row = &mut self.current[row_start..row_start + self.width as usize];
+            let mut start = start_x as usize;
+            let mut end = end_x as usize + 1;
+
+            // Include the whole glyph when either edge cuts through it.
+            while start > 0 && row[start].text == CellText::Continuation {
+                start -= 1;
             }
+            while end < row.len() && row[end].text == CellText::Continuation {
+                end += 1;
+            }
+
+            let Some(offset) = row[start..end].iter().position(|cell| *cell != empty) else {
+                continue;
+            };
+            start += offset;
+            while row[end - 1] == empty {
+                end -= 1;
+            }
+            row[start..end].fill(Cell::empty());
+            self.mark_dirty_span(y, start as u16, (end - 1) as u16);
         }
     }
 
@@ -517,21 +540,29 @@ mod tests {
 
     #[test]
     fn clear_area_marks_only_changed_cells() {
-        let mut buffer = Buffer::new(5, 2);
+        for (text, start, end, first_changed, changed_cells, expected) in [
+            ("abcde", 1, 3, 1, 3, "a   e   "),
+            ("  a  ", 0, 7, 2, 1, "        "),
+            ("a🧑‍💻界b", 2, 3, 1, 4, "a    b  "),
+            ("a🧑‍💻界b", 1, 1, 1, 2, "a  界b  "),
+            ("a🧑‍💻界b", 4, 4, 3, 2, "a🧑‍💻  b  "),
+        ] {
+            let mut buffer = Buffer::new(8, 1);
+            let mut screen = vec![" ".to_owned(); 8];
+            buffer.write_str(0, 0, text, None).unwrap();
+            apply_frame(&mut buffer, &mut screen);
+            buffer.clear_area(0, start, 0, end);
 
-        buffer.write_str(0, 0, "abcde", None).unwrap();
-        buffer.commit_changes();
-        buffer.clear_area(0, 1, 0, 3);
-
-        let stats = buffer.get_stats();
-        assert_eq!(stats.dirty_rows, 1);
-        assert_eq!(stats.dirty_cols, 3);
-        assert_eq!(stats.modified_cells, 3);
-        assert_eq!(buffer.process_changes(), 1);
-
-        let mut output = String::new();
-        buffer.change_text(buffer.change(0), &mut output);
-        assert_eq!(output, "   ");
+            let stats = buffer.get_stats();
+            assert_eq!(stats.dirty_rows, 1);
+            assert_eq!(stats.dirty_cols, changed_cells);
+            assert_eq!(stats.modified_cells, changed_cells);
+            assert_eq!(buffer.process_changes(), 1);
+            assert_eq!(buffer.change(0).x, first_changed);
+            assert_eq!(buffer.change(0).len, changed_cells);
+            apply_frame(&mut buffer, &mut screen);
+            assert_eq!(screen.concat(), expected);
+        }
     }
 
     #[test]
