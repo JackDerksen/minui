@@ -9,6 +9,26 @@ use crate::{ColorPair, Result, TabPolicy, cell_width_char};
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
+fn printable_ascii_prefix(bytes: &[u8]) -> usize {
+    let mut offset = 0;
+    for chunk in bytes.chunks_exact(32) {
+        // A non-short-circuit reduction lets LLVM classify a whole chunk with
+        // vector instructions. Locate the exact boundary only in a failing chunk.
+        if !chunk
+            .iter()
+            .fold(true, |valid, byte| valid & matches!(byte, b' '..=b'~'))
+        {
+            break;
+        }
+        offset += chunk.len();
+    }
+    offset
+        + bytes[offset..]
+            .iter()
+            .position(|byte| !matches!(byte, b' '..=b'~'))
+            .unwrap_or(bytes.len() - offset)
+}
+
 /// A terminal cell containing a grapheme or continuing a wide grapheme.
 ///
 /// Each cell stores its content and optional colour information. Dirty row ranges provide
@@ -224,6 +244,37 @@ impl Buffer {
         }
     }
 
+    fn write_ascii(&mut self, y: u16, x: u16, bytes: &[u8], colors: Option<ColorPair>) {
+        let start = self.coords_to_index(x, y);
+        let end = start + bytes.len();
+        // Only the two edges can leave part of an old wide glyph outside the
+        // overwritten range. Interior glyphs are replaced in full.
+        if self.current[start].text == CellText::Continuation {
+            self.clear_area(y, x, y, x);
+        }
+        let end_column = x + bytes.len() as u16;
+        if end_column < self.width && self.current[end].text == CellText::Continuation {
+            self.clear_area(y, end_column, y, end_column);
+        }
+
+        let mut first_changed = bytes.len();
+        let mut last_changed = 0;
+        for (offset, (cell, &byte)) in self.current[start..end].iter_mut().zip(bytes).enumerate() {
+            let replacement = Cell {
+                text: CellText::Character(char::from(byte)),
+                colors,
+            };
+            if *cell != replacement {
+                *cell = replacement;
+                first_changed = first_changed.min(offset);
+                last_changed = offset;
+            }
+        }
+        if first_changed < bytes.len() {
+            self.mark_dirty_span(y, x + first_changed as u16, x + last_changed as u16);
+        }
+    }
+
     pub(crate) fn write_str(
         &mut self,
         y: u16,
@@ -239,7 +290,28 @@ impl Buffer {
                 height: self.height,
             });
         }
-        let mut column = x;
+        // Inspect at most one byte beyond the visible range. If the next byte
+        // is non-ASCII, leave the preceding ASCII character for segmentation:
+        // a combining mark or variation selector may extend its grapheme.
+        let available = usize::from(self.width - x);
+        let prefix = &text.as_bytes()[..text.len().min(available + 1)];
+        let ascii_end = printable_ascii_prefix(prefix);
+        let ascii_len = if ascii_end == prefix.len() {
+            ascii_end.min(available)
+        } else {
+            ascii_end.saturating_sub(1)
+        };
+        if ascii_len > 0 {
+            self.write_ascii(y, x, &prefix[..ascii_len], colors);
+        }
+        let column = x + ascii_len as u16;
+        if column < self.width {
+            self.write_unicode(y, column, &text[ascii_len..], colors);
+        }
+        Ok(())
+    }
+
+    fn write_unicode(&mut self, y: u16, mut column: u16, text: &str, colors: Option<ColorPair>) {
         for grapheme in text.graphemes(true) {
             if column >= self.width || matches!(grapheme, "\r" | "\n" | "\r\n") {
                 break;
@@ -283,7 +355,6 @@ impl Buffer {
             self.write_glyph(y, column, text, width, colors);
             column += width;
         }
-        Ok(())
     }
 
     pub(crate) fn clear(&mut self) {
