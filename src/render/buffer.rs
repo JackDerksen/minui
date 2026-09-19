@@ -471,16 +471,21 @@ impl Buffer {
     ///
     /// Keeping this separate from `process_changes` means a failed terminal write can be retried,
     /// and the desired buffer remains authoritative for incremental drawing.
+    /// Call after `process_changes` and successful output, without intervening buffer writes.
     pub(crate) fn commit_changes(&mut self) {
-        for (y, row) in self.dirty_rows.iter_mut().enumerate() {
-            if let Some(range) = row.take() {
-                let row_start = y * self.width as usize;
-                let start_idx = row_start + range.min_x as usize;
-                let end_idx = row_start + range.max_x as usize + 1;
-                self.previous[start_idx..end_idx]
-                    .clone_from_slice(&self.current[start_idx..end_idx]);
+        // Emitted runs already cover whole changed glyphs, including their
+        // continuation cells. Leave unchanged gaps and their reference counts alone.
+        let mut changes = self.changes.iter().peekable();
+        while let Some(change) = changes.next() {
+            let mut end = change.start_idx + change.len;
+            // Colour boundaries matter to output, but adjacent runs can be copied together.
+            while let Some(next) = changes.next_if(|next| next.start_idx == end) {
+                end += next.len;
             }
+            let range = change.start_idx..end;
+            self.previous[range.clone()].clone_from_slice(&self.current[range]);
         }
+        self.dirty_rows.fill(None);
         self.changes.clear();
     }
 
