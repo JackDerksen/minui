@@ -12,7 +12,7 @@
 //! - Keyboard and mouse input handling
 //! - Automatic terminal state restoration
 //! - Best-effort terminal capability detection (color downgrades/fallbacks)
-//! - Uses a single, persistent stdout handle to avoid output interleaving/flicker
+//! - Locks stdout once per rendered frame to prevent interleaved frame output
 //! - Deferred cursor requests to prevent cursor flicker across widgets
 //!
 //! ## Basic Usage
@@ -462,8 +462,8 @@ pub struct TerminalWindow {
 
     /// Persistent stdout handle used for all terminal output.
     ///
-    /// Keeping a single handle avoids interleaving/flicker caused by repeatedly creating
-    /// new stdout handles and issuing `execute!` calls on them.
+    /// `flush` locks this handle for the frame so command fragments do not each acquire
+    /// the shared stdout lock.
     out: Stdout,
     render_text: String,
     session: TerminalSession,
@@ -968,14 +968,16 @@ impl TerminalWindow {
             return Ok(());
         }
 
+        let mut output = self.out.lock();
+
         if hid_cursor_for_render {
-            queue!(self.out, cursor::Hide)?;
+            queue!(output, cursor::Hide)?;
         }
 
         for change_idx in 0..change_count {
             let change = self.buffer.change(change_idx);
             if cursor_after_write != Some((change.x, change.y)) {
-                queue!(self.out, cursor::MoveTo(change.x, change.y))?;
+                queue!(output, cursor::MoveTo(change.x, change.y))?;
             }
 
             // Downgrade requested colors before comparing with the last applied terminal color.
@@ -987,7 +989,7 @@ impl TerminalWindow {
                 if let Some(colors) = applied_colors {
                     // Set the foreground and background colors
                     queue!(
-                        self.out,
+                        output,
                         SetForegroundColor(colors.fg.to_crossterm()),
                         SetBackgroundColor(colors.bg.to_crossterm())
                     )?;
@@ -995,28 +997,28 @@ impl TerminalWindow {
                     last_colors = Some(colors);
                 } else {
                     // If there are no colors, reset to the default.
-                    queue!(self.out, style::ResetColor)?;
+                    queue!(output, style::ResetColor)?;
                     last_colors = None;
                 }
             }
 
             self.buffer.change_text(change, &mut self.render_text);
-            self.out.write_all(self.render_text.as_bytes())?;
+            output.write_all(self.render_text.as_bytes())?;
 
             cursor_after_write = Some((change.x.saturating_add(change.len as u16), change.y));
         }
 
         // Reset the color at the end of the flush only if styled output is still active.
         if last_colors.is_some() {
-            queue!(self.out, style::ResetColor)?;
+            queue!(output, style::ResetColor)?;
         }
 
         if desired.visible {
             if cursor_visibility_changed {
-                queue!(self.out, cursor::Show)?;
+                queue!(output, cursor::Show)?;
             }
         } else if prev_visible {
-            queue!(self.out, cursor::Hide)?;
+            queue!(output, cursor::Hide)?;
         }
 
         // Move cursor to the desired position if it should be visible.
@@ -1026,12 +1028,13 @@ impl TerminalWindow {
         // character position. Without this, the cursor would appear at the end of the last
         // rendered text instead of the requested position.
         if cursor_position_changed {
-            queue!(self.out, cursor::MoveTo(desired.x, desired.y))?;
+            queue!(output, cursor::MoveTo(desired.x, desired.y))?;
         }
 
         self.last_cursor = Some(desired);
 
-        self.out.flush()?;
+        output.flush()?;
+        drop(output);
         self.buffer.commit_changes();
         Ok(())
     }
