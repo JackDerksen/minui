@@ -254,7 +254,24 @@ impl Buffer {
             let text = if first.len_utf8() == grapheme.len() {
                 CellText::Character(first)
             } else {
-                CellText::Grapheme(Arc::from(grapheme))
+                let index = self.coords_to_index(column, y);
+                let current = &self.current[index];
+                let text = match (&current.text, &self.previous[index].text) {
+                    (CellText::Grapheme(existing), _) if existing.as_ref() == grapheme => {
+                        if current.colors == colors {
+                            column += width;
+                            continue;
+                        }
+                        Arc::clone(existing)
+                    }
+                    // Clearing the current frame leaves the previous frame's
+                    // allocation available for repainting the same grapheme.
+                    (_, CellText::Grapheme(existing)) if existing.as_ref() == grapheme => {
+                        Arc::clone(existing)
+                    }
+                    _ => Arc::from(grapheme),
+                };
+                CellText::Grapheme(text)
             };
             self.write_glyph(y, column, text, colors);
             column += width;
