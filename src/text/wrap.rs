@@ -52,6 +52,10 @@ pub fn wrap_ranges_to_cells(
         let line = source_line
             .strip_suffix('\n')
             .map_or(source_line, |line| line.strip_suffix('\r').unwrap_or(line));
+        // Splitting an empty string yields no segments, but this source line still exists.
+        if line.is_empty() {
+            ranges.push(offset..offset);
+        }
         let mut segment_offset = offset;
         for source_segment in line.split_inclusive('\r') {
             let segment = source_segment.strip_suffix('\r').unwrap_or(source_segment);
@@ -240,5 +244,29 @@ mod tests {
         }
         let rendered = wrap_to_cells("\t🧑‍💻\u{7}x", 1, TextWrapMode::Wrap, TabPolicy::SingleCell);
         assert_eq!(rendered, [" ", "", "x"]);
+
+        for mode in [
+            TextWrapMode::None,
+            TextWrapMode::Wrap,
+            TextWrapMode::WrapWords,
+        ] {
+            for (text, expected) in [
+                ("", vec![0..0]),
+                ("\n", vec![0..0]),
+                ("\r\n", vec![0..0]),
+                ("\n\n", vec![0..0, 1..1]),
+                ("\r\n\r\n", vec![0..0, 2..2]),
+                ("\n界\n\n", vec![0..0, 1..4, 5..5]),
+                ("\r\n界\r\n\r\n", vec![0..0, 2..5, 7..7]),
+                ("a\n\nb\n", vec![0..1, 2..2, 3..4]),
+                ("a\r\n\r\nb\r\n", vec![0..1, 3..3, 5..6]),
+            ] {
+                assert_eq!(
+                    wrap_ranges_to_cells(text, 4, mode, TabPolicy::SingleCell),
+                    expected,
+                    "{text:?}, {mode:?}"
+                );
+            }
+        }
     }
 }
