@@ -92,16 +92,12 @@ impl TerminalSession {
             EnableBracketedPaste
         )?;
 
-        // Request layout-specific shifted characters for keys sent as escape codes.
-        // Leave ordinary text enabled; Crossterm cannot decode associated text when
-        // REPORT_ALL_KEYS_AS_ESCAPE_CODES suppresses it.
+        // Keep Shift explicit: Crossterm 0.29 consumes it when decoding alternate keys.
+        // Ordinary text stays enabled so the terminal resolves layout and Caps Lock.
         #[cfg(not(windows))]
         execute!(
             out,
-            PushKeyboardEnhancementFlags(
-                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
-            )
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         )?;
 
         Ok(())
@@ -1336,7 +1332,7 @@ mod tests {
 
         #[cfg(not(windows))]
         {
-            assert!(output.contains("\u{1b}[>5u"));
+            assert!(output.contains("\u{1b}[>1u"));
             assert!(output.contains("\u{1b}[<1u"));
         }
 
