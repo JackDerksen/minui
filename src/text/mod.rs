@@ -28,11 +28,11 @@ pub enum TabPolicy {
     SingleCell,
 }
 
-fn printable_ascii_len(s: &str) -> Option<usize> {
-    s.as_bytes()
+fn printable_ascii_len(bytes: &[u8]) -> Option<usize> {
+    bytes
         .iter()
         .all(|byte| matches!(byte, b' '..=b'~'))
-        .then_some(s.len())
+        .then_some(bytes.len())
 }
 
 /// Returns the width of a Unicode scalar. Use [`cell_width`] for grapheme clusters.
@@ -55,7 +55,7 @@ pub(crate) fn grapheme_width(grapheme: &str, tab_policy: TabPolicy) -> u16 {
 
 /// Returns the terminal width of complete grapheme clusters, ignoring controls.
 pub fn cell_width(s: &str, tab_policy: TabPolicy) -> u16 {
-    if let Some(len) = printable_ascii_len(s) {
+    if let Some(len) = printable_ascii_len(s.as_bytes()) {
         return len.min(u16::MAX as usize) as u16;
     }
     s.graphemes(true).fold(0_u16, |width, grapheme| {
@@ -76,78 +76,58 @@ pub fn clip_to_cells(s: &str, max_cells: u16, tab_policy: TabPolicy) -> String {
     clip_to_cells_cow(s, max_cells, tab_policy).into_owned()
 }
 
-/// Clips `s` to at most `max_cells` terminal cells, borrowing `s` when no clipping or
-/// character normalization is required.
+/// Clips `s` to at most `max_cells` terminal cells, borrowing the result when no
+/// character normalisation is required.
 pub fn clip_to_cells_cow(s: &str, max_cells: u16, tab_policy: TabPolicy) -> Cow<'_, str> {
     if max_cells == 0 {
         return Cow::Borrowed(&s[..0]);
     }
 
-    if let Some(len) = printable_ascii_len(s) {
-        let max_cells = max_cells as usize;
-        return if len <= max_cells {
-            Cow::Borrowed(s)
-        } else {
-            Cow::Borrowed(&s[..max_cells])
-        };
+    // A printable ASCII byte after the visible prefix confirms its grapheme
+    // boundary. A non-ASCII byte could extend the last visible character.
+    let prefix = &s.as_bytes()[..s.len().min(max_cells as usize + 1)];
+    if let Some(len) = printable_ascii_len(prefix) {
+        return Cow::Borrowed(&s[..len.min(max_cells as usize)]);
     }
 
     let mut out: Option<String> = None;
-    let mut used: u16 = 0;
+    let mut remaining_cells = max_cells;
+    let mut end_byte = s.len();
 
     for (byte_idx, grapheme) in s.grapheme_indices(true) {
         if matches!(grapheme, "\n" | "\r" | "\r\n") {
             // Stop at newline in "single line" contexts.
-            return match out {
-                Some(out) => Cow::Owned(out),
-                None => Cow::Borrowed(&s[..byte_idx]),
-            };
+            end_byte = byte_idx;
+            break;
+        }
+
+        let width = grapheme_width(grapheme, tab_policy);
+        if width > remaining_cells {
+            end_byte = byte_idx;
+            break;
         }
 
         if grapheme == "\t" {
-            let tab_w = match tab_policy {
-                TabPolicy::Fixed(n) => n,
-                TabPolicy::SingleCell => 1,
-            };
-
-            if used.saturating_add(tab_w) > max_cells {
-                return match out {
-                    Some(out) => Cow::Owned(out),
-                    None => Cow::Borrowed(&s[..byte_idx]),
-                };
-            }
-
             // Expand tab to spaces so the result is render-stable.
-            let spaces = tab_w as usize;
             out.get_or_insert_with(|| s[..byte_idx].to_string())
-                .extend(std::iter::repeat(' ').take(spaces));
-            used = used.saturating_add(tab_w);
-            continue;
-        }
-
-        let w = grapheme_width(grapheme, tab_policy);
-        if w == 0 {
+                .extend(std::iter::repeat(' ').take(width as usize));
+        } else if width == 0 {
             // Skip zero-width / control-ish glyphs.
             out.get_or_insert_with(|| s[..byte_idx].to_string());
-            continue;
-        }
-
-        if used.saturating_add(w) > max_cells {
-            return match out {
-                Some(out) => Cow::Owned(out),
-                None => Cow::Borrowed(&s[..byte_idx]),
-            };
-        }
-
-        if let Some(out) = &mut out {
+        } else if let Some(out) = &mut out {
             out.push_str(grapheme);
         }
-        used = used.saturating_add(w);
+
+        remaining_cells -= width;
+        if remaining_cells == 0 {
+            end_byte = byte_idx + grapheme.len();
+            break;
+        }
     }
 
     match out {
         Some(out) => Cow::Owned(out),
-        None => Cow::Borrowed(s),
+        None => Cow::Borrowed(&s[..end_byte]),
     }
 }
 
@@ -366,10 +346,24 @@ mod tests {
     }
 
     #[test]
-    fn printable_ascii_clip_borrows_prefix_when_clipped() {
-        let clipped = clip_to_cells_cow("plain ascii", 5, TabPolicy::SingleCell);
+    fn clipping_borrows_complete_graphemes_at_the_visible_boundary() {
+        for (text, width, expected) in [
+            ("plain ascii", 5, "plain"),
+            ("abe\u{301}x", 3, "abe\u{301}"),
+            ("ab1️⃣x", 3, "ab"),
+            ("abc界", 3, "abc"),
+            ("abcd\u{301}", 3, "abc"),
+            ("abc\u{7}", 3, "abc"),
+            ("ab🧑‍💻x", 3, "ab"),
+        ] {
+            let clipped = clip_to_cells_cow(text, width, TabPolicy::SingleCell);
+            assert_eq!(clipped, expected);
+            assert!(matches!(clipped, Cow::Borrowed(_)));
+        }
 
-        assert!(matches!(clipped, Cow::Borrowed("plain")));
+        let text = format!("界{}x", "a".repeat(u16::MAX as usize - 2));
+        let clipped = clip_to_cells_cow(&text, u16::MAX, TabPolicy::SingleCell);
+        assert_eq!(clipped, &text[..text.len() - 1]);
     }
 
     #[test]
@@ -386,5 +380,9 @@ mod tests {
             assert_eq!(clip_to_cells_cow(text, 3, policy), clipped);
         }
         assert_eq!(cell_width("a\tb", TabPolicy::Fixed(u16::MAX)), u16::MAX);
+        assert_eq!(
+            clip_to_cells_cow("a\tb", u16::MAX, TabPolicy::Fixed(u16::MAX)),
+            "a"
+        );
     }
 }
