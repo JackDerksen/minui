@@ -50,7 +50,8 @@
 //! - configure columns
 //! - provide `row_count` and `cell_at(row, col)` via callbacks
 
-use crate::text::{TabPolicy, clip_to_cells_cow, clip_to_cells_ellipsis};
+use super::common::clip_view_text;
+use crate::text::{TabPolicy, clip_to_cells_ellipsis_cow};
 use crate::widgets::{BorderChars, Widget};
 use crate::{Alignment, Color, ColorPair, Result, Window};
 
@@ -325,11 +326,6 @@ impl Table {
         (cx, body_y, cw, body_h)
     }
 
-    fn available_body_rows(&self) -> usize {
-        let (_, _, _, body_h) = self.body_area();
-        body_h as usize
-    }
-
     fn total_table_content_width(&self) -> u16 {
         // Sum column widths plus separators between columns (if enabled).
         if self.columns.is_empty() {
@@ -344,7 +340,7 @@ impl Table {
         }
     }
 
-    fn draw_border(&self, window: &mut dyn Window) -> Result<()> {
+    fn draw_border(&self, window: &mut dyn Window, scratch: &mut String) -> Result<()> {
         if !self.show_border || self.width == 0 || self.height == 0 {
             return Ok(());
         }
@@ -355,37 +351,61 @@ impl Table {
         let y0 = self.y;
         let x1 = self.x.saturating_add(self.width.saturating_sub(1));
         let y1 = self.y.saturating_add(self.height.saturating_sub(1));
+        let mut encoded = [0; 4];
+        let horizontal_cells = self.width.saturating_sub(2) as usize;
+        scratch.clear();
+        scratch.reserve(horizontal_cells * bc.horizontal.len_utf8());
+        scratch.extend(std::iter::repeat(bc.horizontal).take(horizontal_cells));
 
         // Top line
-        window.write_str_colored(y0, x0, &bc.top_left.to_string(), self.border_color)?;
+        window.write_str_colored(
+            y0,
+            x0,
+            bc.top_left.encode_utf8(&mut encoded),
+            self.border_color,
+        )?;
         if self.width > 2 {
-            let horiz = bc.horizontal.to_string().repeat((self.width - 2) as usize);
-            window.write_str_colored(y0, x0 + 1, &horiz, self.border_color)?;
+            window.write_str_colored(y0, x0 + 1, scratch, self.border_color)?;
         }
-        window.write_str_colored(y0, x1, &bc.top_right.to_string(), self.border_color)?;
+        window.write_str_colored(
+            y0,
+            x1,
+            bc.top_right.encode_utf8(&mut encoded),
+            self.border_color,
+        )?;
 
         // Sides
         if self.height > 2 {
+            let vertical = bc.vertical.encode_utf8(&mut encoded);
             for yy in (y0 + 1)..y1 {
-                window.write_str_colored(yy, x0, &bc.vertical.to_string(), self.border_color)?;
-                window.write_str_colored(yy, x1, &bc.vertical.to_string(), self.border_color)?;
+                window.write_str_colored(yy, x0, vertical, self.border_color)?;
+                window.write_str_colored(yy, x1, vertical, self.border_color)?;
             }
         }
 
         // Bottom line
         if self.height > 1 {
-            window.write_str_colored(y1, x0, &bc.bottom_left.to_string(), self.border_color)?;
+            window.write_str_colored(
+                y1,
+                x0,
+                bc.bottom_left.encode_utf8(&mut encoded),
+                self.border_color,
+            )?;
             if self.width > 2 {
-                let horiz = bc.horizontal.to_string().repeat((self.width - 2) as usize);
-                window.write_str_colored(y1, x0 + 1, &horiz, self.border_color)?;
+                window.write_str_colored(y1, x0 + 1, scratch, self.border_color)?;
             }
-            window.write_str_colored(y1, x1, &bc.bottom_right.to_string(), self.border_color)?;
+            window.write_str_colored(
+                y1,
+                x1,
+                bc.bottom_right.encode_utf8(&mut encoded),
+                self.border_color,
+            )?;
         }
 
         Ok(())
     }
 
-    fn draw_header(&self, window: &mut dyn Window) -> Result<()> {
+    fn draw_header(&self, window: &mut dyn Window, scratch: &mut String) -> Result<()> {
         if !self.show_header {
             return Ok(());
         }
@@ -401,22 +421,28 @@ impl Table {
         self.draw_row_cells(
             window,
             cy,
-            cx,
-            cw,
             |col_idx| Some(self.columns[col_idx].header.as_str()),
             true,
+            scratch,
         )?;
 
         // Optional separator line below header.
         if self.show_header_separator && ch >= 2 {
             let sep_y = cy + 1;
-            self.draw_horizontal_rule(window, sep_y, cx, cw)?;
+            self.draw_horizontal_rule(window, sep_y, cx, cw, scratch)?;
         }
 
         Ok(())
     }
 
-    fn draw_horizontal_rule(&self, window: &mut dyn Window, y: u16, x: u16, w: u16) -> Result<()> {
+    fn draw_horizontal_rule(
+        &self,
+        window: &mut dyn Window,
+        y: u16,
+        x: u16,
+        w: u16,
+        scratch: &mut String,
+    ) -> Result<()> {
         if w == 0 {
             return Ok(());
         }
@@ -427,34 +453,25 @@ impl Table {
         // Use the configured `BorderChars` intersection characters so the separator line
         // matches the table's border style.
         let bc = &self.border_chars;
-        let rule_ch = bc.horizontal.to_string();
-        let sep_ch = if self.show_column_separators {
-            bc.intersect.to_string()
-        } else {
-            bc.horizontal.to_string()
-        };
-
-        let mut buf = String::with_capacity(w as usize);
+        scratch.clear();
+        scratch.reserve(w as usize * bc.horizontal.len_utf8().max(bc.intersect.len_utf8()));
         let visible_start = self.scroll_x;
         let visible_end = self.scroll_x.saturating_add(w);
 
-        let mut next_separator = if self.show_column_separators {
-            self.visible_separator_positions(visible_start, visible_end)
-        } else {
-            Vec::new().into_iter()
-        }
-        .peekable();
+        let mut next_separator = self
+            .visible_separator_positions(visible_start, visible_end)
+            .peekable();
 
         for content_col in visible_start..visible_end {
             if next_separator.peek().copied() == Some(content_col) {
-                buf.push_str(&sep_ch);
+                scratch.push(bc.intersect);
                 next_separator.next();
             } else {
-                buf.push_str(&rule_ch);
+                scratch.push(bc.horizontal);
             }
         }
 
-        window.write_str_colored(y, x, &buf, self.grid_color)?;
+        window.write_str_colored(y, x, scratch, self.grid_color)?;
         Ok(())
     }
 
@@ -462,30 +479,24 @@ impl Table {
         &self,
         visible_start: u16,
         visible_end: u16,
-    ) -> std::vec::IntoIter<u16> {
-        let mut positions = Vec::new();
-        if !self.show_column_separators {
-            return positions.into_iter();
-        }
-
-        let mut col_start: u16 = 0;
-        for (i, col) in self.columns.iter().enumerate() {
-            let col_end = col_start.saturating_add(col.width);
-            if i + 1 >= self.columns.len() {
-                break;
-            }
-
-            if col_end >= visible_start && col_end < visible_end {
-                positions.push(col_end);
-            }
-
-            col_start = col_end.saturating_add(1);
-        }
-
-        positions.into_iter()
+    ) -> impl Iterator<Item = u16> + '_ {
+        let count = if self.show_column_separators {
+            self.columns.len().saturating_sub(1)
+        } else {
+            0
+        };
+        self.columns
+            .iter()
+            .take(count)
+            .scan(0_u16, |start, column| {
+                let end = start.saturating_add(column.width);
+                *start = end.saturating_add(1);
+                Some(end)
+            })
+            .filter(move |position| *position >= visible_start && *position < visible_end)
     }
 
-    fn draw_body(&self, window: &mut dyn Window) -> Result<()> {
+    fn draw_body(&self, window: &mut dyn Window, scratch: &mut String) -> Result<()> {
         let (bx, by, bw, bh) = self.body_area();
         if bw == 0 || bh == 0 {
             return Ok(());
@@ -494,32 +505,35 @@ impl Table {
             return Ok(());
         }
 
-        // Clear the body region (prevents stale cells when scrolling/shrinking).
-        let clear_line = " ".repeat(bw as usize);
-        for row in 0..bh {
-            window.write_str(by + row, bx, &clear_line)?;
-        }
-
         let start_row = self.scroll_y as usize;
-        let max_rows = self.available_body_rows();
+        let visible_rows = if self.total_table_content_width() == 0 {
+            0
+        } else {
+            self.rows.len().saturating_sub(start_row).min(bh as usize)
+        };
 
-        for visible_idx in 0..max_rows {
+        for visible_idx in 0..visible_rows {
             let row_idx = start_row + visible_idx;
-            if row_idx >= self.rows.len() {
-                break;
-            }
-
             let y = by + (visible_idx as u16);
             let row_ref = &self.rows[row_idx];
 
             self.draw_row_cells(
                 window,
                 y,
-                bx,
-                bw,
                 |col_idx| row_ref.get(col_idx).map(|s| s.as_str()),
                 false,
+                scratch,
             )?;
+        }
+
+        // Populated rows clear themselves in their base colour. Only missing
+        // rows need a plain clear to remove content after scrolling/shrinking.
+        if visible_rows < bh as usize {
+            scratch.clear();
+            scratch.extend(std::iter::repeat(' ').take(bw as usize));
+            for row in visible_rows as u16..bh {
+                window.write_str(by + row, bx, scratch)?;
+            }
         }
 
         Ok(())
@@ -532,14 +546,14 @@ impl Table {
         &self,
         window: &mut dyn Window,
         y: u16,
-        content_x: u16,
-        content_w: u16,
         cell_text: F,
         is_header: bool,
+        scratch: &mut String,
     ) -> Result<()>
     where
         F: Fn(usize) -> Option<&'a str>,
     {
+        let (content_x, _, content_w, _) = self.content_area();
         if content_w == 0 {
             return Ok(());
         }
@@ -558,8 +572,9 @@ impl Table {
 
         // Clear the visible row in the base row color, then draw only columns intersecting
         // the horizontal viewport. This avoids building the full logical table row.
-        let clear_line = " ".repeat(content_w as usize);
-        window.write_str_colored(y, content_x, &clear_line, base_color)?;
+        scratch.clear();
+        scratch.extend(std::iter::repeat(' ').take(content_w as usize));
+        window.write_str_colored(y, content_x, scratch, base_color)?;
 
         let visible_start = self.scroll_x;
         let visible_end = self.scroll_x.saturating_add(content_w);
@@ -576,24 +591,13 @@ impl Table {
                     col.alignment
                 };
 
-                let clipped = clip_to_cells_ellipsis(raw, col.width, TabPolicy::SingleCell);
-                let cell = align_to_width(&clipped, col.width, align);
-                let start_skip = visible_start.saturating_sub(col_start);
-                let draw_x = content_x + col_start.saturating_sub(visible_start);
-                let draw_w = col_end
-                    .min(visible_end)
-                    .saturating_sub(visible_start.max(col_start));
-
-                let visible_cell = if start_skip == 0 {
-                    clip_to_cells_cow(&cell, draw_w, TabPolicy::SingleCell)
-                } else {
-                    let shifted = drop_leading_cells(&cell, start_skip);
-                    std::borrow::Cow::Owned(
-                        clip_to_cells_cow(&shifted, draw_w, TabPolicy::SingleCell).into_owned(),
-                    )
-                };
-
-                window.write_str_colored(y, draw_x, &visible_cell, base_color)?;
+                let clipped = clip_to_cells_ellipsis_cow(raw, col.width, TabPolicy::SingleCell);
+                align_to_width(scratch, &clipped, col.width, align);
+                if let Some((offset, visible_cell)) =
+                    clip_view_text(scratch, col_start, visible_start, content_w)
+                {
+                    window.write_str_colored(y, content_x + offset, &visible_cell, base_color)?;
+                }
             }
 
             if self.show_column_separators && i + 1 < self.columns.len() {
@@ -624,11 +628,12 @@ impl Widget for Table {
         }
 
         // Outer frame
-        self.draw_border(window)?;
+        let mut scratch = String::new();
+        self.draw_border(window, &mut scratch)?;
 
         // Header + body within content area
-        self.draw_header(window)?;
-        self.draw_body(window)?;
+        self.draw_header(window, &mut scratch)?;
+        self.draw_body(window, &mut scratch)?;
 
         Ok(())
     }
@@ -644,15 +649,17 @@ impl Widget for Table {
 
 // ---- Helpers ----
 
-fn align_to_width(s: &str, width: u16, align: Alignment) -> String {
+fn align_to_width(out: &mut String, s: &str, width: u16, align: Alignment) {
+    out.clear();
     // `s` is expected to already be <= width (cell-based).
     let text_w = crate::text::cell_width(s, TabPolicy::SingleCell) as u16;
     if text_w >= width {
-        return s.to_string();
+        out.push_str(s);
+        return;
     }
 
     let pad = width - text_w;
-    let mut out = String::with_capacity(s.len() + pad as usize);
+    out.reserve(s.len() + pad as usize);
     match align {
         Alignment::Left => {
             out.push_str(s);
@@ -670,56 +677,30 @@ fn align_to_width(s: &str, width: u16, align: Alignment) -> String {
             out.extend(std::iter::repeat(' ').take(right as usize));
         }
     };
-    out
-}
-/// Drop `cells` leading terminal cells from a string, using `TabPolicy::SingleCell`.
-///
-/// This is used to implement horizontal scrolling.
-fn drop_leading_cells(s: &str, cells: u16) -> String {
-    if cells == 0 {
-        return s.to_string();
-    }
-
-    let mut acc: u16 = 0;
-    let mut start_char = 0usize;
-
-    for (i, ch) in s.chars().enumerate() {
-        let w = crate::text::cell_width_char(ch);
-        if w == 0 {
-            continue;
-        }
-
-        if acc.saturating_add(w) > cells {
-            start_char = i;
-            break;
-        }
-
-        acc = acc.saturating_add(w);
-        start_char = i + 1;
-    }
-
-    s.chars().skip(start_char).collect::<String>()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{align_to_width, drop_leading_cells};
+    use super::align_to_width;
     use crate::Alignment;
 
     #[test]
     fn alignment_pads_only_after_clipping() {
-        assert_eq!(align_to_width("ab", 5, Alignment::Left), "ab   ");
-        assert_eq!(align_to_width("ab", 5, Alignment::Right), "   ab");
-        assert_eq!(align_to_width("ab", 5, Alignment::Center), " ab  ");
+        let mut output = String::new();
+        for (alignment, expected) in [
+            (Alignment::Left, "ab   "),
+            (Alignment::Right, "   ab"),
+            (Alignment::Center, " ab  "),
+        ] {
+            align_to_width(&mut output, "ab", 5, alignment);
+            assert_eq!(output, expected);
+        }
     }
 
     #[test]
     fn alignment_leaves_full_width_text_unchanged() {
-        assert_eq!(align_to_width("abcde", 5, Alignment::Right), "abcde");
-    }
-
-    #[test]
-    fn dropping_leading_cells_keeps_remaining_text() {
-        assert_eq!(drop_leading_cells("abcdef", 2), "cdef");
+        let mut output = String::from("stale text");
+        align_to_width(&mut output, "abcde", 5, Alignment::Right);
+        assert_eq!(output, "abcde");
     }
 }

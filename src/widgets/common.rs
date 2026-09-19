@@ -475,7 +475,7 @@ pub struct WindowView<'a> {
     pub height: u16,
 }
 
-fn clip_view_text<'a>(
+pub(super) fn clip_view_text<'a>(
     s: &'a str,
     x: u16,
     scroll_x: u16,

@@ -143,13 +143,21 @@ pub fn clip_to_cells_into(out: &mut String, s: &str, max_cells: u16, tab_policy:
 ///
 /// This is useful for status bars where you want to indicate truncation.
 pub fn clip_to_cells_ellipsis(s: &str, max_cells: u16, tab_policy: TabPolicy) -> String {
+    clip_to_cells_ellipsis_cow(s, max_cells, tab_policy).into_owned()
+}
+
+pub(crate) fn clip_to_cells_ellipsis_cow(
+    s: &str,
+    max_cells: u16,
+    tab_policy: TabPolicy,
+) -> Cow<'_, str> {
     if max_cells == 0 {
-        return String::new();
+        return Cow::Borrowed("");
     }
 
     // Fast path: fits.
     if cell_width(s, tab_policy) <= max_cells {
-        return s.to_string();
+        return Cow::Borrowed(s);
     }
 
     // Prefer ellipsis if it fits.
@@ -159,15 +167,15 @@ pub fn clip_to_cells_ellipsis(s: &str, max_cells: u16, tab_policy: TabPolicy) ->
     if ell_w > 0 && ell_w < max_cells {
         let mut clipped = clip_to_cells(s, max_cells.saturating_sub(ell_w), tab_policy);
         clipped.push(ell);
-        return clipped;
+        return Cow::Owned(clipped);
     }
 
     // Fallback to a single '.' if we can.
     if max_cells >= 1 {
-        return ".".to_string();
+        return Cow::Borrowed(".");
     }
 
-    String::new()
+    Cow::Borrowed("")
 }
 
 /// Pads or truncates `s` to exactly `target_cells` cells.
