@@ -1018,9 +1018,10 @@ impl TerminalWindow {
             prev_visible
         };
         let cursor_position_changed = desired.visible
-            && (prev
-                .map(|p| p.x != desired.x || p.y != desired.y)
-                .unwrap_or(true)
+            && (!prev_visible
+                || prev
+                    .map(|p| p.x != desired.x || p.y != desired.y)
+                    .unwrap_or(true)
                 || hid_cursor_for_render);
 
         if change_count == 0 && !cursor_visibility_changed && !cursor_position_changed {
