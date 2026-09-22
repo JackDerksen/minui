@@ -316,7 +316,7 @@ impl MouseHandler {
     /// use minui::input::MouseHandler;
     ///
     /// let mut mouse = MouseHandler::new();
-    /// mouse.set_movement_tracking(false); // Only track clicks and scrolls
+    /// mouse.set_movement_tracking(false); // Suppress hover movement; drags, releases, clicks, and scrolls remain tracked.
     /// ```
     pub fn set_movement_tracking(&mut self, enabled: bool) {
         self.track_movement = enabled;
