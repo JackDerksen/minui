@@ -475,7 +475,7 @@ pub struct WindowView<'a> {
     pub height: u16,
 }
 
-fn clip_view_text<'a>(
+pub(super) fn clip_view_text<'a>(
     s: &'a str,
     x: u16,
     scroll_x: u16,
@@ -662,7 +662,7 @@ impl<'a> Window for WindowView<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::WindowView;
+    use super::{CursorSpec, WindowView};
     use crate::{Color, ColorPair, ColoredSpan, Result, Window};
 
     #[derive(Debug, PartialEq)]
@@ -676,6 +676,7 @@ mod tests {
     #[derive(Default)]
     struct CaptureWindow {
         writes: Vec<Write>,
+        cursor: Option<CursorSpec>,
     }
 
     impl Window for CaptureWindow {
@@ -701,6 +702,10 @@ mod tests {
 
         fn flush(&mut self) -> Result<()> {
             Ok(())
+        }
+
+        fn request_cursor(&mut self, cursor: CursorSpec) {
+            self.cursor = Some(cursor);
         }
 
         fn set_cursor_position(&mut self, _x: u16, _y: u16) -> Result<()> {
@@ -730,6 +735,74 @@ mod tests {
 
     fn colors() -> ColorPair {
         ColorPair::new(Color::White, Color::Black)
+    }
+
+    #[test]
+    fn text_input_draws_complete_graphemes_and_scrolls_long_lines() {
+        use crate::widgets::{TextInput, TextInputState};
+
+        let selected = ColorPair::new(Color::Black, Color::Green);
+        let cursor_color = ColorPair::new(Color::Black, Color::Red);
+        let input = TextInput::new()
+            .with_position(10, 2)
+            .with_width(6)
+            .with_text_color(colors())
+            .with_selection_color(selected)
+            .with_cursor_cell_color(cursor_color);
+        let mut state = TextInputState::new();
+        state.set_text("e\u{301}🧑‍💻z");
+        state.set_focused(true);
+        state.move_home(false);
+        state.move_right(false);
+        state.move_right(true); // Select just the accent: highlight its whole grapheme.
+        let mut window = CaptureWindow::default();
+        input.draw(&mut window, &mut state).unwrap();
+        let writes: Vec<_> = window
+            .writes
+            .iter()
+            .map(|write| (write.x, write.text.as_str(), write.colors))
+            .collect();
+        assert_eq!(
+            writes,
+            [
+                (10, "      ", None),
+                (10, "e\u{301}", Some(selected)),
+                (11, "🧑‍💻z", Some(colors())),
+                (11, "🧑‍💻", Some(cursor_color)),
+            ]
+        );
+        assert_eq!(
+            window.cursor,
+            Some(CursorSpec {
+                x: 11,
+                y: 2,
+                visible: true
+            })
+        );
+
+        for text in ["🧑‍💻xy".to_owned(), format!("{}🧑‍💻xy", "a".repeat(70_000))] {
+            state.set_text(text);
+            window.writes.clear();
+            TextInput::new()
+                .with_width(5)
+                .draw(&mut window, &mut state)
+                .unwrap();
+            assert_eq!(window.writes[1].text, " xy");
+            assert_eq!(
+                window.cursor,
+                Some(CursorSpec {
+                    x: 3,
+                    y: 0,
+                    visible: true
+                })
+            );
+            state.click_set_cursor(2);
+            assert!(
+                state.text()
+                    [..crate::text::byte_index_for_char_index(state.text(), state.cursor())]
+                    .ends_with('x')
+            );
+        }
     }
 
     #[test]

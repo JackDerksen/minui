@@ -12,7 +12,7 @@
 //! - Keyboard and mouse input handling
 //! - Automatic terminal state restoration
 //! - Best-effort terminal capability detection (color downgrades/fallbacks)
-//! - Uses a single, persistent stdout handle to avoid output interleaving/flicker
+//! - Locks stdout once per rendered frame to prevent interleaved frame output
 //! - Deferred cursor requests to prevent cursor flicker across widgets
 //!
 //! ## Basic Usage
@@ -62,13 +62,17 @@ use std::time::Duration;
 #[derive(Debug, Default)]
 struct TerminalSession {
     active: bool,
+    mouse_movement: bool,
 }
 
 impl TerminalSession {
     fn enter(out: &mut Stdout) -> Result<Self> {
         enable_raw_mode()?;
 
-        let mut session = Self { active: true };
+        let mut session = Self {
+            active: true,
+            mouse_movement: true,
+        };
         if let Err(err) = Self::write_enter_commands(out) {
             session.restore(out);
             return Err(err);
@@ -88,16 +92,12 @@ impl TerminalSession {
             EnableBracketedPaste
         )?;
 
-        // Request layout-specific shifted characters for keys sent as escape codes.
-        // Leave ordinary text enabled; Crossterm cannot decode associated text when
-        // REPORT_ALL_KEYS_AS_ESCAPE_CODES suppresses it.
+        // Keep Shift explicit: Crossterm 0.29 consumes it when decoding alternate keys.
+        // Ordinary text stays enabled so the terminal resolves layout and Caps Lock.
         #[cfg(not(windows))]
         execute!(
             out,
-            PushKeyboardEnhancementFlags(
-                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
-            )
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         )?;
 
         Ok(())
@@ -118,6 +118,27 @@ impl TerminalSession {
             cursor::Show
         )?;
 
+        Ok(())
+    }
+
+    fn sync_mouse_movement(&mut self, out: &mut impl Write, enabled: bool) -> Result<()> {
+        if self.mouse_movement == enabled {
+            return Ok(());
+        }
+        // Crossterm uses native console input on Windows. Keep its capture mode
+        // there and let MouseHandler filter movement events.
+        #[cfg(not(windows))]
+        {
+            out.write_all(if enabled {
+                b"\x1b[?1002l\x1b[?1003h"
+            } else {
+                b"\x1b[?1003l\x1b[?1002h"
+            })?;
+            out.flush()?;
+        }
+        #[cfg(windows)]
+        let _ = out;
+        self.mouse_movement = enabled;
         Ok(())
     }
 
@@ -462,8 +483,8 @@ pub struct TerminalWindow {
 
     /// Persistent stdout handle used for all terminal output.
     ///
-    /// Keeping a single handle avoids interleaving/flicker caused by repeatedly creating
-    /// new stdout handles and issuing `execute!` calls on them.
+    /// `flush` locks this handle for the frame so command fragments do not each acquire
+    /// the shared stdout lock.
     out: Stdout,
     render_text: String,
     session: TerminalSession,
@@ -555,6 +576,12 @@ impl TerminalWindow {
             return;
         }
 
+        let _ = self.apply_resize(width, height);
+    }
+
+    // App calls this once per input batch, even if resizing returned to the
+    // original dimensions: the terminal may have discarded content meanwhile.
+    pub(crate) fn apply_resize(&mut self, width: u16, height: u16) -> Result<()> {
         self.width = width;
         self.height = height;
         self.buffer = Buffer::new(width, height);
@@ -562,11 +589,21 @@ impl TerminalWindow {
         // Force a real terminal clear so content outside the new buffer bounds is removed.
         // This is especially important on shrink where previous frames may have drawn
         // beyond the new visible area.
-        let _ = execute!(
+        execute!(
             self.out,
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0)
-        );
+        )?;
+        // Preserve the requested visibility/position, but force its restoration
+        // after the clear moved the physical cursor to the origin.
+        if self.pending_cursor.is_none() {
+            self.pending_cursor = self.last_cursor;
+        }
+        if let Some(cursor) = &mut self.last_cursor {
+            cursor.x = 0;
+            cursor.y = 0;
+        }
+        Ok(())
     }
 
     /// Immediately clears the entire terminal screen.
@@ -682,7 +719,13 @@ impl TerminalWindow {
     /// ```
     pub fn wait_for_input(&mut self) -> Result<Event> {
         loop {
-            if let Some(event) = self.decode_input_event(event::read()?) {
+            let input = self
+                .read_terminal_event(None)?
+                .expect("blocking read returns an event");
+            if let Some(event) = self.decode_input_event(input) {
+                if let Event::Resize { width, height } = event {
+                    self.handle_resize(width, height);
+                }
                 return Ok(event);
             }
         }
@@ -693,25 +736,39 @@ impl TerminalWindow {
     /// Unlike [`TerminalWindow::get_input_timeout`], a timeout is represented as `None`,
     /// keeping it distinct from an unsupported terminal event.
     pub fn poll_input_timeout(&mut self, timeout: Duration) -> Result<Option<Event>> {
-        if !event::poll(timeout)? {
-            return Ok(None);
+        let input = self.read_terminal_event(Some(timeout))?;
+        let decoded = input.and_then(|input| self.decode_input_event(input));
+        if let Some(Event::Resize { width, height }) = decoded {
+            self.handle_resize(width, height);
         }
-
-        Ok(self.decode_input_event(event::read()?))
+        Ok(decoded)
     }
 
-    fn decode_input_event(&mut self, input: CrosstermEvent) -> Option<Event> {
+    // Reading separately from decoding lets App drain ignored events and
+    // coalesce resize notifications before allocating or clearing anything.
+    pub(crate) fn read_terminal_event(
+        &mut self,
+        timeout: Option<Duration>,
+    ) -> Result<Option<CrosstermEvent>> {
+        self.session
+            .sync_mouse_movement(&mut self.out, self.mouse.is_movement_tracking_enabled())?;
+        if let Some(timeout) = timeout {
+            if !event::poll(timeout)? {
+                return Ok(None);
+            }
+        }
+        Ok(Some(event::read()?))
+    }
+
+    pub(crate) fn decode_input_event(&mut self, input: CrosstermEvent) -> Option<Event> {
         match input {
             CrosstermEvent::Key(key_event) => Some(self.keyboard.process_key_event(key_event)),
             CrosstermEvent::Mouse(mouse_event) => Some(self.mouse.process_mouse_event(mouse_event)),
             CrosstermEvent::Paste(text) => Some(Event::Paste(text)),
-            CrosstermEvent::Resize(cols, rows) => {
-                self.handle_resize(cols, rows);
-                Some(Event::Resize {
-                    width: cols,
-                    height: rows,
-                })
-            }
+            CrosstermEvent::Resize(cols, rows) => Some(Event::Resize {
+                width: cols,
+                height: rows,
+            }),
             _ => None,
         }
     }
@@ -817,6 +874,10 @@ impl TerminalWindow {
     }
 
     /// Gets a mutable reference to the mouse handler for configuration changes.
+    ///
+    /// Movement-tracking changes are applied before the next input read. On Unix,
+    /// disabling movement selects terminal click-and-drag reporting, reducing
+    /// incoming hover events. Windows retains native capture and filters in Rust.
     ///
     /// This provides mutable access to the underlying mouse handler for
     /// configuration modifications.
@@ -957,9 +1018,10 @@ impl TerminalWindow {
             prev_visible
         };
         let cursor_position_changed = desired.visible
-            && (prev
-                .map(|p| p.x != desired.x || p.y != desired.y)
-                .unwrap_or(true)
+            && (!prev_visible
+                || prev
+                    .map(|p| p.x != desired.x || p.y != desired.y)
+                    .unwrap_or(true)
                 || hid_cursor_for_render);
 
         if change_count == 0 && !cursor_visibility_changed && !cursor_position_changed {
@@ -968,14 +1030,16 @@ impl TerminalWindow {
             return Ok(());
         }
 
+        let mut output = self.out.lock();
+
         if hid_cursor_for_render {
-            queue!(self.out, cursor::Hide)?;
+            queue!(output, cursor::Hide)?;
         }
 
         for change_idx in 0..change_count {
             let change = self.buffer.change(change_idx);
             if cursor_after_write != Some((change.x, change.y)) {
-                queue!(self.out, cursor::MoveTo(change.x, change.y))?;
+                queue!(output, cursor::MoveTo(change.x, change.y))?;
             }
 
             // Downgrade requested colors before comparing with the last applied terminal color.
@@ -987,7 +1051,7 @@ impl TerminalWindow {
                 if let Some(colors) = applied_colors {
                     // Set the foreground and background colors
                     queue!(
-                        self.out,
+                        output,
                         SetForegroundColor(colors.fg.to_crossterm()),
                         SetBackgroundColor(colors.bg.to_crossterm())
                     )?;
@@ -995,28 +1059,28 @@ impl TerminalWindow {
                     last_colors = Some(colors);
                 } else {
                     // If there are no colors, reset to the default.
-                    queue!(self.out, style::ResetColor)?;
+                    queue!(output, style::ResetColor)?;
                     last_colors = None;
                 }
             }
 
             self.buffer.change_text(change, &mut self.render_text);
-            self.out.write_all(self.render_text.as_bytes())?;
+            output.write_all(self.render_text.as_bytes())?;
 
             cursor_after_write = Some((change.x.saturating_add(change.len as u16), change.y));
         }
 
         // Reset the color at the end of the flush only if styled output is still active.
         if last_colors.is_some() {
-            queue!(self.out, style::ResetColor)?;
+            queue!(output, style::ResetColor)?;
         }
 
         if desired.visible {
             if cursor_visibility_changed {
-                queue!(self.out, cursor::Show)?;
+                queue!(output, cursor::Show)?;
             }
         } else if prev_visible {
-            queue!(self.out, cursor::Hide)?;
+            queue!(output, cursor::Hide)?;
         }
 
         // Move cursor to the desired position if it should be visible.
@@ -1026,12 +1090,13 @@ impl TerminalWindow {
         // character position. Without this, the cursor would appear at the end of the last
         // rendered text instead of the requested position.
         if cursor_position_changed {
-            queue!(self.out, cursor::MoveTo(desired.x, desired.y))?;
+            queue!(output, cursor::MoveTo(desired.x, desired.y))?;
         }
 
         self.last_cursor = Some(desired);
 
-        self.out.flush()?;
+        output.flush()?;
+        drop(output);
         self.buffer.commit_changes();
         Ok(())
     }
@@ -1195,9 +1260,69 @@ impl Drop for TerminalWindow {
     }
 }
 
-#[cfg(test)]
+// These tests capture ANSI commands. Windows mouse capture uses native console
+// APIs instead, whose effects cannot be checked through the captured writer.
+#[cfg(all(test, not(windows)))]
 mod tests {
     use super::TerminalSession;
+
+    #[test]
+    fn movement_tracking_switches_terminal_modes_without_disabling_drag() {
+        use crate::{Event, MouseButton, MouseHandler};
+        use crossterm::event::{KeyModifiers, MouseButton as Button, MouseEvent, MouseEventKind};
+
+        let mut session = TerminalSession {
+            active: true,
+            mouse_movement: true,
+        };
+        let mut output = Vec::new();
+        session.sync_mouse_movement(&mut output, false).unwrap();
+        session.sync_mouse_movement(&mut output, false).unwrap();
+        assert_eq!(output, b"\x1b[?1003l\x1b[?1002h");
+        session.sync_mouse_movement(&mut output, true).unwrap();
+        assert!(output.ends_with(b"\x1b[?1002l\x1b[?1003h"));
+
+        let mut mouse = MouseHandler::new();
+        mouse.set_movement_tracking(false);
+        for (kind, expected) in [
+            (MouseEventKind::Moved, Event::Unknown),
+            (
+                MouseEventKind::Down(Button::Left),
+                Event::MouseClick {
+                    x: 2,
+                    y: 3,
+                    button: MouseButton::Left,
+                },
+            ),
+            (
+                MouseEventKind::Drag(Button::Left),
+                Event::MouseDrag {
+                    x: 2,
+                    y: 3,
+                    button: MouseButton::Left,
+                },
+            ),
+            (
+                MouseEventKind::Up(Button::Left),
+                Event::MouseRelease {
+                    x: 2,
+                    y: 3,
+                    button: MouseButton::Left,
+                },
+            ),
+            (MouseEventKind::ScrollDown, Event::MouseScroll { delta: 1 }),
+        ] {
+            assert_eq!(
+                mouse.process_mouse_event(MouseEvent {
+                    kind,
+                    column: 2,
+                    row: 3,
+                    modifiers: KeyModifiers::NONE
+                }),
+                expected
+            );
+        }
+    }
 
     #[test]
     fn shutdown_restores_terminal_modes() {
@@ -1207,11 +1332,8 @@ mod tests {
 
         let output = String::from_utf8(bytes).unwrap();
 
-        #[cfg(not(windows))]
-        {
-            assert!(output.contains("\u{1b}[>5u"));
-            assert!(output.contains("\u{1b}[<1u"));
-        }
+        assert!(output.contains("\u{1b}[>1u"));
+        assert!(output.contains("\u{1b}[<1u"));
 
         assert!(output.contains("\u{1b}[?1049h"));
         assert!(output.contains("\u{1b}[?1049l"));

@@ -13,8 +13,8 @@
 //!
 //! ## Notes / limitations
 //! - Unicode handling is pragmatic: cursor/selection operate on `char` boundaries.
-//! - Terminal cell width for rendering uses `minui::text` helpers (so wide chars are less likely
-//!   to corrupt layout), but mapping from char-index to cell columns is still approximate.
+//! - Drawing preserves whole graphemes. A selection touching any part of a grapheme
+//!   highlights the whole grapheme; a caret inside one displays at its start.
 //! - Shift+arrow support uses modifier-aware events when available. For compatibility, the widget
 //!   also normalizes `Event::KeyWithModifiers` via `Event::as_legacy_key_event()`.
 //!
@@ -49,13 +49,18 @@
 //! ```
 
 use crate::input::KeybindAction;
-use crate::text::{
-    TabPolicy, byte_index_for_char_index, cell_column_for_char_index, cell_width_char,
-    char_index_from_cell_column, clip_to_cells,
-};
+use crate::text::{TabPolicy, byte_index_for_char_index, clip_to_cells_cow, grapheme_width};
 use crate::widgets::WidgetArea;
 use crate::window::CursorSpec;
 use crate::{Color, ColorPair, Event, InteractionCache, InteractionId, Result, Window};
+use unicode_segmentation::UnicodeSegmentation;
+
+#[derive(Debug, Clone, Copy, Default)]
+struct TextPosition {
+    byte: usize,
+    character: usize,
+    column: usize,
+}
 
 /// Persistent state for a [`TextInput`].
 ///
@@ -66,8 +71,13 @@ pub struct TextInputState {
     text: String,
     cursor: usize,                   // caret index in chars (0..=len_chars)
     selection_anchor: Option<usize>, // char index where selection started
-    view_col: u16,                   // horizontal scroll offset in terminal cells
+    view_col: usize,                 // horizontal scroll offset in terminal cells
     focused: bool,
+
+    // Grapheme-boundary checkpoints roughly every 64 characters. Edits rebuild
+    // only the suffix from the preceding checkpoint, including the join boundary.
+    positions: Vec<TextPosition>,
+    end: TextPosition,
 
     /// Last-known layout (absolute terminal coordinates), captured during `TextInput::draw`.
     ///
@@ -95,6 +105,8 @@ impl TextInputState {
             selection_anchor: None,
             view_col: 0,
             focused: false,
+            positions: Vec::new(),
+            end: TextPosition::default(),
             last_x: 0,
             last_y: 0,
             last_w: 0,
@@ -109,6 +121,7 @@ impl TextInputState {
     /// Sets the text, resetting cursor/selection.
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = text.into();
+        self.reindex_from(0);
         self.cursor = self.len_chars();
         self.selection_anchor = None;
         self.view_col = 0;
@@ -117,6 +130,8 @@ impl TextInputState {
     /// Clears all text.
     pub fn clear(&mut self) {
         self.text.clear();
+        self.positions.clear();
+        self.end = TextPosition::default();
         self.cursor = 0;
         self.selection_anchor = None;
         self.view_col = 0;
@@ -388,7 +403,9 @@ impl TextInputState {
     /// `x` is absolute terminal column.
     pub fn click_set_cursor(&mut self, x: u16) {
         let local_x = x.saturating_sub(self.last_x);
-        let idx = self.char_index_from_cell_column(local_x.saturating_add(self.view_col));
+        let idx = self
+            .position_at_column(self.view_col + usize::from(local_x))
+            .character;
         self.cursor = idx;
         self.selection_anchor = None;
     }
@@ -412,7 +429,9 @@ impl TextInputState {
         };
 
         let local_x = clamped_x.saturating_sub(self.last_x);
-        let idx = self.char_index_from_cell_column(local_x.saturating_add(self.view_col));
+        let idx = self
+            .position_at_column(self.view_col + usize::from(local_x))
+            .character;
 
         if self.selection_anchor.is_none() {
             self.selection_anchor = Some(self.cursor);
@@ -421,13 +440,11 @@ impl TextInputState {
     }
 
     /// Updates scroll offset so the caret is visible within `field_cells`.
-    fn ensure_cursor_visible(&mut self, field_cells: u16) {
+    fn ensure_cursor_visible(&mut self, field_cells: u16, caret_col: usize) {
         if field_cells == 0 {
             self.view_col = 0;
             return;
         }
-
-        let caret_col = self.cell_column_for_char_index(self.cursor);
 
         // Left clamp: if caret is left of viewport, scroll left.
         if caret_col < self.view_col {
@@ -436,9 +453,9 @@ impl TextInputState {
         }
 
         // Right clamp: if caret is past viewport end, scroll right.
-        let viewport_end = self.view_col.saturating_add(field_cells.saturating_sub(1));
+        let viewport_end = self.view_col + usize::from(field_cells.saturating_sub(1));
         if caret_col > viewport_end {
-            self.view_col = caret_col.saturating_sub(field_cells.saturating_sub(1));
+            self.view_col = caret_col.saturating_sub(usize::from(field_cells.saturating_sub(1)));
         }
     }
 
@@ -453,12 +470,13 @@ impl TextInputState {
     }
 
     fn len_chars(&self) -> usize {
-        self.text.chars().count()
+        self.end.character
     }
 
     fn insert_str_at_cursor(&mut self, s: &str) {
         let byte_idx = self.byte_index_for_char_index(self.cursor);
         self.text.insert_str(byte_idx, s);
+        self.reindex_from(self.cursor);
         self.cursor += s.chars().count();
     }
 
@@ -469,6 +487,7 @@ impl TextInputState {
         let a = self.byte_index_for_char_index(start);
         let b = self.byte_index_for_char_index(end);
         self.text.replace_range(a..b, "");
+        self.reindex_from(start);
     }
 
     fn slice_chars(&self, start: usize, end: usize) -> String {
@@ -481,19 +500,74 @@ impl TextInputState {
     }
 
     fn byte_index_for_char_index(&self, char_idx: usize) -> usize {
-        byte_index_for_char_index(&self.text, char_idx)
+        self.position_at_character(char_idx).byte
     }
 
-    fn cell_column_for_char_index(&self, char_idx: usize) -> u16 {
-        cell_column_for_char_index(&self.text, char_idx)
+    fn reindex_from(&mut self, character: usize) {
+        // Start strictly before the edit: inserted/deleted text can merge with
+        // the preceding grapheme, even when the edit is at a checkpoint.
+        let checkpoint = self
+            .positions
+            .partition_point(|position| position.character < character)
+            .saturating_sub(1);
+        let mut position = self.positions.get(checkpoint).copied().unwrap_or_default();
+        self.positions.truncate(checkpoint);
+        let mut next_checkpoint = position.character;
+        for grapheme in self.text[position.byte..].graphemes(true) {
+            if position.character >= next_checkpoint {
+                self.positions.push(position);
+                next_checkpoint = position.character + 64;
+            }
+            position.byte += grapheme.len();
+            position.character += grapheme.chars().count();
+            position.column += usize::from(grapheme_width(grapheme, TabPolicy::SingleCell));
+        }
+        self.end = position;
     }
 
-    /// Best-effort mapping from cell column to char index.
-    ///
-    /// This walks the string accumulating cell widths. If the target column lands "inside"
-    /// a wide char, we place the caret before that char.
-    fn char_index_from_cell_column(&self, col: u16) -> usize {
-        char_index_from_cell_column(&self.text, col)
+    fn position_at_character(&self, character: usize) -> TextPosition {
+        if character >= self.end.character {
+            return self.end;
+        }
+        let checkpoint = self
+            .positions
+            .partition_point(|position| position.character <= character)
+            .saturating_sub(1);
+        let mut position = self.positions.get(checkpoint).copied().unwrap_or_default();
+        for grapheme in self.text[position.byte..].graphemes(true) {
+            let characters = grapheme.chars().count();
+            if position.character + characters > character {
+                position.byte +=
+                    byte_index_for_char_index(grapheme, character - position.character);
+                position.character = character;
+                break;
+            }
+            position.byte += grapheme.len();
+            position.character += characters;
+            position.column += usize::from(grapheme_width(grapheme, TabPolicy::SingleCell));
+        }
+        position
+    }
+
+    fn position_at_column(&self, column: usize) -> TextPosition {
+        if column >= self.end.column {
+            return self.end;
+        }
+        let checkpoint = self
+            .positions
+            .partition_point(|position| position.column <= column)
+            .saturating_sub(1);
+        let mut position = self.positions.get(checkpoint).copied().unwrap_or_default();
+        for grapheme in self.text[position.byte..].graphemes(true) {
+            let width = usize::from(grapheme_width(grapheme, TabPolicy::SingleCell));
+            if position.column + width > column {
+                break;
+            }
+            position.byte += grapheme.len();
+            position.character += grapheme.chars().count();
+            position.column += width;
+        }
+        position
     }
 }
 
@@ -599,12 +673,6 @@ impl TextInput {
     /// - caches geometry into the state for mouse helpers
     /// - updates horizontal scroll (`view_col`) to keep caret visible
     /// - places the real terminal cursor (recommended)
-    /// Draws the input at its configured position/width using `state`.
-    ///
-    /// This also:
-    /// - caches geometry into the state for mouse helpers
-    /// - updates horizontal scroll (`view_col`) to keep caret visible
-    /// - places the real terminal cursor (recommended)
     pub fn draw(&self, window: &mut dyn Window, state: &mut TextInputState) -> Result<()> {
         // Cache for mouse hit helpers.
         state.last_x = self.x;
@@ -642,12 +710,8 @@ impl TextInput {
         let has_text = !state.text.is_empty();
 
         // Apply horizontal scroll so caret stays visible.
-        state.ensure_cursor_visible(content_w.saturating_sub(1));
-
-        // Clip to visible region based on view_col + width.
-        // For first pass, we implement a simple "skip cells then take cells" using clipping twice.
-        let left_skip = state.view_col;
-        let visible = content_w;
+        let caret_col = state.position_at_character(state.cursor).column;
+        state.ensure_cursor_visible(content_w.saturating_sub(1), caret_col);
 
         // Render placeholder vs text colors.
         if has_text {
@@ -655,29 +719,8 @@ impl TextInput {
             self.draw_with_selection(window, state, content_x, content_w)?;
         } else {
             let display = self.placeholder.as_deref().unwrap_or_default();
-            let after_skip = if left_skip == 0 {
-                std::borrow::Cow::Borrowed(display)
-            } else {
-                // Clip to everything after skipping left cells:
-                // This is O(n) but fine for small input fields.
-                let mut acc: u16 = 0;
-                let mut start_char = 0usize;
-                for (i, ch) in display.chars().enumerate() {
-                    let w = cell_width_char(ch);
-                    if w == 0 {
-                        continue;
-                    }
-                    if acc.saturating_add(w) > left_skip {
-                        start_char = i;
-                        break;
-                    }
-                    acc = acc.saturating_add(w);
-                    start_char = i + 1;
-                }
-                std::borrow::Cow::Owned(display.chars().skip(start_char).collect::<String>())
-            };
-
-            let clipped = clip_to_cells(&after_skip, visible, TabPolicy::SingleCell);
+            // Empty input always has its caret and viewport at column zero.
+            let clipped = clip_to_cells_cow(display, content_w, TabPolicy::SingleCell);
             window.write_str_colored(self.y, content_x, &clipped, self.placeholder_color)?;
         }
 
@@ -687,10 +730,10 @@ impl TextInput {
         // When multiple inputs are drawn in a frame, only the focused one should request a visible
         // cursor. The terminal applies the last request at `end_frame()`, which avoids flicker.
         if state.focused {
-            let caret_col = state.cell_column_for_char_index(state.cursor);
             let caret_visible_col = caret_col.saturating_sub(state.view_col);
-            let caret_x =
-                content_x.saturating_add(caret_visible_col.min(content_w.saturating_sub(1)));
+            let caret_offset =
+                caret_visible_col.min(usize::from(content_w.saturating_sub(1))) as u16;
+            let caret_x = content_x.saturating_add(caret_offset);
 
             window.request_cursor(CursorSpec {
                 x: caret_x,
@@ -701,12 +744,17 @@ impl TextInput {
             // Optional: draw a cursor cell color if configured.
             // This is useful if you don't want to use the terminal cursor for some reason.
             if let Some(colors) = self.cursor_color {
-                // Draw a block cursor by re-drawing the character under cursor with background.
-                // We do NOT attempt to handle wide glyphs perfectly here.
-                let ch = self
-                    .char_at_cell_column(&state.text, caret_col)
-                    .unwrap_or(' ');
-                window.write_str_colored(self.y, caret_x, &ch.to_string(), colors)?;
+                let position = state.position_at_column(caret_col);
+                let grapheme = state.text[position.byte..]
+                    .graphemes(true)
+                    .next()
+                    .unwrap_or(" ");
+                let clipped = clip_to_cells_cow(
+                    grapheme,
+                    content_w.saturating_sub(caret_offset),
+                    TabPolicy::SingleCell,
+                );
+                window.write_str_colored(self.y, caret_x, &clipped, colors)?;
             }
         }
 
@@ -752,56 +800,34 @@ impl TextInput {
             return Ok(());
         }
 
-        let visible_cells = content_w;
         let view_start = state.view_col;
-        let view_end = state.view_col.saturating_add(visible_cells);
-
+        let view_end = view_start + usize::from(content_w);
         let selection = state.selection();
-
-        // Render by walking chars and deciding per-cell color.
-        // First pass: we render as a string with per-char coloring by individual writes.
-        // Not the most efficient, but acceptable for short input lines.
-        let mut abs_col: u16 = 0;
+        let mut position = state.position_at_column(view_start);
         let mut run = String::new();
         let mut run_start_x: u16 = content_x;
         let mut run_color: Option<ColorPair> = None;
 
-        for (i, ch) in state.text.chars().enumerate() {
-            let w = cell_width_char(ch);
-            if w == 0 {
-                continue;
-            }
-
-            // abs_col is the cell column within the full line.
-            let ch_start = abs_col;
-            let ch_end = abs_col.saturating_add(w);
-
-            // Skip if entirely left of viewport.
-            if ch_end <= view_start {
-                abs_col = ch_end;
-                continue;
-            }
-            // Stop if beyond viewport.
-            if ch_start >= view_end {
+        for grapheme in state.text[position.byte..].graphemes(true) {
+            if position.column >= view_end {
                 break;
             }
-
-            // Visible position in the field
-            let vis_x = ch_start.saturating_sub(view_start);
-            if vis_x >= visible_cells {
-                break;
+            let start = position;
+            let width = usize::from(grapheme_width(grapheme, TabPolicy::SingleCell));
+            position.character += grapheme.chars().count();
+            position.column += width;
+            if width == 0 {
+                continue;
             }
-
-            // Determine if this char is in selection range.
-            let in_sel = selection.map(|(a, b)| i >= a && i < b).unwrap_or(false);
-
-            let colors = if in_sel {
+            let selected = selection
+                .is_some_and(|(begin, end)| begin < position.character && end > start.character);
+            let colors = if selected {
                 self.selection_color
             } else {
                 self.text_color
             };
 
-            let draw_x = content_x + vis_x;
+            let draw_x = content_x + start.column.saturating_sub(view_start) as u16;
             if run_color != Some(colors) {
                 if let Some(color) = run_color {
                     window.write_str_colored(state.last_y, run_start_x, &run, color)?;
@@ -811,10 +837,12 @@ impl TextInput {
                 run_color = Some(colors);
             }
 
-            run.push(ch);
-
-            // Advance columns.
-            abs_col = ch_end;
+            if start.column < view_start || position.column > view_end || grapheme == "\t" {
+                let visible_width = position.column.min(view_end) - start.column.max(view_start);
+                run.extend(std::iter::repeat(' ').take(visible_width));
+            } else {
+                run.push_str(grapheme);
+            }
         }
 
         if let Some(color) = run_color {
@@ -823,23 +851,69 @@ impl TextInput {
 
         Ok(())
     }
+}
 
-    /// Attempts to find the char occupying the given absolute cell column within `s`.
-    ///
-    /// Best-effort: if the column lands inside a wide char, returns that char.
-    fn char_at_cell_column(&self, s: &str, col: u16) -> Option<char> {
-        let mut acc: u16 = 0;
-        for ch in s.chars() {
-            let w = cell_width_char(ch);
-            if w == 0 {
-                continue;
-            }
-            let next = acc.saturating_add(w);
-            if col < next {
-                return Some(ch);
-            }
-            acc = next;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_positions(state: &TextInputState) {
+        assert_eq!(state.len_chars(), state.text.chars().count());
+        for character in 0..=state.len_chars() + 1 {
+            let position = state.position_at_character(character);
+            assert_eq!(
+                position.byte,
+                byte_index_for_char_index(&state.text, character)
+            );
+            assert_eq!(
+                position.column,
+                usize::from(crate::text::cell_column_for_char_index(
+                    &state.text,
+                    character
+                )),
+            );
         }
-        None
+        for column in 0..=state.end.column + 1 {
+            let position = state.position_at_column(column);
+            assert_eq!(
+                position.character,
+                crate::text::char_index_from_cell_column(&state.text, column as u16),
+            );
+            assert_eq!(
+                position.byte,
+                byte_index_for_char_index(&state.text, position.character)
+            );
+        }
+    }
+
+    #[test]
+    fn input_positions_follow_edits_across_checkpoints_and_graphemes() {
+        for text in [
+            "a".repeat(200),
+            format!("{}e\u{301}🧑‍💻🇨🇦\t\r\n界", "a".repeat(63)).repeat(2),
+            "🇨🇦🇺🇸\u{301}\u{600}क्\u{200d}ष".repeat(20),
+        ] {
+            let mut original = TextInputState::new();
+            original.set_text(text);
+            assert_positions(&original);
+            for cursor in [0, 1, 63, 64, 65, original.len_chars()] {
+                let mut state = original.clone();
+                state.cursor = cursor;
+                state.insert_str("\u{301}🇨🧑‍💻");
+                assert_positions(&state);
+                state.backspace();
+                assert_positions(&state);
+                state.delete_forward();
+                assert_positions(&state);
+                state.move_left(true);
+                state.cut_selection();
+                assert_positions(&state);
+                state.select_all();
+                state.insert_str("replacement");
+                assert_positions(&state);
+                state.clear();
+                assert_positions(&state);
+            }
+        }
     }
 }

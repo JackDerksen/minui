@@ -125,6 +125,17 @@ pub struct FrameProfile {
     pub over_budget: bool,
 }
 
+/// Whether an update requires another draw or ends the application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpdateAction {
+    /// Keep running and redraw after this input batch.
+    Redraw,
+    /// Keep running without requesting a redraw.
+    SkipRedraw,
+    /// Stop the application immediately.
+    Exit,
+}
+
 /// Application runner that manages the main loop.
 ///
 /// Handles window setup, input polling, and timing so you can focus on your application logic.
@@ -206,7 +217,10 @@ impl<S> App<S> {
     ///
     /// - `update`: Called for each event. Return `false` to exit.
     /// - `draw`: Called to render the current state.
-    pub fn run<U, D>(&mut self, mut update: U, mut draw: D) -> Result<()>
+    ///
+    /// Use [`App::run_with_redraw`] to handle events without redrawing when the
+    /// displayed state has not changed.
+    pub fn run<U, D>(&mut self, mut update: U, draw: D) -> Result<()>
     where
         U: FnMut(&mut S, Event) -> bool, // Return bool to control running
         // Note: draw is responsible for flushing and cursor placement if desired.
@@ -216,6 +230,30 @@ impl<S> App<S> {
         // 3) flush
         // 4) set cursor position
         // 5) show cursor
+        D: FnMut(&mut S, &mut dyn Window) -> Result<()>,
+    {
+        self.run_with_redraw(
+            |state, event| {
+                if update(state, event) {
+                    UpdateAction::Redraw
+                } else {
+                    UpdateAction::Exit
+                }
+            },
+            draw,
+        )
+    }
+
+    /// Runs with explicit redraw decisions from the update callback.
+    ///
+    /// Return [`UpdateAction::SkipRedraw`] for events or ticks that leave the
+    /// display unchanged, such as mouse movement within the same hovered item.
+    /// Any `Redraw` in a batch requests one draw; a later `SkipRedraw` does not
+    /// cancel it. The initial frame and resize batches always request a draw.
+    /// Profiling hooks are called for rendered frames only.
+    pub fn run_with_redraw<U, D>(&mut self, mut update: U, mut draw: D) -> Result<()>
+    where
+        U: FnMut(&mut S, Event) -> UpdateAction,
         D: FnMut(&mut S, &mut dyn Window) -> Result<()>,
     {
         // Render once before blocking so event-driven applications appear immediately.
@@ -245,13 +283,9 @@ impl<S> App<S> {
             // Event-driven mode blocks indefinitely. Ticked mode blocks only until its deadline,
             // while still waking immediately for input.
             let input_poll_start = Instant::now();
-            let first_event = match next_tick {
-                Some(deadline) => {
-                    let timeout = deadline.saturating_duration_since(Instant::now());
-                    self.window.poll_input_timeout(timeout)?
-                }
-                None => Some(self.window.wait_for_input()?),
-            };
+            let timeout =
+                next_tick.map(|deadline| deadline.saturating_duration_since(Instant::now()));
+            let first_event = self.window.read_terminal_event(timeout)?;
             let mut input_poll_time = input_poll_start.elapsed();
 
             let frame_start = Instant::now();
@@ -260,12 +294,14 @@ impl<S> App<S> {
 
             if let Some(event) = first_event {
                 raw_events_read = 1;
-                push_coalesced_event(&mut pending_events, event);
+                if let Some(event) = self.window.decode_input_event(event) {
+                    push_coalesced_event(&mut pending_events, event);
+                }
             }
 
             while raw_events_read < MAX_EVENTS_PER_FRAME {
                 let poll_start = Instant::now();
-                let event = self.window.poll_input()?;
+                let event = self.window.read_terminal_event(Some(Duration::ZERO))?;
                 input_poll_time = input_poll_time.saturating_add(poll_start.elapsed());
 
                 let Some(event) = event else {
@@ -273,15 +309,28 @@ impl<S> App<S> {
                 };
 
                 raw_events_read += 1;
-                push_coalesced_event(&mut pending_events, event);
+                if let Some(event) = self.window.decode_input_event(event) {
+                    push_coalesced_event(&mut pending_events, event);
+                }
             }
 
+            let mut redraw = false;
+            if let Some((width, height)) = pending_events.iter().rev().find_map(|event| match event
+            {
+                Event::Resize { width, height } => Some((*width, *height)),
+                _ => None,
+            }) {
+                self.window.apply_resize(width, height)?;
+                redraw = true;
+            }
             let events_processed = pending_events.len();
             let mut update_time = Duration::ZERO;
             for event in pending_events.drain(..) {
                 let update_start = Instant::now();
-                if !update(&mut self.state, event) {
-                    return Ok(());
+                match update(&mut self.state, event) {
+                    UpdateAction::Exit => return Ok(()),
+                    UpdateAction::Redraw => redraw = true,
+                    UpdateAction::SkipRedraw => {}
                 }
                 update_time = update_time.saturating_add(update_start.elapsed());
             }
@@ -290,8 +339,10 @@ impl<S> App<S> {
             let tick_due = next_tick.is_some_and(|deadline| now >= deadline);
             if tick_due {
                 let update_start = Instant::now();
-                if !update(&mut self.state, Event::Frame) {
-                    return Ok(());
+                match update(&mut self.state, Event::Frame) {
+                    UpdateAction::Exit => return Ok(()),
+                    UpdateAction::Redraw => redraw = true,
+                    UpdateAction::SkipRedraw => {}
                 }
                 update_time = update_time.saturating_add(update_start.elapsed());
 
@@ -302,9 +353,7 @@ impl<S> App<S> {
                 next_tick = Some(advance_tick_deadline(deadline, interval, now));
             }
 
-            // A timeout may wake slightly before its deadline. In that case, wait again rather
-            // than drawing a frame with no input and no scheduled update.
-            if events_processed == 0 && !tick_due {
+            if !redraw {
                 continue;
             }
 
@@ -328,5 +377,63 @@ impl<S> App<S> {
                 });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::push_coalesced_event;
+    use crate::{Event, MouseButton};
+
+    #[test]
+    fn coalescing_preserves_input_boundaries_and_drag_events() {
+        let click = Event::MouseClick {
+            x: 4,
+            y: 5,
+            button: MouseButton::Left,
+        };
+        let drag = Event::MouseDrag {
+            x: 6,
+            y: 5,
+            button: MouseButton::Left,
+        };
+        let mut events = Vec::new();
+        for event in [
+            Event::Resize {
+                width: 90,
+                height: 30,
+            },
+            Event::Resize {
+                width: 100,
+                height: 40,
+            },
+            click.clone(),
+            Event::Resize {
+                width: 80,
+                height: 24,
+            },
+            Event::MouseMove { x: 1, y: 1 },
+            Event::Unknown,
+            Event::MouseMove { x: 2, y: 3 },
+            drag.clone(),
+        ] {
+            push_coalesced_event(&mut events, event);
+        }
+        assert_eq!(
+            events,
+            [
+                Event::Resize {
+                    width: 100,
+                    height: 40
+                },
+                click,
+                Event::Resize {
+                    width: 80,
+                    height: 24
+                },
+                Event::MouseMove { x: 2, y: 3 },
+                drag,
+            ]
+        );
     }
 }

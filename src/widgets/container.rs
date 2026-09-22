@@ -347,6 +347,13 @@ pub struct Container {
     /// Children are stored with per-child sizing so `Container` can resolve layout
     /// deterministically within a known content rect (phase-2 sizing work).
     children: Vec<ContainerChild>,
+
+    // Aggregates of insertion-time intrinsic sizes, independent of layout direction.
+    // Children are append-only and their cached intrinsic sizes do not change.
+    intrinsic_width_sum: u16,
+    intrinsic_height_sum: u16,
+    intrinsic_width_max: u16,
+    intrinsic_height_max: u16,
 }
 
 impl Container {
@@ -381,6 +388,10 @@ impl Container {
             title_alignment: TitleAlignment::Left,
             focused: false,
             children: Vec::new(),
+            intrinsic_width_sum: 0,
+            intrinsic_height_sum: 0,
+            intrinsic_width_max: 0,
+            intrinsic_height_max: 0,
         };
 
         this.recalculate_size();
@@ -553,24 +564,12 @@ impl Container {
     /// - Vertical layout: children fill width, auto height.
     /// - Horizontal layout: children auto width, fill height.
     pub fn add_child(mut self, child: impl Widget + 'static) -> Self {
-        let (w, h) = child.get_size();
-
         let (width, height) = match self.layout_direction {
             LayoutDirection::Vertical => (SizeSpec::fill(), SizeSpec::Auto),
             LayoutDirection::Horizontal => (SizeSpec::Auto, SizeSpec::fill()),
         };
 
-        self.children.push(ContainerChild {
-            widget: Box::new(child),
-            width,
-            height,
-            constraints: ChildConstraints::default(),
-            // Cache current intrinsic size so auto-size and simple layout can work without a full pass.
-            intrinsic_width: w,
-            intrinsic_height: h,
-        });
-
-        self.recalculate_size();
+        self.push_child(child, width, height);
         self
     }
 
@@ -592,8 +591,6 @@ impl Container {
     ///
     /// `weight = 0` is treated as 1.
     pub fn add_child_fill_weight(mut self, child: impl Widget + 'static, weight: u16) -> Self {
-        let (w, h) = child.get_size();
-
         let weight = weight.max(1);
 
         let (width, height) = match self.layout_direction {
@@ -601,16 +598,7 @@ impl Container {
             LayoutDirection::Horizontal => (SizeSpec::Fill { weight }, SizeSpec::fill()),
         };
 
-        self.children.push(ContainerChild {
-            widget: Box::new(child),
-            width,
-            height,
-            constraints: ChildConstraints::default(),
-            intrinsic_width: w,
-            intrinsic_height: h,
-        });
-
-        self.recalculate_size();
+        self.push_child(child, width, height);
         self
     }
 
@@ -642,24 +630,30 @@ impl Container {
     /// - Vertical layout: `width = Fill`
     /// - Horizontal layout: `height = Fill`
     pub fn add_child_fixed_main(mut self, child: impl Widget + 'static, main: u16) -> Self {
-        let (w, h) = child.get_size();
-
         let (width, height) = match self.layout_direction {
             LayoutDirection::Vertical => (SizeSpec::fill(), SizeSpec::Fixed(main)),
             LayoutDirection::Horizontal => (SizeSpec::Fixed(main), SizeSpec::fill()),
         };
 
+        self.push_child(child, width, height);
+        self
+    }
+
+    fn push_child(&mut self, child: impl Widget + 'static, width: SizeSpec, height: SizeSpec) {
+        let (intrinsic_width, intrinsic_height) = child.get_size();
         self.children.push(ContainerChild {
             widget: Box::new(child),
             width,
             height,
             constraints: ChildConstraints::default(),
-            intrinsic_width: w,
-            intrinsic_height: h,
+            intrinsic_width,
+            intrinsic_height,
         });
-
+        self.intrinsic_width_sum = self.intrinsic_width_sum.saturating_add(intrinsic_width);
+        self.intrinsic_height_sum = self.intrinsic_height_sum.saturating_add(intrinsic_height);
+        self.intrinsic_width_max = self.intrinsic_width_max.max(intrinsic_width);
+        self.intrinsic_height_max = self.intrinsic_height_max.max(intrinsic_height);
         self.recalculate_size();
-        self
     }
 
     /// Returns a read-only view of this container's children.
@@ -828,7 +822,7 @@ impl Container {
 
     /// Recomputes this container's size if `auto_size` is enabled.
     ///
-    /// This uses children intrinsic sizes and converts them into an "outer" size by adding
+    /// This uses cached intrinsic size aggregates and converts them into an "outer" size by adding
     /// padding and border thickness. Percent gaps are treated as 1 cell (minimum) during
     /// auto-size to avoid circular "size depends on gap depends on size" behavior.
     fn recalculate_size(&mut self) {
@@ -836,63 +830,18 @@ impl Container {
             return;
         }
 
-        if self.children.is_empty() {
-            // Still account for border + padding so empty containers can render a frame/title.
-            let outer_w = self
-                .border_left_width()
-                .saturating_add(self.padding.left)
-                .saturating_add(self.padding.right)
-                .saturating_add(self.border_right_width());
-            let outer_h = self
-                .border_top_height()
-                .saturating_add(self.padding.top)
-                .saturating_add(self.padding.bottom)
-                .saturating_add(self.border_bottom_height());
-
-            self.width = outer_w;
-            self.height = outer_h;
-            return;
-        }
-
-        let mut content_required_w: u16 = 0;
-        let mut content_required_h: u16 = 0;
-
-        // Percent gaps can't be resolved during auto-size. Treat them as 1 cell to keep spacing
-        // stable and avoid circular dependency.
-        let gap_pixels: u16 = match self.layout_direction {
-            LayoutDirection::Vertical => self.row_gap.or(self.gap),
-            LayoutDirection::Horizontal => self.column_gap.or(self.gap),
-        }
-        .map(|g| match g {
-            Gap::Pixels(n) => n,
-            Gap::Percent(_) => 1,
-        })
-        .unwrap_or(0);
-
-        match self.layout_direction {
-            LayoutDirection::Vertical => {
-                for (idx, child) in self.children.iter().enumerate() {
-                    let (cw, ch) = (child.intrinsic_width, child.intrinsic_height);
-                    content_required_w = content_required_w.max(cw);
-                    content_required_h = content_required_h.saturating_add(ch);
-
-                    if idx < self.children.len() - 1 {
-                        content_required_h = content_required_h.saturating_add(gap_pixels);
-                    }
-                }
-            }
-            LayoutDirection::Horizontal => {
-                for (idx, child) in self.children.iter().enumerate() {
-                    let (cw, ch) = (child.intrinsic_width, child.intrinsic_height);
-                    content_required_w = content_required_w.saturating_add(cw);
-                    content_required_h = content_required_h.max(ch);
-
-                    if idx < self.children.len() - 1 {
-                        content_required_w = content_required_w.saturating_add(gap_pixels);
-                    }
-                }
-            }
-        }
+        let gap_count = u16::try_from(self.children.len().saturating_sub(1)).unwrap_or(u16::MAX);
+        let gap_total = self.autosize_gap_pixels().saturating_mul(gap_count);
+        let (content_required_w, content_required_h) = match self.layout_direction {
+            LayoutDirection::Vertical => (
+                self.intrinsic_width_max,
+                self.intrinsic_height_sum.saturating_add(gap_total),
+            ),
+            LayoutDirection::Horizontal => (
+                self.intrinsic_width_sum.saturating_add(gap_total),
+                self.intrinsic_height_max,
+            ),
+        };
 
         let outer_w = content_required_w
             .saturating_add(self.border_left_width())
@@ -1535,5 +1484,51 @@ impl Widget for Container {
 
     fn get_position(&self) -> (u16, u16) {
         (self.x, self.y)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn autosize_preserves_intrinsic_sizes_across_builder_changes() {
+        let mut container = Container::vertical()
+            .with_padding(Padding::custom(1, 2, 3, 4))
+            .with_border_sides(vec![BorderSide::Left, BorderSide::Bottom])
+            .with_gap(Gap::Pixels(2));
+        assert_eq!(container.get_size(), (7, 5));
+
+        // Fixed/Fill sizing and constraints affect layout, not intrinsic auto-sizing.
+        container = container
+            .add_child(Container::new().with_position_and_size(0, 0, 3, 2))
+            .add_child_fill_weight(Container::new().with_position_and_size(0, 0, 5, 4), 0)
+            .add_child_fixed_main(Container::new().with_position_and_size(0, 0, 2, 3), 20)
+            .last_child_width_constraints(8, Some(10))
+            .last_child_height_constraints(6, Some(8));
+        assert_eq!(container.get_size(), (12, 18));
+
+        container = container
+            .with_row_gap(Gap::Percent(75))
+            .with_column_gap(Gap::Pixels(4));
+        assert_eq!(container.get_size(), (12, 16));
+        container = container.with_layout_direction(LayoutDirection::Horizontal);
+        assert_eq!(container.get_size(), (25, 9));
+        container = container.add_child(Container::new().with_position_and_size(0, 0, 6, 1));
+        assert_eq!(container.get_size(), (35, 9));
+
+        container = container.without_border().with_padding(Padding::uniform(0));
+        assert_eq!(container.get_size(), (28, 4));
+        container = container.with_layout_direction(LayoutDirection::Vertical);
+        assert_eq!(container.get_size(), (6, 13));
+
+        container =
+            container.add_child(Container::new().with_position_and_size(0, 0, u16::MAX, u16::MAX));
+        assert_eq!(container.get_size(), (u16::MAX, u16::MAX));
+        container = container
+            .with_position_and_size(1, 2, 30, 20)
+            .with_border()
+            .add_child_fill(Container::new().with_position_and_size(0, 0, 8, 9));
+        assert_eq!(container.get_size(), (30, 20));
     }
 }

@@ -4,9 +4,30 @@
 //! rendering system. It implements a double-buffered approach with intelligent change
 //! detection and optimization.
 
-use crate::{ColorPair, Result, TabPolicy, cell_width, cell_width_char};
+use crate::text::grapheme_width;
+use crate::{ColorPair, Result, TabPolicy, cell_width_char};
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
+
+fn printable_ascii_prefix(bytes: &[u8]) -> usize {
+    let mut offset = 0;
+    for chunk in bytes.chunks_exact(32) {
+        // A non-short-circuit reduction lets LLVM classify a whole chunk with
+        // vector instructions. Locate the exact boundary only in a failing chunk.
+        if !chunk
+            .iter()
+            .fold(true, |valid, byte| valid & matches!(byte, b' '..=b'~'))
+        {
+            break;
+        }
+        offset += chunk.len();
+    }
+    offset
+        + bytes[offset..]
+            .iter()
+            .position(|byte| !matches!(byte, b' '..=b'~'))
+            .unwrap_or(bytes.len() - offset)
+}
 
 /// A terminal cell containing a grapheme or continuing a wide grapheme.
 ///
@@ -29,7 +50,7 @@ impl CellText {
     fn width(&self) -> u16 {
         match self {
             Self::Character(character) => cell_width_char(*character),
-            Self::Grapheme(text) => cell_width(text, TabPolicy::SingleCell),
+            Self::Grapheme(text) => grapheme_width(text, TabPolicy::SingleCell),
             Self::Continuation => 0,
         }
     }
@@ -195,8 +216,14 @@ impl Buffer {
         }
     }
 
-    fn write_glyph(&mut self, y: u16, x: u16, text: CellText, colors: Option<ColorPair>) {
-        let width = text.width();
+    fn write_glyph(
+        &mut self,
+        y: u16,
+        x: u16,
+        text: CellText,
+        width: u16,
+        colors: Option<ColorPair>,
+    ) {
         let cell = Cell { text, colors };
         if self.current[self.coords_to_index(x, y)] == cell {
             return;
@@ -217,6 +244,37 @@ impl Buffer {
         }
     }
 
+    fn write_ascii(&mut self, y: u16, x: u16, bytes: &[u8], colors: Option<ColorPair>) {
+        let start = self.coords_to_index(x, y);
+        let end = start + bytes.len();
+        // Only the two edges can leave part of an old wide glyph outside the
+        // overwritten range. Interior glyphs are replaced in full.
+        if self.current[start].text == CellText::Continuation {
+            self.clear_area(y, x, y, x);
+        }
+        let end_column = x + bytes.len() as u16;
+        if end_column < self.width && self.current[end].text == CellText::Continuation {
+            self.clear_area(y, end_column, y, end_column);
+        }
+
+        let mut first_changed = bytes.len();
+        let mut last_changed = 0;
+        for (offset, (cell, &byte)) in self.current[start..end].iter_mut().zip(bytes).enumerate() {
+            let replacement = Cell {
+                text: CellText::Character(char::from(byte)),
+                colors,
+            };
+            if *cell != replacement {
+                *cell = replacement;
+                first_changed = first_changed.min(offset);
+                last_changed = offset;
+            }
+        }
+        if first_changed < bytes.len() {
+            self.mark_dirty_span(y, x + first_changed as u16, x + last_changed as u16);
+        }
+    }
+
     pub(crate) fn write_str(
         &mut self,
         y: u16,
@@ -232,20 +290,41 @@ impl Buffer {
                 height: self.height,
             });
         }
-        let mut column = x;
+        // Inspect at most one byte beyond the visible range. If the next byte
+        // is non-ASCII, leave the preceding ASCII character for segmentation:
+        // a combining mark or variation selector may extend its grapheme.
+        let available = usize::from(self.width - x);
+        let prefix = &text.as_bytes()[..text.len().min(available + 1)];
+        let ascii_end = printable_ascii_prefix(prefix);
+        let ascii_len = if ascii_end == prefix.len() {
+            ascii_end.min(available)
+        } else {
+            ascii_end.saturating_sub(1)
+        };
+        if ascii_len > 0 {
+            self.write_ascii(y, x, &prefix[..ascii_len], colors);
+        }
+        let column = x + ascii_len as u16;
+        if column < self.width {
+            self.write_unicode(y, column, &text[ascii_len..], colors);
+        }
+        Ok(())
+    }
+
+    fn write_unicode(&mut self, y: u16, mut column: u16, text: &str, colors: Option<ColorPair>) {
         for grapheme in text.graphemes(true) {
             if column >= self.width || matches!(grapheme, "\r" | "\n" | "\r\n") {
                 break;
             }
             // Raw tabs are normalised to a space, matching SingleCell span layout.
             let grapheme = if grapheme == "\t" { " " } else { grapheme };
-            let width = cell_width(grapheme, TabPolicy::SingleCell);
+            let width = grapheme_width(grapheme, TabPolicy::SingleCell);
             if width == 0 {
                 continue;
             }
             if width > self.width - column {
                 while column < self.width {
-                    self.write_glyph(y, column, CellText::Character(' '), colors);
+                    self.write_glyph(y, column, CellText::Character(' '), 1, colors);
                     column += 1;
                 }
                 break;
@@ -254,12 +333,28 @@ impl Buffer {
             let text = if first.len_utf8() == grapheme.len() {
                 CellText::Character(first)
             } else {
-                CellText::Grapheme(Arc::from(grapheme))
+                let index = self.coords_to_index(column, y);
+                let current = &self.current[index];
+                let text = match (&current.text, &self.previous[index].text) {
+                    (CellText::Grapheme(existing), _) if existing.as_ref() == grapheme => {
+                        if current.colors == colors {
+                            column += width;
+                            continue;
+                        }
+                        Arc::clone(existing)
+                    }
+                    // Clearing the current frame leaves the previous frame's
+                    // allocation available for repainting the same grapheme.
+                    (_, CellText::Grapheme(existing)) if existing.as_ref() == grapheme => {
+                        Arc::clone(existing)
+                    }
+                    _ => Arc::from(grapheme),
+                };
+                CellText::Grapheme(text)
             };
-            self.write_glyph(y, column, text, colors);
+            self.write_glyph(y, column, text, width, colors);
             column += width;
         }
-        Ok(())
     }
 
     pub(crate) fn clear(&mut self) {
@@ -282,10 +377,33 @@ impl Buffer {
     }
 
     pub(crate) fn clear_area(&mut self, start_y: u16, start_x: u16, end_y: u16, end_x: u16) {
+        if start_x > end_x {
+            return;
+        }
+        let empty = Cell::empty();
         for y in start_y..=end_y {
-            for x in start_x..=end_x {
-                self.erase_glyph(y, x);
+            let row_start = self.coords_to_index(0, y);
+            let row = &mut self.current[row_start..row_start + self.width as usize];
+            let mut start = start_x as usize;
+            let mut end = end_x as usize + 1;
+
+            // Include the whole glyph when either edge cuts through it.
+            while start > 0 && row[start].text == CellText::Continuation {
+                start -= 1;
             }
+            while end < row.len() && row[end].text == CellText::Continuation {
+                end += 1;
+            }
+
+            let Some(offset) = row[start..end].iter().position(|cell| *cell != empty) else {
+                continue;
+            };
+            start += offset;
+            while row[end - 1] == empty {
+                end -= 1;
+            }
+            row[start..end].fill(Cell::empty());
+            self.mark_dirty_span(y, start as u16, (end - 1) as u16);
         }
     }
 
@@ -305,9 +423,13 @@ impl Buffer {
                 let current = &self.current[idx];
                 let previous = &self.previous[idx];
 
+                if current == previous {
+                    x += 1;
+                    continue;
+                }
                 let width = current.text.width() as usize;
-                if width == 0 || current == previous {
-                    x += width.max(1);
+                if width == 0 {
+                    x += 1;
                     continue;
                 }
 
@@ -318,11 +440,11 @@ impl Buffer {
                     let next_idx = idx + run_length;
                     let next_cell = &self.current[next_idx];
                     let next_prev = &self.previous[next_idx];
+                    if next_cell.colors != current.colors || next_cell == next_prev {
+                        break;
+                    }
                     let next_width = next_cell.text.width() as usize;
-                    if next_width == 0
-                        || next_cell.colors != current.colors
-                        || next_cell == next_prev
-                    {
+                    if next_width == 0 {
                         break;
                     }
                     run_length += next_width;
@@ -349,16 +471,21 @@ impl Buffer {
     ///
     /// Keeping this separate from `process_changes` means a failed terminal write can be retried,
     /// and the desired buffer remains authoritative for incremental drawing.
+    /// Call after `process_changes` and successful output, without intervening buffer writes.
     pub(crate) fn commit_changes(&mut self) {
-        for (y, row) in self.dirty_rows.iter_mut().enumerate() {
-            if let Some(range) = row.take() {
-                let row_start = y * self.width as usize;
-                let start_idx = row_start + range.min_x as usize;
-                let end_idx = row_start + range.max_x as usize + 1;
-                self.previous[start_idx..end_idx]
-                    .clone_from_slice(&self.current[start_idx..end_idx]);
+        // Emitted runs already cover whole changed glyphs, including their
+        // continuation cells. Leave unchanged gaps and their reference counts alone.
+        let mut changes = self.changes.iter().peekable();
+        while let Some(change) = changes.next() {
+            let mut end = change.start_idx + change.len;
+            // Colour boundaries matter to output, but adjacent runs can be copied together.
+            while let Some(next) = changes.next_if(|next| next.start_idx == end) {
+                end += next.len;
             }
+            let range = change.start_idx..end;
+            self.previous[range.clone()].clone_from_slice(&self.current[range]);
         }
+        self.dirty_rows.fill(None);
         self.changes.clear();
     }
 
@@ -500,21 +627,29 @@ mod tests {
 
     #[test]
     fn clear_area_marks_only_changed_cells() {
-        let mut buffer = Buffer::new(5, 2);
+        for (text, start, end, first_changed, changed_cells, expected) in [
+            ("abcde", 1, 3, 1, 3, "a   e   "),
+            ("  a  ", 0, 7, 2, 1, "        "),
+            ("a🧑‍💻界b", 2, 3, 1, 4, "a    b  "),
+            ("a🧑‍💻界b", 1, 1, 1, 2, "a  界b  "),
+            ("a🧑‍💻界b", 4, 4, 3, 2, "a🧑‍💻  b  "),
+        ] {
+            let mut buffer = Buffer::new(8, 1);
+            let mut screen = vec![" ".to_owned(); 8];
+            buffer.write_str(0, 0, text, None).unwrap();
+            apply_frame(&mut buffer, &mut screen);
+            buffer.clear_area(0, start, 0, end);
 
-        buffer.write_str(0, 0, "abcde", None).unwrap();
-        buffer.commit_changes();
-        buffer.clear_area(0, 1, 0, 3);
-
-        let stats = buffer.get_stats();
-        assert_eq!(stats.dirty_rows, 1);
-        assert_eq!(stats.dirty_cols, 3);
-        assert_eq!(stats.modified_cells, 3);
-        assert_eq!(buffer.process_changes(), 1);
-
-        let mut output = String::new();
-        buffer.change_text(buffer.change(0), &mut output);
-        assert_eq!(output, "   ");
+            let stats = buffer.get_stats();
+            assert_eq!(stats.dirty_rows, 1);
+            assert_eq!(stats.dirty_cols, changed_cells);
+            assert_eq!(stats.modified_cells, changed_cells);
+            assert_eq!(buffer.process_changes(), 1);
+            assert_eq!(buffer.change(0).x, first_changed);
+            assert_eq!(buffer.change(0).len, changed_cells);
+            apply_frame(&mut buffer, &mut screen);
+            assert_eq!(screen.concat(), expected);
+        }
     }
 
     #[test]
