@@ -1260,11 +1260,12 @@ impl Drop for TerminalWindow {
     }
 }
 
-#[cfg(test)]
+// These tests capture ANSI commands. Windows mouse capture uses native console
+// APIs instead, whose effects cannot be checked through the captured writer.
+#[cfg(all(test, not(windows)))]
 mod tests {
     use super::TerminalSession;
 
-    #[cfg(not(windows))]
     #[test]
     fn movement_tracking_switches_terminal_modes_without_disabling_drag() {
         use crate::{Event, MouseButton, MouseHandler};
@@ -1331,11 +1332,8 @@ mod tests {
 
         let output = String::from_utf8(bytes).unwrap();
 
-        #[cfg(not(windows))]
-        {
-            assert!(output.contains("\u{1b}[>1u"));
-            assert!(output.contains("\u{1b}[<1u"));
-        }
+        assert!(output.contains("\u{1b}[>1u"));
+        assert!(output.contains("\u{1b}[<1u"));
 
         assert!(output.contains("\u{1b}[?1049h"));
         assert!(output.contains("\u{1b}[?1049l"));
