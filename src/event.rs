@@ -140,12 +140,12 @@ pub enum Event {
     MouseDrag { x: u16, y: u16, button: MouseButton },
     /// Mouse button was released at the specified coordinates
     MouseRelease { x: u16, y: u16, button: MouseButton },
-    /// Mouse wheel was scrolled vertically
-    /// Positive delta indicates scrolling up, negative indicates scrolling down
-    MouseScroll { delta: i8 },
-    /// Mouse wheel was scrolled horizontally
-    /// Positive delta indicates scrolling right, negative indicates scrolling left
-    MouseScrollHorizontal { delta: i8 },
+    /// Mouse wheel was scrolled vertically at zero-based terminal coordinates.
+    /// By default, positive delta indicates scrolling down, negative indicates scrolling up.
+    MouseScroll { x: u16, y: u16, delta: i8 },
+    /// Mouse wheel was scrolled horizontally at zero-based terminal coordinates.
+    /// By default, positive delta indicates scrolling left, negative indicates scrolling right.
+    MouseScrollHorizontal { x: u16, y: u16, delta: i8 },
 
     // Window events (optional, for future use)
     /// Terminal window was resized to the new dimensions

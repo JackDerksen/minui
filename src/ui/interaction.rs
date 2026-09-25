@@ -328,8 +328,7 @@ pub struct InteractionCache {
     // Hover tracking (computed via `hit_test`, can be cached by the app if desired)
     last_hovered: Option<InteractionId>,
 
-    // Last known mouse position (optional). This is populated by `observe_event` when it sees
-    // `Event::MouseMove`. Apps can also ignore this and store mouse position themselves.
+    // Last known mouse position, populated by `observe_event` for any mouse event.
     last_mouse_pos: Option<(u16, u16)>,
 }
 
@@ -356,8 +355,14 @@ impl InteractionCache {
     ///
     /// - `cache.observe_event(&event);`
     pub fn observe_event(&mut self, event: &Event) {
-        if let Event::MouseMove { x, y } = *event {
-            self.last_mouse_pos = Some((x, y));
+        match *event {
+            Event::MouseMove { x, y }
+            | Event::MouseClick { x, y, .. }
+            | Event::MouseDrag { x, y, .. }
+            | Event::MouseRelease { x, y, .. }
+            | Event::MouseScroll { x, y, .. }
+            | Event::MouseScrollHorizontal { x, y, .. } => self.last_mouse_pos = Some((x, y)),
+            _ => {}
         }
     }
 

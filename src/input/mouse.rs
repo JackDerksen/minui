@@ -47,11 +47,11 @@ use std::time::{Duration, Instant};
 ///             }
 ///         },
 ///         Event::MouseMove { x, y } => println!("Mouse moved to ({}, {})", x, y),
-///         Event::MouseScroll { delta } => {
+///         Event::MouseScroll { delta, .. } => {
 ///             if delta > 0 {
-///                 println!("Scrolled up");
-///             } else {
 ///                 println!("Scrolled down");
+///             } else {
+///                 println!("Scrolled up");
 ///             }
 ///         },
 ///         _ => {}
@@ -88,6 +88,7 @@ pub struct MouseHandler {
     drag_detection: bool,
     last_click_pos: Option<(u16, u16)>,
     is_dragging: bool,
+    scroll_axis_filtering: bool,
     last_scroll_direction: Option<ScrollDirection>,
     scroll_buffer_count: u8,
     invert_scroll_vertical: bool,
@@ -228,6 +229,7 @@ impl MouseHandler {
     /// - 1ms poll rate for responsive input
     /// - Movement tracking enabled
     /// - Drag detection disabled
+    /// - Scroll axis filtering enabled
     ///
     /// # Returns
     ///
@@ -248,6 +250,7 @@ impl MouseHandler {
             drag_detection: false,
             last_click_pos: None,
             is_dragging: false,
+            scroll_axis_filtering: true,
             last_scroll_direction: None,
             scroll_buffer_count: 0,
             invert_scroll_vertical: false,
@@ -302,8 +305,9 @@ impl MouseHandler {
     /// When enabled, the handler will generate `MouseMove` events whenever
     /// the cursor position changes. When disabled, clicks, drags, and scrolls
     /// are still tracked. `TerminalWindow` applies this setting before its next
-    /// input read, requesting click-and-drag reporting on Unix terminals so
-    /// unused hover events are suppressed at the source. Standalone handlers
+    /// input read while mouse capture is enabled, requesting click-and-drag reporting
+    /// on Unix terminals so unused hover events are suppressed at the source.
+    /// This setting never enables disabled terminal capture. Standalone handlers
     /// and Windows console input filter movement after receiving it.
     ///
     /// # Arguments
@@ -418,10 +422,29 @@ impl MouseHandler {
         &mut self.click_tracker
     }
 
+    /// Enables or disables scroll axis filtering. Enabled by default.
+    ///
+    /// Disable this when the app filters wheel input itself. Both axes then emit
+    /// immediately, preserving pointer coordinates and the configured delta inversion.
+    /// Changing this setting clears the active axis and pending switch, so the next
+    /// wheel event is accepted even when filtering is re-enabled.
+    pub fn set_scroll_axis_filtering(&mut self, enabled: bool) {
+        if self.scroll_axis_filtering != enabled {
+            self.scroll_axis_filtering = enabled;
+            self.last_scroll_direction = None;
+            self.scroll_buffer_count = 0;
+        }
+    }
+
+    /// Returns whether scroll axis filtering is enabled.
+    pub fn is_scroll_axis_filtering_enabled(&self) -> bool {
+        self.scroll_axis_filtering
+    }
+
     /// Sets whether to invert vertical scrolling (natural scrolling).
     ///
-    /// When enabled, positive deltas scroll down and negative deltas scroll up,
-    /// matching the "natural" scrolling behavior common on trackpads.
+    /// When enabled, scrolling down emits a negative delta and scrolling up emits
+    /// a positive delta, reversing the default signs.
     ///
     /// # Arguments
     ///
@@ -446,7 +469,8 @@ impl MouseHandler {
 
     /// Sets whether to invert horizontal scrolling.
     ///
-    /// When enabled, positive deltas scroll left and negative deltas scroll right.
+    /// When enabled, scrolling left emits a negative delta and scrolling right emits
+    /// a positive delta, reversing the default signs.
     ///
     /// # Arguments
     ///
@@ -660,10 +684,12 @@ impl MouseHandler {
                     Event::Unknown
                 }
             }
-            MouseEventKind::ScrollDown => self.handle_scroll(ScrollDirection::Vertical, 1),
-            MouseEventKind::ScrollUp => self.handle_scroll(ScrollDirection::Vertical, -1),
-            MouseEventKind::ScrollLeft => self.handle_scroll(ScrollDirection::Horizontal, 1),
-            MouseEventKind::ScrollRight => self.handle_scroll(ScrollDirection::Horizontal, -1),
+            MouseEventKind::ScrollDown => self.handle_scroll(ScrollDirection::Vertical, 1, x, y),
+            MouseEventKind::ScrollUp => self.handle_scroll(ScrollDirection::Vertical, -1, x, y),
+            MouseEventKind::ScrollLeft => self.handle_scroll(ScrollDirection::Horizontal, 1, x, y),
+            MouseEventKind::ScrollRight => {
+                self.handle_scroll(ScrollDirection::Horizontal, -1, x, y)
+            }
         }
     }
 
@@ -686,43 +712,24 @@ impl MouseHandler {
 
     /// Handles scroll events with direction buffering to prevent cross-axis noise.
     ///
-    /// This maintains a buffer that requires 2 consecutive scroll events in the
-    /// opposite direction before switching scroll axes, preventing accidental
-    /// cross-axis scrolling.
-    fn handle_scroll(&mut self, direction: ScrollDirection, delta: i8) -> Event {
+    /// When filtering is enabled, switching axes requires 2 consecutive scroll events.
+    /// The first is discarded as `Event::Unknown`; the second emits on the new axis.
+    fn handle_scroll(&mut self, direction: ScrollDirection, delta: i8, x: u16, y: u16) -> Event {
         const BUFFER_THRESHOLD: u8 = 2;
 
-        match self.last_scroll_direction {
-            None => {
-                // First scroll event, set the direction
-                self.last_scroll_direction = Some(direction);
-                self.scroll_buffer_count = 0;
-                self.emit_scroll_event(direction, delta)
-            }
-            Some(last_dir) if last_dir == direction => {
-                // Same direction, reset buffer and emit
-                self.scroll_buffer_count = 0;
-                self.emit_scroll_event(direction, delta)
-            }
-            Some(_) => {
-                // Different direction, increment buffer
-                self.scroll_buffer_count += 1;
-
-                if self.scroll_buffer_count >= BUFFER_THRESHOLD {
-                    // Buffer threshold reached, switch direction
-                    self.last_scroll_direction = Some(direction);
-                    self.scroll_buffer_count = 0;
-                    self.emit_scroll_event(direction, delta)
-                } else {
-                    // Still in buffer, emit in the previous direction
-                    self.emit_scroll_event(self.last_scroll_direction.unwrap(), delta)
-                }
+        if self.scroll_axis_filtering
+            && self
+                .last_scroll_direction
+                .is_some_and(|previous| previous != direction)
+        {
+            self.scroll_buffer_count += 1;
+            if self.scroll_buffer_count < BUFFER_THRESHOLD {
+                return Event::Unknown;
             }
         }
-    }
 
-    /// Emits the appropriate scroll event for the given direction and delta.
-    fn emit_scroll_event(&self, direction: ScrollDirection, delta: i8) -> Event {
+        self.last_scroll_direction = Some(direction);
+        self.scroll_buffer_count = 0;
         match direction {
             ScrollDirection::Vertical => {
                 let final_delta = if self.invert_scroll_vertical {
@@ -730,7 +737,11 @@ impl MouseHandler {
                 } else {
                     delta
                 };
-                Event::MouseScroll { delta: final_delta }
+                Event::MouseScroll {
+                    x,
+                    y,
+                    delta: final_delta,
+                }
             }
             ScrollDirection::Horizontal => {
                 let final_delta = if self.invert_scroll_horizontal {
@@ -738,7 +749,11 @@ impl MouseHandler {
                 } else {
                     delta
                 };
-                Event::MouseScrollHorizontal { delta: final_delta }
+                Event::MouseScrollHorizontal {
+                    x,
+                    y,
+                    delta: final_delta,
+                }
             }
         }
     }
@@ -747,6 +762,9 @@ impl MouseHandler {
     ///
     /// This public method allows external code to process mouse events through
     /// the mouse handler, applying drag detection logic if configured.
+    /// Wheel events retain their pointer coordinates even when movement tracking is disabled.
+    /// With axis filtering enabled, buffered noise returns `Event::Unknown`, which
+    /// the app loop discards.
     ///
     /// # Arguments
     ///

@@ -491,17 +491,21 @@ impl UiScene {
     /// Route a wheel event to a scrollable id.
     ///
     /// Policy:
-    /// - Prefer scrollable under cursor (if we have mouse position and it hits a scrollable region)
-    /// - Else prefer focused id if it is scrollable this frame
+    /// - Hit-test the wheel event's coordinates, without requiring prior mouse movement.
+    /// - Prefer the hit id if scrollable, then its owner if registered as scrollable this frame.
+    /// - Else prefer the focused id if it is scrollable this frame.
     pub fn route_wheel_event(&mut self, event: &Event) -> Option<RouteTarget> {
         match *event {
-            Event::MouseScroll { .. } | Event::MouseScrollHorizontal { .. } => {
-                // Prefer under-cursor scrollable.
-                if let Some((mx, my)) = self.last_mouse_pos() {
-                    if let Some(hit) = self.hit_test(mx, my) {
-                        if hit.flags.scrollable {
-                            return Some(RouteTarget::Id(hit.id));
-                        }
+            Event::MouseScroll { x, y, .. } | Event::MouseScrollHorizontal { x, y, .. } => {
+                self.observe_event(event);
+                if let Some(hit) = self.hit_test(x, y) {
+                    if hit.flags.scrollable {
+                        return Some(RouteTarget::Id(hit.id));
+                    }
+                    if let Some(owner) = self.owner_of(hit.id)
+                        && self.flags(owner).is_some_and(|flags| flags.scrollable)
+                    {
+                        return Some(RouteTarget::Id(owner));
                     }
                 }
 

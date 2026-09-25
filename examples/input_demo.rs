@@ -211,17 +211,21 @@ fn main() -> minui::Result<()> {
                         .event_log
                         .push_back(format!("Mouse: {} drag to ({}, {})", button_name, x, y));
                 }
-                Event::MouseScroll { delta } => {
-                    let direction = if delta > 0 { "up" } else { "down" };
-                    state
-                        .event_log
-                        .push_back(format!("Mouse: Scroll {} ({})", direction, delta));
+                Event::MouseScroll { x, y, delta } => {
+                    state.mouse_pos = (x, y);
+                    let direction = if delta > 0 { "down" } else { "up" };
+                    state.event_log.push_back(format!(
+                        "Mouse: Scroll {} ({}) at ({}, {})",
+                        direction, delta, x, y
+                    ));
                 }
-                Event::MouseScrollHorizontal { delta } => {
-                    let direction = if delta > 0 { "right" } else { "left" };
-                    state
-                        .event_log
-                        .push_back(format!("Mouse: Scroll {} ({})", direction, delta));
+                Event::MouseScrollHorizontal { x, y, delta } => {
+                    state.mouse_pos = (x, y);
+                    let direction = if delta > 0 { "left" } else { "right" };
+                    state.event_log.push_back(format!(
+                        "Mouse: Scroll {} ({}) at ({}, {})",
+                        direction, delta, x, y
+                    ));
                 }
                 Event::MouseRelease { x, y, button } => {
                     state.mouse_pos = (x, y);

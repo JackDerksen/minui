@@ -62,6 +62,7 @@ use std::time::Duration;
 #[derive(Debug, Default)]
 struct TerminalSession {
     active: bool,
+    mouse_capture: bool,
     mouse_movement: bool,
 }
 
@@ -71,6 +72,7 @@ impl TerminalSession {
 
         let mut session = Self {
             active: true,
+            mouse_capture: true,
             mouse_movement: true,
         };
         if let Err(err) = Self::write_enter_commands(out) {
@@ -121,8 +123,23 @@ impl TerminalSession {
         Ok(())
     }
 
+    fn set_mouse_capture(&mut self, out: &mut impl Write, enabled: bool) -> Result<()> {
+        if self.mouse_capture == enabled {
+            return Ok(());
+        }
+        if enabled {
+            execute!(out, EnableMouseCapture)?;
+            // Crossterm enables all-motion reporting; restore the configured mode afterwards.
+            self.mouse_movement = true;
+        } else {
+            execute!(out, DisableMouseCapture)?;
+        }
+        self.mouse_capture = enabled;
+        Ok(())
+    }
+
     fn sync_mouse_movement(&mut self, out: &mut impl Write, enabled: bool) -> Result<()> {
-        if self.mouse_movement == enabled {
+        if !self.mouse_capture || self.mouse_movement == enabled {
             return Ok(());
         }
         // Crossterm uses native console input on Windows. Keep its capture mode
@@ -873,11 +890,33 @@ impl TerminalWindow {
         &self.mouse
     }
 
+    /// Enables or disables terminal mouse reporting immediately. Enabled by default.
+    ///
+    /// While disabled, input reads and movement-tracking changes leave capture disabled.
+    /// Re-enabling capture applies the mouse handler's current movement-tracking setting.
+    /// Use this method instead of sending Crossterm capture commands directly, so the
+    /// window can keep its cached terminal state in sync.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if changing terminal mouse reporting fails.
+    pub fn set_mouse_capture(&mut self, enabled: bool) -> Result<()> {
+        self.session.set_mouse_capture(&mut self.out, enabled)?;
+        self.session
+            .sync_mouse_movement(&mut self.out, self.mouse.is_movement_tracking_enabled())
+    }
+
+    /// Returns whether this window has terminal mouse reporting enabled.
+    pub fn is_mouse_capture_enabled(&self) -> bool {
+        self.session.mouse_capture
+    }
+
     /// Gets a mutable reference to the mouse handler for configuration changes.
     ///
-    /// Movement-tracking changes are applied before the next input read. On Unix,
-    /// disabling movement selects terminal click-and-drag reporting, reducing
-    /// incoming hover events. Windows retains native capture and filters in Rust.
+    /// While mouse capture is enabled, movement-tracking changes are applied before
+    /// the next input read. On Unix, disabling movement selects terminal click-and-drag
+    /// reporting, reducing incoming hover events. Windows filters movement in Rust.
+    /// Movement-tracking changes never enable disabled mouse capture.
     ///
     /// This provides mutable access to the underlying mouse handler for
     /// configuration modifications.
@@ -1273,6 +1312,7 @@ mod tests {
 
         let mut session = TerminalSession {
             active: true,
+            mouse_capture: true,
             mouse_movement: true,
         };
         let mut output = Vec::new();
@@ -1310,7 +1350,14 @@ mod tests {
                     button: MouseButton::Left,
                 },
             ),
-            (MouseEventKind::ScrollDown, Event::MouseScroll { delta: 1 }),
+            (
+                MouseEventKind::ScrollDown,
+                Event::MouseScroll {
+                    x: 2,
+                    y: 3,
+                    delta: 1,
+                },
+            ),
         ] {
             assert_eq!(
                 mouse.process_mouse_event(MouseEvent {

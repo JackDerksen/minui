@@ -56,53 +56,47 @@ fn advance_tick_deadline(deadline: Instant, interval: Duration, now: Instant) ->
 }
 
 fn push_coalesced_event(events: &mut Vec<Event>, event: Event) {
-    match event {
-        Event::Unknown => {}
-        Event::MouseMove { x, y } => {
-            if let Some(Event::MouseMove {
+    match (events.last_mut(), event) {
+        (_, Event::Unknown) => {}
+        (
+            Some(Event::MouseMove {
                 x: previous_x,
                 y: previous_y,
-            }) = events.last_mut()
-            {
-                *previous_x = x;
-                *previous_y = y;
-            } else {
-                events.push(Event::MouseMove { x, y });
-            }
+            }),
+            Event::MouseMove { x, y },
+        ) => {
+            *previous_x = x;
+            *previous_y = y;
         }
-        Event::Resize { width, height } => {
-            if let Some(Event::Resize {
+        (
+            Some(Event::Resize {
                 width: previous_width,
                 height: previous_height,
-            }) = events.last_mut()
-            {
-                *previous_width = width;
-                *previous_height = height;
-            } else {
-                events.push(Event::Resize { width, height });
-            }
+            }),
+            Event::Resize { width, height },
+        ) => {
+            *previous_width = width;
+            *previous_height = height;
         }
-        Event::MouseScroll { delta } => {
-            if let Some(Event::MouseScroll {
+        (
+            Some(Event::MouseScroll {
+                x: previous_x,
+                y: previous_y,
                 delta: previous_delta,
-            }) = events.last_mut()
-            {
-                *previous_delta = previous_delta.saturating_add(delta);
-            } else {
-                events.push(Event::MouseScroll { delta });
-            }
-        }
-        Event::MouseScrollHorizontal { delta } => {
-            if let Some(Event::MouseScrollHorizontal {
+            }),
+            Event::MouseScroll { x, y, delta },
+        )
+        | (
+            Some(Event::MouseScrollHorizontal {
+                x: previous_x,
+                y: previous_y,
                 delta: previous_delta,
-            }) = events.last_mut()
-            {
-                *previous_delta = previous_delta.saturating_add(delta);
-            } else {
-                events.push(Event::MouseScrollHorizontal { delta });
-            }
+            }),
+            Event::MouseScrollHorizontal { x, y, delta },
+        ) if *previous_x == x && *previous_y == y => {
+            *previous_delta = previous_delta.saturating_add(delta);
         }
-        event => events.push(event),
+        (_, event) => events.push(event),
     }
 }
 
@@ -384,6 +378,61 @@ impl<S> App<S> {
 mod tests {
     use super::push_coalesced_event;
     use crate::{Event, MouseButton};
+
+    #[test]
+    fn wheel_coalescing_preserves_positions_and_axes() {
+        let mut events = Vec::new();
+        let vertical = Event::MouseScroll {
+            x: 2,
+            y: 3,
+            delta: 1,
+        };
+        let moved = Event::MouseScroll {
+            x: 4,
+            y: 3,
+            delta: 1,
+        };
+        let horizontal = Event::MouseScrollHorizontal {
+            x: 4,
+            y: 3,
+            delta: -1,
+        };
+        let moved_horizontal = Event::MouseScrollHorizontal {
+            x: 4,
+            y: 5,
+            delta: -1,
+        };
+
+        for event in [
+            vertical.clone(),
+            Event::Unknown,
+            vertical,
+            moved.clone(),
+            horizontal.clone(),
+            horizontal,
+            moved_horizontal.clone(),
+        ] {
+            push_coalesced_event(&mut events, event);
+        }
+
+        assert_eq!(
+            events,
+            [
+                Event::MouseScroll {
+                    x: 2,
+                    y: 3,
+                    delta: 2
+                },
+                moved,
+                Event::MouseScrollHorizontal {
+                    x: 4,
+                    y: 3,
+                    delta: -2
+                },
+                moved_horizontal,
+            ]
+        );
+    }
 
     #[test]
     fn coalescing_preserves_input_boundaries_and_drag_events() {

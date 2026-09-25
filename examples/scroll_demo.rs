@@ -131,31 +131,28 @@ fn main() -> minui::Result<()> {
             }
 
             // Mouse wheel scrolling:
-            // Route ONLY to the scroll target under cursor (preferred) or the focused scroll target.
-            // This is now centralized in UiScene.
+            // Prefer the hit scroll target, then its scrollable owner, then the focused target.
             match event {
-                Event::MouseScroll { delta } => {
+                Event::MouseScroll { delta, .. } => {
                     if let Some(RouteTarget::Id(_id)) = state.ui.route_wheel_event(&event) {
                         state.autohide.mark_activity();
 
-                        // Convention: delta > 0 scrolls up, delta < 0 scrolls down.
-                        // We invert to translate "scroll down" into positive offset movement.
-                        let dy: i16 = -(delta as i16);
+                        // Positive vertical wheel deltas move down through the content.
                         state
                             .scroll
                             .borrow_mut()
-                            .scroll_by(ScrollOrientation::Vertical, dy);
+                            .scroll_by(ScrollOrientation::Vertical, i16::from(delta));
                     }
                 }
-                Event::MouseScrollHorizontal { delta } => {
+                Event::MouseScrollHorizontal { delta, .. } => {
                     if let Some(RouteTarget::Id(_id)) = state.ui.route_wheel_event(&event) {
                         state.autohide.mark_activity();
 
-                        let dx: i16 = -(delta as i16);
+                        // Positive horizontal wheel deltas move left through the content.
                         state
                             .scroll
                             .borrow_mut()
-                            .scroll_by(ScrollOrientation::Horizontal, dx);
+                            .scroll_by(ScrollOrientation::Horizontal, -i16::from(delta));
                     }
                 }
                 _ => {}

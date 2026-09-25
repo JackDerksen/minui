@@ -49,7 +49,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.7.5"
+minui = "0.8.1"
 ```
 
 ### Basic Example
@@ -92,6 +92,8 @@ fn main() -> minui::Result<()> {
 ```
 
 Run the examples: `cargo run --example basic_usage`
+
+Read the [MinUI user guide](WIKI.md) for more info about the app loop, input routing, layouts, scrolling, text input, and working examples. The guide follows the source in this repository.
 
 ### Import Bundles
 

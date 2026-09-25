@@ -25,8 +25,8 @@
 //!     .with_scroll_indicators(true);
 //!
 //! // Handle scroll events
-//! if let Event::MouseScroll { delta } = event {
-//!     viewport.scroll_vertical(delta as i16 * -3);
+//! if let Event::MouseScroll { delta, .. } = event {
+//!     viewport.scroll_vertical(i16::from(delta) * 3);
 //! }
 //!
 //! // Draw the viewport
