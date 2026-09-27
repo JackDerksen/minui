@@ -54,6 +54,7 @@ pub mod game;
 pub mod input;
 pub mod macros;
 pub mod render;
+pub mod style;
 pub mod term;
 pub mod text;
 pub mod widgets;
@@ -64,6 +65,7 @@ pub use app::{App, FrameProfile, UpdateAction};
 pub use color::{Color, ColorPair};
 pub use error::{Error, Result};
 pub use event::{Event, KeyKind, KeyModifiers, KeyWithModifiers, MouseButton};
+pub use style::{Style, StyledSpan};
 pub use term::{ColorSupport, TerminalCapabilities};
 pub use text::{
     TabPolicy, byte_index_for_char_index, byte_index_for_grapheme_index,
@@ -168,9 +170,9 @@ pub mod prelude {
     /// [`TerminalWindow`](crate::TerminalWindow) without using MinUI widgets.
     pub mod render {
         pub use crate::{
-            Color, ColorPair, ColorSupport, ColoredSpan, Error, Result, TabPolicy,
-            TerminalCapabilities, TerminalWindow, TextWrapMode, Window, byte_index_for_char_index,
-            byte_index_for_grapheme_index, cell_column_for_char_index,
+            Color, ColorPair, ColorSupport, ColoredSpan, Error, Result, Style, StyledSpan,
+            TabPolicy, TerminalCapabilities, TerminalWindow, TextWrapMode, Window,
+            byte_index_for_char_index, byte_index_for_grapheme_index, cell_column_for_char_index,
             cell_column_for_grapheme_index, cell_width, cell_width_char,
             char_index_from_cell_column, clip_to_cells, clip_to_cells_cow, clip_to_cells_ellipsis,
             clip_to_cells_into, fit_to_cells, grapheme_count, grapheme_index_from_cell_column,

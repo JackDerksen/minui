@@ -41,7 +41,7 @@ use crate::input::{KeyboardHandler, MouseHandler};
 use crate::render::buffer::Buffer;
 use crate::term::TerminalCapabilities;
 use crate::text::{TabPolicy, cell_width};
-use crate::{ColorPair, Error, Event, Result};
+use crate::{ColorPair, Error, Event, Result, Style, StyledSpan};
 #[cfg(not(windows))]
 use crossterm::event::{
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
@@ -52,8 +52,7 @@ use crossterm::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
         Event as CrosstermEvent,
     },
-    execute, queue,
-    style::{self, SetBackgroundColor, SetForegroundColor},
+    execute, queue, style,
     terminal::{self, disable_raw_mode, enable_raw_mode},
 };
 use std::io::{Stdout, Write, stdout};
@@ -262,6 +261,30 @@ pub trait Window {
     /// # Ok::<(), minui::Error>(())
     /// ```
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()>;
+
+    /// Writes text with colours and decorations.
+    ///
+    /// The style replaces all previous styling at these cells. Existing custom
+    /// backends fall back to colours only; override this method to render decorations.
+    fn write_str_styled(&mut self, y: u16, x: u16, text: &str, style: Style) -> Result<()> {
+        match style.colors {
+            Some(colors) => self.write_str_colored(y, x, text, colors),
+            None => self.write_str(y, x, text),
+        }
+    }
+
+    /// Writes spans with independent colours and decorations on the same row.
+    /// Span positions use terminal cell widths, including wide graphemes.
+    fn write_spans_styled(&mut self, y: u16, x: u16, spans: &[StyledSpan<'_>]) -> Result<()> {
+        let mut column = x;
+        for span in spans {
+            if !span.text.is_empty() {
+                self.write_str_styled(y, column, span.text, span.style)?;
+                column = column.saturating_add(cell_width(span.text, TabPolicy::SingleCell));
+            }
+        }
+        Ok(())
+    }
 
     /// Writes multiple coloured spans on the same row.
     ///
@@ -1021,7 +1044,7 @@ impl TerminalWindow {
     /// ```
     pub fn flush(&mut self) -> Result<()> {
         let change_count = self.buffer.process_changes();
-        let mut last_colors: Option<ColorPair> = None;
+        let mut last_style = Style::new();
         let mut cursor_after_write: Option<(u16, u16)> = None;
 
         // Hide the cursor while rendering changes to avoid flicker from transient `MoveTo` calls.
@@ -1081,27 +1104,9 @@ impl TerminalWindow {
                 queue!(output, cursor::MoveTo(change.x, change.y))?;
             }
 
-            // Downgrade requested colors before comparing with the last applied terminal color.
-            let applied_colors = change
-                .colors
-                .map(|colors| self.capabilities.downgrade_pair(colors));
-
-            if applied_colors != last_colors {
-                if let Some(colors) = applied_colors {
-                    // Set the foreground and background colors
-                    queue!(
-                        output,
-                        SetForegroundColor(colors.fg.to_crossterm()),
-                        SetBackgroundColor(colors.bg.to_crossterm())
-                    )?;
-
-                    last_colors = Some(colors);
-                } else {
-                    // If there are no colors, reset to the default.
-                    queue!(output, style::ResetColor)?;
-                    last_colors = None;
-                }
-            }
+            let applied_style = change.style.downgrade(self.capabilities);
+            applied_style.write_changes(&mut output, last_style)?;
+            last_style = applied_style;
 
             self.buffer.change_text(change, &mut self.render_text);
             output.write_all(self.render_text.as_bytes())?;
@@ -1109,10 +1114,7 @@ impl TerminalWindow {
             cursor_after_write = Some((change.x.saturating_add(change.len as u16), change.y));
         }
 
-        // Reset the color at the end of the flush only if styled output is still active.
-        if last_colors.is_some() {
-            queue!(output, style::ResetColor)?;
-        }
+        Style::new().write_changes(&mut output, last_style)?;
 
         if desired.visible {
             if cursor_visibility_changed {
@@ -1143,32 +1145,20 @@ impl TerminalWindow {
 
 impl Window for TerminalWindow {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
-        // Clip out-of-bounds writes instead of erroring.
-        //
-        // Many widgets draw borders/frames using computed coordinates; a minor off-by-one
-        // should not crash the UI. This matches `WindowView` behavior (silent clipping).
-        if y >= self.height || x >= self.width {
-            return Ok(());
-        }
-
-        self.buffer.write_str(y, x, s, None)?;
-
-        if self.auto_flush {
-            self.end_frame()?;
-        }
-        Ok(())
+        self.write_str_styled(y, x, s, Style::new())
     }
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
-        // Clip out-of-bounds writes instead of erroring.
-        //
-        // This prevents "messy" runtime errors when widgets attempt to draw at the
-        // terminal edge due to layout rounding or resize races.
+        self.write_str_styled(y, x, s, colors.into())
+    }
+
+    fn write_str_styled(&mut self, y: u16, x: u16, text: &str, style: Style) -> Result<()> {
+        // Match WindowView's silent clipping at terminal edges.
         if y >= self.height || x >= self.width {
             return Ok(());
         }
 
-        self.buffer.write_str(y, x, s, Some(colors))?;
+        self.buffer.write_str(y, x, text, style)?;
 
         if self.auto_flush {
             self.end_frame()?;
@@ -1191,11 +1181,31 @@ impl Window for TerminalWindow {
             }
 
             self.buffer
-                .write_str(y, cursor_x, span.text, Some(span.colors))?;
+                .write_str(y, cursor_x, span.text, span.colors.into())?;
             let span_w = cell_width(span.text, TabPolicy::SingleCell);
             cursor_x = cursor_x.saturating_add(span_w);
         }
 
+        if self.auto_flush {
+            self.end_frame()?;
+        }
+        Ok(())
+    }
+
+    fn write_spans_styled(&mut self, y: u16, x: u16, spans: &[StyledSpan<'_>]) -> Result<()> {
+        if y >= self.height || x >= self.width {
+            return Ok(());
+        }
+        let mut column = x;
+        for span in spans {
+            if column >= self.width {
+                break;
+            }
+            if !span.text.is_empty() {
+                self.buffer.write_str(y, column, span.text, span.style)?;
+                column = column.saturating_add(cell_width(span.text, TabPolicy::SingleCell));
+            }
+        }
         if self.auto_flush {
             self.end_frame()?;
         }
