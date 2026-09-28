@@ -131,7 +131,7 @@
 
 use crate::text::{TabPolicy, cell_width, clip_to_cells_cow};
 use crate::window::CursorSpec;
-use crate::{Color, ColorPair, Result, Window};
+use crate::{Color, ColorPair, Result, Style, Window};
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Character sets for drawing borders, boxes, and frames.
@@ -533,24 +533,14 @@ pub(super) fn clip_view_text<'a>(
 
 impl<'a> Window for WindowView<'a> {
     fn write_str(&mut self, y: u16, x: u16, s: &str) -> Result<()> {
-        let local_y = match y.checked_sub(self.scroll_y) {
-            Some(v) => v,
-            None => return Ok(()),
-        };
-
-        if local_y >= self.height {
-            return Ok(());
-        }
-
-        let Some((local_x, clipped)) = clip_view_text(s, x, self.scroll_x, self.width) else {
-            return Ok(());
-        };
-
-        self.window
-            .write_str(local_y + self.y_offset, local_x + self.x_offset, &clipped)
+        self.write_str_styled(y, x, s, Style::new())
     }
 
     fn write_str_colored(&mut self, y: u16, x: u16, s: &str, colors: ColorPair) -> Result<()> {
+        self.write_str_styled(y, x, s, colors.into())
+    }
+
+    fn write_str_styled(&mut self, y: u16, x: u16, text: &str, style: Style) -> Result<()> {
         let local_y = match y.checked_sub(self.scroll_y) {
             Some(v) => v,
             None => return Ok(()),
@@ -560,15 +550,15 @@ impl<'a> Window for WindowView<'a> {
             return Ok(());
         }
 
-        let Some((local_x, clipped)) = clip_view_text(s, x, self.scroll_x, self.width) else {
+        let Some((local_x, clipped)) = clip_view_text(text, x, self.scroll_x, self.width) else {
             return Ok(());
         };
 
-        self.window.write_str_colored(
+        self.window.write_str_styled(
             local_y + self.y_offset,
             local_x + self.x_offset,
             &clipped,
-            colors,
+            style,
         )
     }
 
@@ -663,7 +653,7 @@ impl<'a> Window for WindowView<'a> {
 #[cfg(test)]
 mod tests {
     use super::{CursorSpec, WindowView};
-    use crate::{Color, ColorPair, ColoredSpan, Result, Window};
+    use crate::{Color, ColorPair, ColoredSpan, Result, Style, StyledSpan, Window};
 
     #[derive(Debug, PartialEq)]
     struct Write {
@@ -676,6 +666,7 @@ mod tests {
     #[derive(Default)]
     struct CaptureWindow {
         writes: Vec<Write>,
+        styles: Vec<Style>,
         cursor: Option<CursorSpec>,
     }
 
@@ -698,6 +689,14 @@ mod tests {
                 colors: Some(colors),
             });
             Ok(())
+        }
+
+        fn write_str_styled(&mut self, y: u16, x: u16, text: &str, style: Style) -> Result<()> {
+            self.styles.push(style);
+            match style.colors {
+                Some(colors) => self.write_str_colored(y, x, text, colors),
+                None => self.write_str(y, x, text),
+            }
         }
 
         fn flush(&mut self) -> Result<()> {
@@ -735,6 +734,74 @@ mod tests {
 
     fn colors() -> ColorPair {
         ColorPair::new(Color::White, Color::Black)
+    }
+
+    #[test]
+    fn text_widgets_and_spans_preserve_styles_through_scrolled_views() {
+        use crate::{Label, Text, TextBlock, Widget};
+
+        let red = Style::new()
+            .bold()
+            .underlined()
+            .with_underline_color(Color::Red);
+        let blue = Style::new()
+            .italic()
+            .undercurled()
+            .with_underline_color(Color::Blue);
+        let mut parent = CaptureWindow::default();
+        let mut view = WindowView {
+            window: &mut parent,
+            x_offset: 3,
+            y_offset: 2,
+            scroll_x: 1,
+            scroll_y: 0,
+            width: 4,
+            height: 3,
+        };
+        Label::new("🧑‍💻xy")
+            .bold()
+            .underlined()
+            .with_underline_color(Color::Red)
+            .draw(&mut view)
+            .unwrap();
+        Text::new("abc")
+            .with_text_color(Color::Cyan)
+            .with_style(blue)
+            .draw(&mut view)
+            .unwrap();
+        TextBlock::new(4, 2, "abcd\nefgh")
+            .italic()
+            .undercurled()
+            .with_underline_color(Color::Blue)
+            .draw(&mut view)
+            .unwrap();
+        view.write_spans_styled(
+            2,
+            0,
+            &[
+                StyledSpan::new("🧑‍💻").with_style(red),
+                StyledSpan::new(""),
+                StyledSpan::new("xyz").with_style(blue),
+            ],
+        )
+        .unwrap();
+        assert_eq!(parent.styles, [red, blue, blue, blue, red, blue]);
+        let writes: Vec<_> = parent
+            .writes
+            .iter()
+            .map(|write| (write.x, write.y, write.text.as_str()))
+            .collect();
+        assert_eq!(
+            writes,
+            [
+                (3, 2, " xy"),
+                (3, 2, "bc"),
+                (3, 2, "bcd"),
+                (3, 3, "fgh"),
+                (3, 4, " "),
+                (4, 4, "xyz"),
+            ]
+        );
     }
 
     #[test]

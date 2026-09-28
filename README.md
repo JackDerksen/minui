@@ -49,7 +49,7 @@ Add MinUI to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-minui = "0.8.1"
+minui = "0.8.2"
 ```
 
 ### Basic Example
@@ -120,6 +120,34 @@ In practice:
 - add `minui::prelude::input::*` when handling keyboard or mouse input yourself
 - add `minui::prelude::widgets::*` only when using MinUI widgets
 - add `minui::prelude::interaction::*` when using hit-testing or event routing
+
+### Mouse wheel routing
+
+`Event::MouseScroll { x, y, delta }` and `Event::MouseScrollHorizontal { x, y, delta }` carry zero-based terminal coordinates. `UiScene::route_wheel_event(&event)` uses those coordinates, so routing works before any mouse movement and with movement tracking disabled.
+
+By default, vertical deltas are positive for down and negative for up. Horizontal deltas are positive for left and negative for right. The mouse handler's inversion settings reverse these signs.
+
+Routing prefers the hit widget if it is scrollable, then its owner if that owner is registered as scrollable, then the focused scrollable widget. Register the owner and associate clickable children each frame:
+
+```rust
+ui.register_scrollable(panel_id, panel_area);
+ui.register_focusable(button_id, button_area);
+ui.set_owner(button_id, panel_id);
+```
+
+Wheel events at different coordinates stay separate when the app batches input. By default, when switching axes, the mouse handler discards the first event as noise and accepts the second consecutive event on the new axis. Discarded input returns `Event::Unknown`, which the app loop ignores.
+
+If your app already filters wheel input, disable MinUI's axis filtering so both axes pass through immediately:
+
+```rust
+app.window_mut().mouse_mut().set_scroll_axis_filtering(false);
+```
+
+Changing this setting clears the active axis and pending switch. Coordinates and delta inversion still apply.
+
+Use `app.window_mut().set_mouse_capture(false)?` to disable terminal mouse reporting. Input reads and movement-tracking changes leave it disabled. Calling `set_mouse_capture(true)?` restores reporting with the current movement-tracking setting. Both calls take effect immediately; use them instead of issuing Crossterm capture commands directly.
+
+Existing matches must include the new fields or use `Event::MouseScroll { delta, .. }` and `Event::MouseScrollHorizontal { delta, .. }`. Code constructing wheel events must supply `x` and `y`.
 
 ## Perfect for Terminal UIs (and optionally realtime/animated apps)
 

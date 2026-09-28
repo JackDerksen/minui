@@ -216,6 +216,8 @@ Useful methods include:
 
 - `get_size()` returns width and height.
 - `write_spans_colored(y, x, spans)` writes adjacent `ColoredSpan` values on one row.
+- `write_str_styled(y, x, text, style)` writes text with a complete `Style`.
+- `write_spans_styled(y, x, spans)` writes adjacent `StyledSpan` values with independent colours and decorations.
 - `clear_screen()` clears the drawing buffer.
 - `clear_area(y1, x1, y2, x2)` clears an inclusive rectangle.
 - `flush()` sends buffered changes; `end_frame()` also supports the deferred-cursor workflow.
@@ -302,6 +304,40 @@ See [container.rs](src/widgets/container.rs).
 Use `with_word_wrap()` as a convenience for `WrapWords`. `auto_sized` and `auto_sized_with_word_wrap` calculate dimensions from content. A text block does not own scroll offsets; draw it through a `WindowView` or inside a `ScrollBox` for scrolling.
 
 See [text widgets](src/widgets/text.rs).
+
+### Text styles
+
+`Label`, `Text`, `TextBlock`, `StyledSpan`, and `Style` support `bold()`, `italic()`,
+`dim()`, `strikethrough()`, `reversed()`, `underlined()`, and `undercurled()`.
+Decorations combine, except that straight underline and undercurl replace each
+other. `with_underline_color(Color)` sets a separate underline colour without
+enabling an underline. `Color::Reset` restores an underline that follows the text colour.
+
+```rust
+use minui::prelude::*;
+
+fn draw_diagnostic(window: &mut dyn Window) -> minui::Result<()> {
+    let error = Style::new().undercurled().with_underline_color(Color::Red);
+    window.write_spans_styled(0, 0, &[
+        StyledSpan::new("Unknown variable: ").bold(),
+        StyledSpan::new("user_name").with_style(error),
+        StyledSpan::new(" in this scope"),
+    ])
+}
+```
+
+`with_style` replaces all colours and decorations; pass `Style::new()` to clear
+them. The existing colour builders change colours while preserving decorations.
+`TextBlock` applies one style throughout its wrapped lines. Styled spans are a
+single-row drawing API and keep the existing grapheme-aware clipping behaviour.
+
+Styles do not inherit from adjacent text, and terminal output resets styling at
+the end of each flush. Underline colours use the same colour downgrading as text.
+The terminal determines which decorations it can display. Legacy Windows consoles
+omit unsupported underline colours. Existing custom `Window` implementations
+fall back to plain or coloured text until they override `write_str_styled`.
+
+Run `cargo run --example text_style_demo` to compare the styles in your terminal.
 
 ## Interaction and routing
 

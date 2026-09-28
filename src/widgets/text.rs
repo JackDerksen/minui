@@ -42,7 +42,7 @@
 use super::Widget;
 pub use crate::text::TextWrapMode;
 use crate::text::{TabPolicy, cell_width, clip_to_cells, fit_to_cells, wrap_to_cells};
-use crate::{Color, ColorPair, Result, Window};
+use crate::{Color, ColorPair, Result, Style, Window};
 use std::cell::{Ref, RefCell};
 
 /// How to align text horizontally
@@ -74,31 +74,33 @@ pub enum VerticalAlignment {
 pub struct Label {
     /// The label text content
     text: String,
-    /// Optional color styling for the text
-    colors: Option<ColorPair>,
+    /// Colours and decorations for the text
+    style: Style,
     /// Horizontal alignment of the text
     alignment: Alignment,
 }
 
 impl Label {
+    crate::style::text_style_methods!();
+
     /// Creates a new label with the given text
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
-            colors: None,
+            style: Style::new(),
             alignment: Alignment::Left,
         }
     }
 
     /// Sets foreground and background colors
     pub fn with_color(mut self, colors: ColorPair) -> Self {
-        self.colors = Some(colors);
+        self.style = self.style.with_colors(colors);
         self
     }
 
     /// Sets just the text color
     pub fn with_text_color(mut self, color: Color) -> Self {
-        self.colors = Some(ColorPair::new(color, Color::Transparent));
+        self.style = self.style.with_text_color(color);
         self
     }
 
@@ -158,10 +160,7 @@ impl Widget for Label {
         let max_cells = window_width.saturating_sub(x_pos);
         let clipped = clip_to_cells(&self.text, max_cells, TabPolicy::SingleCell);
 
-        match self.colors {
-            Some(colors) => window.write_str_colored(0, x_pos, &clipped, colors),
-            None => window.write_str(0, x_pos, &clipped),
-        }
+        window.write_str_styled(0, x_pos, &clipped, self.style)
     }
 
     fn get_size(&self) -> (u16, u16) {
@@ -179,31 +178,33 @@ impl Widget for Label {
 pub struct Text {
     /// The text content to display
     text: String,
-    /// Optional color styling for the text
-    colors: Option<ColorPair>,
+    /// Colours and decorations for the text
+    style: Style,
     /// Horizontal alignment of the text
     alignment: Alignment,
 }
 
 impl Text {
+    crate::style::text_style_methods!();
+
     /// Creates a new text widget
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
-            colors: None,
+            style: Style::new(),
             alignment: Alignment::Left,
         }
     }
 
     /// Sets foreground and background colors
     pub fn with_color(mut self, colors: ColorPair) -> Self {
-        self.colors = Some(colors);
+        self.style = self.style.with_colors(colors);
         self
     }
 
     /// Sets just the text color
     pub fn with_text_color(mut self, color: Color) -> Self {
-        self.colors = Some(ColorPair::new(color, Color::Transparent));
+        self.style = self.style.with_text_color(color);
         self
     }
 
@@ -263,10 +264,7 @@ impl Widget for Text {
         let max_cells = available_width.saturating_sub(x_pos);
         let clipped = clip_to_cells(&self.text, max_cells, TabPolicy::SingleCell);
 
-        match self.colors {
-            Some(colors) => window.write_str_colored(0, x_pos, &clipped, colors),
-            None => window.write_str(0, x_pos, &clipped),
-        }
+        window.write_str_styled(0, x_pos, &clipped, self.style)
     }
 
     fn get_size(&self) -> (u16, u16) {
@@ -291,8 +289,8 @@ pub struct TextBlock {
     height: u16,
     /// The text content to display
     text: String,
-    /// Optional color styling for the text
-    colors: Option<ColorPair>,
+    /// Colours and decorations for the text
+    style: Style,
     /// Text wrapping behavior
     wrap_mode: TextWrapMode,
     /// Horizontal text alignment
@@ -313,13 +311,15 @@ struct TextBlockWrapCache {
 }
 
 impl TextBlock {
+    crate::style::text_style_methods!();
+
     /// Creates a new TextBlock with the given size and content.
     pub fn new(width: u16, height: u16, text: impl Into<String>) -> Self {
         Self {
             width,
             height,
             text: text.into(),
-            colors: None,
+            style: Style::new(),
             wrap_mode: TextWrapMode::Wrap,
             h_align: Alignment::Left,
             v_align: VerticalAlignment::Top,
@@ -367,13 +367,13 @@ impl TextBlock {
 
     /// Sets the text colors
     pub fn with_colors(mut self, colors: ColorPair) -> Self {
-        self.colors = Some(colors);
+        self.style = self.style.with_colors(colors);
         self
     }
 
     /// Sets just the text color
     pub fn with_text_color(mut self, color: Color) -> Self {
-        self.colors = Some(ColorPair::new(color, Color::Transparent));
+        self.style = self.style.with_text_color(color);
         self
     }
 
@@ -501,11 +501,7 @@ impl Widget for TextBlock {
                 }
             };
 
-            if let Some(colors) = self.colors {
-                window.write_str_colored(line_y, line_x, &fitted, colors)?;
-            } else {
-                window.write_str(line_y, line_x, &fitted)?;
-            }
+            window.write_str_styled(line_y, line_x, &fitted, self.style)?;
         }
 
         Ok(())

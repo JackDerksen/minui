@@ -5,7 +5,7 @@
 //! detection and optimization.
 
 use crate::text::grapheme_width;
-use crate::{ColorPair, Result, TabPolicy, cell_width_char};
+use crate::{Result, Style, TabPolicy, cell_width_char};
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -31,12 +31,12 @@ fn printable_ascii_prefix(bytes: &[u8]) -> usize {
 
 /// A terminal cell containing a grapheme or continuing a wide grapheme.
 ///
-/// Each cell stores its content and optional colour information. Dirty row ranges provide
+/// Each cell stores its content and complete text style. Dirty row ranges provide
 /// change tracking without adding per-cell bookkeeping.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Cell {
     text: CellText,
-    pub(crate) colors: Option<ColorPair>,
+    pub(crate) style: Style,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -61,20 +61,20 @@ impl CellText {
 /// Buffer changes are generated during the rendering process to represent
 /// contiguous runs of characters that need to be updated in the terminal.
 /// This batching approach significantly reduces the number of cursor movements
-/// and color changes required.
+/// and style changes required.
 ///
 /// # Fields
 ///
 /// - `y`, `x`: Starting position of the change
 /// - `text`: The string of characters to write (may be multiple characters)
-/// - `colors`: Color styling to apply to the entire text run
+/// - `style`: Styling to apply to the entire text run
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct BufferChange {
     pub(crate) y: u16,
     pub(crate) x: u16,
     pub(crate) start_idx: usize,
     pub(crate) len: usize,
-    pub(crate) colors: Option<ColorPair>,
+    pub(crate) style: Style,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -84,11 +84,11 @@ struct DirtyRange {
 }
 
 impl Cell {
-    /// Creates an empty cell (space character with no colors).
+    /// Creates an empty cell (space character with default styling).
     pub fn empty() -> Self {
         Self {
             text: CellText::Character(' '),
-            colors: None,
+            style: Style::new(),
         }
     }
 }
@@ -115,7 +115,7 @@ impl Cell {
 ///
 /// ## Run-Length Encoding
 /// - Groups consecutive characters with identical styling
-/// - Reduces cursor movements and color changes
+/// - Reduces cursor movements and style changes
 /// - Significantly improves rendering performance
 ///
 /// # Performance Characteristics
@@ -131,8 +131,8 @@ impl Cell {
 /// let mut buffer = Buffer::new(80, 24);
 ///
 /// // Write some content
-/// buffer.write_str(0, 0, "Hello, World!", None)?;
-/// buffer.write_char(1, 5, '★', Some(ColorPair::new(Color::Yellow, Color::Black)))?;
+/// buffer.write_str(0, 0, "Hello, World!", Style::new())?;
+/// buffer.write_char(1, 5, '★', Style::new().with_text_color(Color::Yellow))?;
 ///
 /// // Process changes for rendering
 /// let changes = buffer.process_changes();
@@ -184,15 +184,9 @@ impl Buffer {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn write_char(
-        &mut self,
-        y: u16,
-        x: u16,
-        ch: char,
-        colors: Option<ColorPair>,
-    ) -> Result<()> {
+    pub(crate) fn write_char(&mut self, y: u16, x: u16, ch: char, style: Style) -> Result<()> {
         let mut encoded = [0; 4];
-        self.write_str(y, x, ch.encode_utf8(&mut encoded), colors)
+        self.write_str(y, x, ch.encode_utf8(&mut encoded), style)
     }
 
     fn set_cell(&mut self, y: u16, x: u16, cell: Cell) {
@@ -216,15 +210,8 @@ impl Buffer {
         }
     }
 
-    fn write_glyph(
-        &mut self,
-        y: u16,
-        x: u16,
-        text: CellText,
-        width: u16,
-        colors: Option<ColorPair>,
-    ) {
-        let cell = Cell { text, colors };
+    fn write_glyph(&mut self, y: u16, x: u16, text: CellText, width: u16, style: Style) {
+        let cell = Cell { text, style };
         if self.current[self.coords_to_index(x, y)] == cell {
             return;
         }
@@ -238,13 +225,13 @@ impl Buffer {
                 column,
                 Cell {
                     text: CellText::Continuation,
-                    colors,
+                    style,
                 },
             );
         }
     }
 
-    fn write_ascii(&mut self, y: u16, x: u16, bytes: &[u8], colors: Option<ColorPair>) {
+    fn write_ascii(&mut self, y: u16, x: u16, bytes: &[u8], style: Style) {
         let start = self.coords_to_index(x, y);
         let end = start + bytes.len();
         // Only the two edges can leave part of an old wide glyph outside the
@@ -262,7 +249,7 @@ impl Buffer {
         for (offset, (cell, &byte)) in self.current[start..end].iter_mut().zip(bytes).enumerate() {
             let replacement = Cell {
                 text: CellText::Character(char::from(byte)),
-                colors,
+                style,
             };
             if *cell != replacement {
                 *cell = replacement;
@@ -275,13 +262,7 @@ impl Buffer {
         }
     }
 
-    pub(crate) fn write_str(
-        &mut self,
-        y: u16,
-        x: u16,
-        text: &str,
-        colors: Option<ColorPair>,
-    ) -> Result<()> {
+    pub(crate) fn write_str(&mut self, y: u16, x: u16, text: &str, style: Style) -> Result<()> {
         if x >= self.width || y >= self.height {
             return Err(crate::Error::BufferSizeError {
                 x,
@@ -302,16 +283,16 @@ impl Buffer {
             ascii_end.saturating_sub(1)
         };
         if ascii_len > 0 {
-            self.write_ascii(y, x, &prefix[..ascii_len], colors);
+            self.write_ascii(y, x, &prefix[..ascii_len], style);
         }
         let column = x + ascii_len as u16;
         if column < self.width {
-            self.write_unicode(y, column, &text[ascii_len..], colors);
+            self.write_unicode(y, column, &text[ascii_len..], style);
         }
         Ok(())
     }
 
-    fn write_unicode(&mut self, y: u16, mut column: u16, text: &str, colors: Option<ColorPair>) {
+    fn write_unicode(&mut self, y: u16, mut column: u16, text: &str, style: Style) {
         for grapheme in text.graphemes(true) {
             if column >= self.width || matches!(grapheme, "\r" | "\n" | "\r\n") {
                 break;
@@ -324,7 +305,7 @@ impl Buffer {
             }
             if width > self.width - column {
                 while column < self.width {
-                    self.write_glyph(y, column, CellText::Character(' '), 1, colors);
+                    self.write_glyph(y, column, CellText::Character(' '), 1, style);
                     column += 1;
                 }
                 break;
@@ -337,7 +318,7 @@ impl Buffer {
                 let current = &self.current[index];
                 let text = match (&current.text, &self.previous[index].text) {
                     (CellText::Grapheme(existing), _) if existing.as_ref() == grapheme => {
-                        if current.colors == colors {
+                        if current.style == style {
                             column += width;
                             continue;
                         }
@@ -352,7 +333,7 @@ impl Buffer {
                 };
                 CellText::Grapheme(text)
             };
-            self.write_glyph(y, column, text, width, colors);
+            self.write_glyph(y, column, text, width, style);
             column += width;
         }
     }
@@ -440,7 +421,7 @@ impl Buffer {
                     let next_idx = idx + run_length;
                     let next_cell = &self.current[next_idx];
                     let next_prev = &self.previous[next_idx];
-                    if next_cell.colors != current.colors || next_cell == next_prev {
+                    if next_cell.style != current.style || next_cell == next_prev {
                         break;
                     }
                     let next_width = next_cell.text.width() as usize;
@@ -457,7 +438,7 @@ impl Buffer {
                     x: x as u16,
                     start_idx: idx,
                     len: run_length,
-                    colors: current.colors,
+                    style: current.style,
                 });
 
                 x += run_length;
@@ -478,7 +459,7 @@ impl Buffer {
         let mut changes = self.changes.iter().peekable();
         while let Some(change) = changes.next() {
             let mut end = change.start_idx + change.len;
-            // Colour boundaries matter to output, but adjacent runs can be copied together.
+            // Style boundaries matter to output, but adjacent runs can be copied together.
             while let Some(next) = changes.next_if(|next| next.start_idx == end) {
                 end += next.len;
             }
@@ -558,6 +539,53 @@ pub struct BufferStats {
 #[cfg(test)]
 mod tests {
     use super::Buffer;
+    use crate::Style;
+
+    #[test]
+    fn style_only_changes_redraw_complete_graphemes_and_split_runs() {
+        use crate::Color;
+
+        let mut buffer = Buffer::new(4, 1);
+        let mut screen = vec![" ".to_owned(); 4];
+        let red = Style::new()
+            .bold()
+            .undercurled()
+            .with_underline_color(Color::Red);
+        let blue = red.with_underline_color(Color::Blue);
+        buffer.write_str(0, 0, "a🧑‍💻b", Style::new()).unwrap();
+        apply_frame(&mut buffer, &mut screen);
+
+        buffer.write_str(0, 0, "a🧑‍💻b", red).unwrap();
+        assert_eq!(buffer.process_changes(), 1);
+        assert_eq!(buffer.change(0).len, 4);
+        assert_eq!(buffer.change(0).style, red);
+        apply_frame(&mut buffer, &mut screen);
+
+        buffer.write_str(0, 1, "🧑‍💻", blue).unwrap();
+        assert_eq!(buffer.process_changes(), 1);
+        let change = buffer.change(0);
+        assert_eq!((change.x, change.len, change.style), (1, 2, blue));
+        assert_eq!(buffer.current[2].style, blue);
+        apply_frame(&mut buffer, &mut screen);
+        buffer.write_str(0, 1, "🧑‍💻", blue).unwrap();
+        assert_eq!(buffer.process_changes(), 0);
+
+        buffer.write_str(0, 0, "a🧑‍💻b", Style::new()).unwrap();
+        assert_eq!(buffer.process_changes(), 1);
+        assert_eq!(buffer.change(0).style, Style::new());
+        apply_frame(&mut buffer, &mut screen);
+
+        buffer.write_str(0, 0, "a", red).unwrap();
+        buffer.write_str(0, 1, "🧑‍💻", blue).unwrap();
+        buffer.write_str(0, 3, "b", red).unwrap();
+        assert_eq!(buffer.process_changes(), 3);
+        apply_frame(&mut buffer, &mut screen);
+        buffer.clear_area(0, 2, 0, 2);
+        assert_eq!(buffer.process_changes(), 1);
+        assert_eq!(buffer.change(0).style, Style::new());
+        apply_frame(&mut buffer, &mut screen);
+        assert_eq!(screen, ["a", " ", " ", "b"]);
+    }
 
     // Apply only emitted patches, so stale terminal cells survive unless the
     // renderer explicitly overwrites them. Empty strings mark continuation cells.
@@ -590,34 +618,34 @@ mod tests {
     fn popup_frames_erase_wide_glyphs_and_leave_no_punctuation_behind() {
         let mut buffer = Buffer::new(8, 1);
         let mut screen = vec![" ".to_string(); 8];
-        buffer.write_str(0, 0, "a😁)> {", None).unwrap();
+        buffer.write_str(0, 0, "a😁)> {", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
         assert_eq!(screen, ["a", "😁", "", ")", ">", " ", "{", " "]);
 
         buffer.clear_area(0, 3, 0, 7);
-        buffer.write_str(0, 3, "│   │", None).unwrap();
+        buffer.write_str(0, 3, "│   │", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
         assert_eq!(screen, ["a", "😁", "", "│", " ", " ", " ", "│"]);
 
         // The continuation cell is unchanged, but emitting the new glyph still
         // advances the terminal by two columns.
-        buffer.write_str(0, 1, "🧑‍💻", None).unwrap();
+        buffer.write_str(0, 1, "🧑‍💻", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
         assert_eq!(screen[1..3], ["🧑‍💻", ""]);
 
         // A popup beginning on the second cell must erase the first half too.
         buffer.clear_area(0, 2, 0, 7);
-        buffer.write_str(0, 2, "│    │", None).unwrap();
+        buffer.write_str(0, 2, "│    │", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
         assert_eq!(screen, ["a", " ", "│", " ", " ", " ", " ", "│"]);
 
-        buffer.write_str(0, 0, "👨‍👩‍👧‍👦", None).unwrap();
+        buffer.write_str(0, 0, "👨‍👩‍👧‍👦", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
-        buffer.write_str(0, 0, "x", None).unwrap();
+        buffer.write_str(0, 0, "x", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
         assert_eq!(screen[0..3], ["x", " ", "│"]);
 
-        buffer.write_str(0, 7, "😁", None).unwrap();
+        buffer.write_str(0, 7, "😁", Style::new()).unwrap();
         apply_frame(&mut buffer, &mut screen);
         assert_eq!(screen[7], " ");
         buffer.clear();
@@ -636,7 +664,7 @@ mod tests {
         ] {
             let mut buffer = Buffer::new(8, 1);
             let mut screen = vec![" ".to_owned(); 8];
-            buffer.write_str(0, 0, text, None).unwrap();
+            buffer.write_str(0, 0, text, Style::new()).unwrap();
             apply_frame(&mut buffer, &mut screen);
             buffer.clear_area(0, start, 0, end);
 
@@ -669,7 +697,7 @@ mod tests {
     fn stats_count_dirty_cells_that_still_differ_from_previous_frame() {
         let mut buffer = Buffer::new(5, 2);
 
-        buffer.write_str(0, 1, "ab", None).unwrap();
+        buffer.write_str(0, 1, "ab", Style::new()).unwrap();
         let stats = buffer.get_stats();
 
         assert_eq!(stats.dirty_rows, 1);
@@ -681,8 +709,8 @@ mod tests {
     fn reverted_dirty_cells_produce_no_terminal_changes() {
         let mut buffer = Buffer::new(5, 2);
 
-        buffer.write_str(0, 1, "a", None).unwrap();
-        buffer.write_str(0, 1, " ", None).unwrap();
+        buffer.write_str(0, 1, "a", Style::new()).unwrap();
+        buffer.write_str(0, 1, " ", Style::new()).unwrap();
 
         let stats = buffer.get_stats();
         assert_eq!(stats.dirty_rows, 1);
@@ -702,7 +730,7 @@ mod tests {
         let mut buffer = Buffer::new(5, 1);
         let mut output = String::from("stale text");
 
-        buffer.write_str(0, 0, "hey", None).unwrap();
+        buffer.write_str(0, 0, "hey", Style::new()).unwrap();
         assert_eq!(buffer.process_changes(), 1);
         buffer.change_text(buffer.change(0), &mut output);
 
